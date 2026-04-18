@@ -35,11 +35,13 @@ create table if not exists employees (
 create table if not exists shifts (
   id uuid primary key default gen_random_uuid(),
   employee_id uuid references employees(id) on delete cascade,
-  shift_date date not null,
+  date date not null,
   start_time time,
   end_time time,
+  shift_type text,            -- am | pm | all_day
+  department text,
+  position text,
   outlet_id uuid references outlets(id) on delete set null,
-  role text,
   notes text,
   created_at timestamptz default now()
 );
