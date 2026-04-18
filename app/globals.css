@@ -3,25 +3,73 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0f0d;
+  --surface: #121815;
+  --surface-2: #1a2320;
+  --border: #243029;
+  --foreground: #e8efeb;
+  --muted: #8ba39a;
+  --primary: #4ecb94;
+  --primary-dim: #3aa578;
+  --amber: #ef9f27;
+  --danger: #ef5a5a;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
+html, body {
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--foreground);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  min-height: 100vh;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+* { box-sizing: border-box; }
+
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
   }
+  .input {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    border-radius: 8px;
+    padding: 8px 12px;
+    width: 100%;
+    outline: none;
+  }
+  .input:focus { border-color: var(--primary); }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 120ms ease;
+    cursor: pointer;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary { background: var(--primary); color: #05100b; }
+  .btn-primary:hover { background: var(--primary-dim); }
+  .btn-secondary { background: var(--surface-2); color: var(--foreground); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-amber { background: var(--amber); color: #1a1000; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .chip-green { background: rgba(78,203,148,0.15); color: var(--primary); }
+  .chip-amber { background: rgba(239,159,39,0.15); color: var(--amber); }
+  .chip-muted { background: rgba(139,163,154,0.15); color: var(--muted); }
 }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
