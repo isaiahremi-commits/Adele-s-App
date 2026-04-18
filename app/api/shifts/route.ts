@@ -18,7 +18,6 @@ export async function GET(req: Request) {
   const start = searchParams.get("start");
   const end = searchParams.get("end");
   const supabase = createClient();
-  // employees table uses first_name/last_name; select those and let the UI combine.
   let q = supabase
     .from("shifts")
     .select("*, employees(first_name, last_name, department, position)")
@@ -31,42 +30,22 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const {
-    shift_date,
-    date,
-    employee_id,
-    start_time,
-    end_time,
-    shift_type,
-    department,
-    position,
-    role, // legacy; ignore if not a column
-    ...rest
-  } = body as {
-    shift_date?: string;
-    date?: string;
-    employee_id?: string;
-    start_time?: string;
-    end_time?: string;
-    shift_type?: string;
-    department?: string;
-    position?: string;
-    role?: string;
-  } & Record<string, unknown>;
+  const body = (await req.json()) as Record<string, unknown>;
+
+  // Whitelist columns the shifts table actually has. Translate shift_date -> date.
+  const dateValue = (body.date ?? body.shift_date) as string | undefined;
 
   const payload: Record<string, unknown> = {
-    ...rest,
-    employee_id,
-    date: date ?? shift_date,
-    start_time: start_time || null,
-    end_time: end_time || null,
-    shift_type: shift_type || null,
-    department: department || null,
-    position: position || null,
+    employee_id: body.employee_id ?? null,
+    date: dateValue ?? null,
+    start_time: body.start_time || null,
+    end_time: body.end_time || null,
+    shift_type: body.shift_type ?? null,
+    department: body.department ?? null,
+    position: body.position ?? null,
   };
-  // Only include `role` if explicitly provided (kept for back-compat if column exists).
-  if (role !== undefined) payload.role = role;
+  if (body.outlet_id) payload.outlet_id = body.outlet_id;
+  if (body.notes) payload.notes = body.notes;
 
   const supabase = createClient();
   const { data, error } = await supabase.from("shifts").insert(payload).select().single();
