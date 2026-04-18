@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 
-// Client uses `sheet_date` but the DB column is `date`. Translate both ways.
+// tip_sheets columns:
+//   id, department, service_name, shift_type, date,
+//   service_charge, non_cash_tips, status, created_at
+// No outlet_id / service_id columns — drop them if the client sends them.
+
 type TipSheetRow = {
   id: string;
   date?: string | null;
@@ -19,28 +23,31 @@ export async function GET() {
     .from("tip_sheets")
     .select("*")
     .order("date", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: error.message, details: error.details, hint: error.hint, code: error.code },
+      { status: 500 }
+    );
+  }
   return NextResponse.json((data ?? []).map(toClient));
 }
 
 export async function POST(req: Request) {
   const body = (await req.json()) as Record<string, unknown>;
 
-  // Whitelist columns. The previous version spread the full body which
-  // included fields the DB doesn't have (e.g., empty service_id strings).
   const dateValue = (body.date ?? body.sheet_date) as string | undefined;
 
+  // Whitelist to the exact column set of tip_sheets. Anything else (outlet_id,
+  // service_id, sheet_date, etc.) is intentionally NOT included.
   const payload: Record<string, unknown> = {
-    service_name: body.service_name ?? null,
-    department: body.department ?? null,
-    date: dateValue ?? null,
-    status: body.status ?? "pending",
+    department: body.department || null,
+    service_name: body.service_name || null,
+    shift_type: body.shift_type || null,
+    date: dateValue || null,
     service_charge: Number(body.service_charge ?? 0),
     non_cash_tips: Number(body.non_cash_tips ?? 0),
+    status: (body.status as string) || "pending",
   };
-  // Foreign keys only if truthy (empty strings break uuid FKs).
-  if (body.outlet_id) payload.outlet_id = body.outlet_id;
-  if (body.service_id) payload.service_id = body.service_id;
 
   const supabase = createClient();
   const { data, error } = await supabase
@@ -48,6 +55,19 @@ export async function POST(req: Request) {
     .insert(payload)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    console.error("POST /api/tip-sheets failed", { payload, error });
+    return NextResponse.json(
+      {
+        error: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        payload,
+      },
+      { status: 500 }
+    );
+  }
   return NextResponse.json(toClient(data as TipSheetRow));
 }
