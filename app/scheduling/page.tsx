@@ -80,9 +80,25 @@ export default function SchedulingPage() {
     return shifts.filter((s) => s.employee_id === empId && s.shift_date === iso);
   }
 
+  const MAX_SHIFTS_PER_DAY = 4;
+
+  function shiftCountFor(empId: string, iso: string) {
+    return shifts.filter((s) => s.employee_id === empId && s.shift_date === iso).length;
+  }
+
   async function addShift(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+
+    // Enforce the 4-shifts-per-day cap.
+    if (form.employee_id && form.shift_date) {
+      const count = shiftCountFor(form.employee_id, form.shift_date);
+      if (count >= MAX_SHIFTS_PER_DAY) {
+        setFormError(`This employee already has ${MAX_SHIFTS_PER_DAY} shifts on ${form.shift_date}. Max is ${MAX_SHIFTS_PER_DAY}.`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       // If shift_type changes the times, let the server accept whatever is in
@@ -178,6 +194,7 @@ export default function SchedulingPage() {
                 </td>
                 {days.map((d) => {
                   const list = shiftsFor(emp.id, d);
+                  const atCap = list.length >= MAX_SHIFTS_PER_DAY;
                   return (
                     <td key={d.toISOString()} className="p-2 align-top">
                       <div className="flex flex-col gap-1">
@@ -201,6 +218,8 @@ export default function SchedulingPage() {
                           );
                         })}
                         <button
+                          disabled={atCap}
+                          title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
                           onClick={() => {
                             setForm({
                               ...form,
@@ -213,8 +232,12 @@ export default function SchedulingPage() {
                             setModalOpen(true);
                           }}
                           className="text-xs py-1 rounded-md"
-                          style={{ color: "var(--muted)", border: "1px dashed var(--border)" }}
-                        >+</button>
+                          style={{
+                            color: atCap ? "var(--border)" : "var(--muted)",
+                            border: "1px dashed var(--border)",
+                            cursor: atCap ? "not-allowed" : "pointer",
+                          }}
+                        >{atCap ? "Full" : "+"}</button>
                       </div>
                     </td>
                   );

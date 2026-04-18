@@ -5,7 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 
 type Employee = { id: string; name: string };
 type Role = { id: string; role_name: string; points: number; outlet_id: string };
-type Manager = { id: string; employee_id: string; employees?: { name: string } };
+type Manager = {
+  id: string;
+  employee_id: string;
+  commission_pct?: number;
+  employees?: { name: string };
+};
 type Allocation = {
   id?: string;
   employee_id: string;
@@ -39,6 +44,7 @@ export default function TipSheetEditor() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [saving, setSaving] = useState(false);
   const [newMgrId, setNewMgrId] = useState("");
+  const [newMgrPct, setNewMgrPct] = useState<string>("10");
 
   const load = useCallback(async () => {
     const [sheetRes, emps] = await Promise.all([
@@ -67,19 +73,41 @@ export default function TipSheetEditor() {
 
   const locked = sheet?.status === "approved";
 
-  // Calculations: weighted share = hours * points. Each employee's share = (weighted / totalWeighted) * pool.
-  const calculated = useMemo(() => {
+  // Manager commission is deducted from the service charge before the team
+  // split. The commission is expressed as a percentage on each manager and
+  // summed across all managers.
+  const totals = useMemo(() => {
     const sc = Number(sheet?.service_charge ?? 0);
     const nc = Number(sheet?.non_cash_tips ?? 0);
+    const totalPct = managers.reduce((s, m) => s + Number(m.commission_pct ?? 0), 0);
+    const commissionAmt = sc * (Math.min(totalPct, 100) / 100);
+    const distributableSc = Math.max(sc - commissionAmt, 0);
+    return { sc, nc, totalPct, commissionAmt, distributableSc };
+  }, [sheet, managers]);
+
+  // Per-manager commission amount (for display alongside each manager row).
+  const managersWithAmount = useMemo(() => {
+    const sc = totals.sc;
+    return managers.map((m) => ({
+      ...m,
+      commission_amount: sc * (Number(m.commission_pct ?? 0) / 100),
+    }));
+  }, [managers, totals.sc]);
+
+  // Calculations: weighted share = hours * points. Each employee's share of
+  // the service charge is (weight / totalWeighted) * (service_charge - commission).
+  const calculated = useMemo(() => {
+    const nc = totals.nc;
+    const distributableSc = totals.distributableSc;
     const totalWeighted = allocations.reduce((sum, a) => sum + Number(a.hours || 0) * Number(a.points || 0), 0);
     return allocations.map((a) => {
       const weight = Number(a.hours || 0) * Number(a.points || 0);
       const share = totalWeighted > 0 ? weight / totalWeighted : 0;
-      const scAmt = sc * share;
+      const scAmt = distributableSc * share;
       const ncAmt = nc * share;
       return { ...a, service_charge_amount: scAmt, non_cash_amount: ncAmt, total_amount: scAmt + ncAmt, _weight: weight };
     });
-  }, [sheet, allocations]);
+  }, [allocations, totals.distributableSc, totals.nc]);
 
   async function updateSheet(patch: Partial<Sheet>) {
     const res = await fetch(`/api/tip-sheets/${id}`, {
@@ -152,13 +180,32 @@ export default function TipSheetEditor() {
 
   async function addManager() {
     if (!newMgrId) return;
-    await fetch(`/api/tip-sheets/${id}/managers`, {
+    const res = await fetch(`/api/tip-sheets/${id}/managers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employee_id: newMgrId }),
+      body: JSON.stringify({
+        employee_id: newMgrId,
+        commission_pct: Number(newMgrPct) || 0,
+      }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Failed to add manager");
+      return;
+    }
     setNewMgrId("");
+    setNewMgrPct("10");
     load();
+  }
+
+  async function updateManagerPct(mgrId: string, pct: number) {
+    // Optimistic update.
+    setManagers((rows) => rows.map((m) => (m.id === mgrId ? { ...m, commission_pct: pct } : m)));
+    await fetch(`/api/tip-sheets/${id}/managers`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manager_id: mgrId, commission_pct: pct }),
+    });
   }
 
   async function removeManager(mgrId: string) {
@@ -211,31 +258,94 @@ export default function TipSheetEditor() {
           </label>
         </div>
         <div className="card p-4">
-          <div className="text-sm" style={{ color: "var(--muted)" }}>Total Pool</div>
+          <div className="text-sm" style={{ color: "var(--muted)" }}>Distributable Pool</div>
           <div className="text-2xl font-semibold mt-1" style={{ color: "var(--primary)" }}>
-            ${(Number(sheet.service_charge ?? 0) + Number(sheet.non_cash_tips ?? 0)).toFixed(2)}
+            ${(totals.distributableSc + totals.nc).toFixed(2)}
           </div>
+          {totals.commissionAmt > 0 && (
+            <div className="text-xs mt-2" style={{ color: "var(--amber)" }}>
+              − ${totals.commissionAmt.toFixed(2)} manager commission ({totals.totalPct.toFixed(1)}%)
+            </div>
+          )}
         </div>
       </div>
 
       <div className="card p-5 mb-4">
-        <h3 className="font-semibold mb-3">Event Managers</h3>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {managers.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>None assigned.</span>}
-          {managers.map((m) => (
-            <div key={m.id} className="chip chip-muted flex items-center gap-2" style={{ padding: "4px 10px" }}>
-              {m.employees?.name ?? empName(m.employee_id)}
-              {!locked && <button onClick={() => removeManager(m.id)} style={{ color: "var(--danger)" }}>×</button>}
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold">Event Managers</h3>
+          <span className="text-xs" style={{ color: "var(--muted)" }}>
+            Commission is deducted from service charge before team split
+          </span>
         </div>
+
+        {managersWithAmount.length === 0 ? (
+          <div className="text-xs mb-3" style={{ color: "var(--muted)" }}>None assigned.</div>
+        ) : (
+          <div className="mb-3">
+            <div className="grid grid-cols-12 gap-2 text-xs px-2 py-1" style={{ color: "var(--muted)" }}>
+              <div className="col-span-5">Manager</div>
+              <div className="col-span-3 text-right">Commission %</div>
+              <div className="col-span-3 text-right">Amount</div>
+              <div className="col-span-1"></div>
+            </div>
+            {managersWithAmount.map((m) => (
+              <div key={m.id} className="grid grid-cols-12 gap-2 items-center px-2 py-2 rounded-md" style={{ background: "var(--surface-2)", marginBottom: 6 }}>
+                <div className="col-span-5 text-sm">{m.employees?.name ?? empName(m.employee_id)}</div>
+                <div className="col-span-3">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    disabled={locked}
+                    className="input text-right"
+                    value={m.commission_pct ?? 0}
+                    onChange={(e) => updateManagerPct(m.id, Number(e.target.value))}
+                  />
+                </div>
+                <div className="col-span-3 text-right text-sm" style={{ color: "var(--amber)" }}>
+                  ${m.commission_amount.toFixed(2)}
+                </div>
+                <div className="col-span-1 text-right">
+                  {!locked && (
+                    <button onClick={() => removeManager(m.id)} style={{ color: "var(--danger)" }}>×</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div className="grid grid-cols-12 gap-2 px-2 pt-2 text-xs" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+              <div className="col-span-5">Total commission</div>
+              <div className="col-span-3 text-right">{totals.totalPct.toFixed(1)}%</div>
+              <div className="col-span-3 text-right" style={{ color: "var(--amber)" }}>
+                −${totals.commissionAmt.toFixed(2)}
+              </div>
+              <div className="col-span-1"></div>
+            </div>
+          </div>
+        )}
+
         {!locked && (
-          <div className="flex gap-2">
-            <select className="input" value={newMgrId} onChange={(e) => setNewMgrId(e.target.value)}>
-              <option value="">Add manager…</option>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-            <button className="btn btn-secondary" onClick={addManager}>Add</button>
+          <div className="flex gap-2 items-end">
+            <label className="text-xs flex-1" style={{ color: "var(--muted)" }}>
+              Manager
+              <select className="input mt-1" value={newMgrId} onChange={(e) => setNewMgrId(e.target.value)}>
+                <option value="">Select employee…</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs" style={{ color: "var(--muted)", maxWidth: 140 }}>
+              Commission %
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                className="input mt-1 text-right"
+                value={newMgrPct}
+                onChange={(e) => setNewMgrPct(e.target.value)}
+              />
+            </label>
+            <button className="btn btn-secondary" onClick={addManager}>+ Add</button>
           </div>
         )}
       </div>

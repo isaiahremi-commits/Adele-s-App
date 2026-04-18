@@ -64,6 +64,7 @@ create table if not exists tip_event_managers (
   id uuid primary key default gen_random_uuid(),
   tip_sheet_id uuid references tip_sheets(id) on delete cascade,
   employee_id uuid references employees(id) on delete cascade,
+  commission_pct numeric not null default 0,
   created_at timestamptz default now()
 );
 
