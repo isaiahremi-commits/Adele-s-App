@@ -6,7 +6,7 @@ create table if not exists outlets (
   created_at timestamptz default now()
 );
 
-create table if not exists services (
+create table if not exists outlet_services (
   id uuid primary key default gen_random_uuid(),
   outlet_id uuid references outlets(id) on delete cascade,
   name text not null,
@@ -16,7 +16,7 @@ create table if not exists services (
 create table if not exists outlet_roles (
   id uuid primary key default gen_random_uuid(),
   outlet_id uuid references outlets(id) on delete cascade,
-  role_name text not null,
+  position_name text not null,
   points numeric not null default 1,
   created_at timestamptz default now()
 );

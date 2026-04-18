@@ -24,6 +24,7 @@ export default function SetupPage() {
   const [newOutlet, setNewOutlet] = useState("");
   const [svcForm, setSvcForm] = useState<Record<string, string>>({});
   const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string }>>({});
+  const [outletError, setOutletError] = useState<Record<string, string>>({});
 
   async function load() {
     const [o, s, r, c] = await Promise.all([
@@ -83,7 +84,17 @@ export default function SetupPage() {
   async function addService(outletId: string) {
     const name = svcForm[outletId]?.trim();
     if (!name) return;
-    await fetch("/api/services", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, outlet_id: outletId }) });
+    const res = await fetch("/api/services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, outlet_id: outletId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setOutletError({ ...outletError, [outletId]: data.error || `Service save failed (${res.status})` });
+      return;
+    }
+    setOutletError({ ...outletError, [outletId]: "" });
     setSvcForm({ ...svcForm, [outletId]: "" });
     load();
   }
@@ -96,11 +107,21 @@ export default function SetupPage() {
   async function addRole(outletId: string) {
     const f = roleForm[outletId];
     if (!f?.role_name.trim()) return;
-    await fetch("/api/outlet-roles", {
+    const res = await fetch("/api/outlet-roles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role_name: f.role_name, points: Number(f.points) || 1, outlet_id: outletId }),
+      body: JSON.stringify({
+        position_name: f.role_name,
+        points: Number(f.points) || 1,
+        outlet_id: outletId,
+      }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setOutletError({ ...outletError, [outletId]: data.error || `Role save failed (${res.status})` });
+      return;
+    }
+    setOutletError({ ...outletError, [outletId]: "" });
     setRoleForm({ ...roleForm, [outletId]: { role_name: "", points: "1" } });
     load();
   }
@@ -173,6 +194,11 @@ export default function SetupPage() {
                   <h3 className="font-semibold">{o.name}</h3>
                   <button className="text-xs" onClick={() => removeOutlet(o.id)} style={{ color: "var(--danger)" }}>Remove outlet</button>
                 </div>
+                {outletError[o.id] && (
+                  <div className="text-xs mb-3 p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+                    {outletError[o.id]}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
