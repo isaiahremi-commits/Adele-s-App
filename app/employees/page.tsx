@@ -17,6 +17,8 @@ export default function EmployeesPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [form, setForm] = useState<Partial<Employee>>({ name: "", department: "", position: "", phone: "", email: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     const r = await fetch("/api/employees").then((r) => r.json());
@@ -27,24 +29,40 @@ export default function EmployeesPage() {
   function openAdd() {
     setEditing(null);
     setForm({ name: "", department: "", position: "", phone: "", email: "" });
+    setError(null);
     setOpen(true);
   }
   function openEdit(e: Employee) {
     setEditing(e);
     setForm(e);
+    setError(null);
     setOpen(true);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const url = editing ? `/api/employees/${editing.id}` : "/api/employees";
-    const method = editing ? "PATCH" : "POST";
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    if (res.ok) { setOpen(false); load(); }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const url = editing ? `/api/employees/${editing.id}` : "/api/employees";
+      const method = editing ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      setOpen(false);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function remove(id: string) {
@@ -109,9 +127,16 @@ export default function EmployeesPage() {
           <label className="text-sm">Email
             <input type="email" className="input mt-1" value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </label>
+          {error && (
+            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+              {error}
+            </div>
+          )}
           <div className="flex justify-end gap-2 mt-2">
-            <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="submit" className="btn btn-primary">{editing ? "Save" : "Add"}</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)} disabled={submitting}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? "Saving…" : editing ? "Save" : "Add"}
+            </button>
           </div>
         </form>
       </Modal>
