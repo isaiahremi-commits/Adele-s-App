@@ -78,6 +78,13 @@ create table if not exists tip_allocations (
   created_at timestamptz default now()
 );
 
+create table if not exists setup (
+  id uuid primary key default gen_random_uuid(),
+  pay_cycle text not null default 'weekly', -- weekly | biweekly
+  period_start_day text not null default 'monday', -- monday..sunday
+  updated_at timestamptz default now()
+);
+
 create table if not exists payroll_periods (
   id uuid primary key default gen_random_uuid(),
   name text,

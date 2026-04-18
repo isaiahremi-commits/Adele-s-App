@@ -4,32 +4,67 @@ import { useEffect, useState } from "react";
 type Outlet = { id: string; name: string };
 type Service = { id: string; name: string; outlet_id: string };
 type Role = { id: string; role_name: string; points: number; outlet_id: string };
-type PayrollPeriod = { id: string; name?: string; start_date: string; end_date: string; pay_date?: string; active?: boolean };
+type PayrollConfig = {
+  pay_cycle: "weekly" | "biweekly";
+  period_start_day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+};
+
+const DAYS: PayrollConfig["period_start_day"][] = [
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+];
 
 export default function SetupPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
+  const [config, setConfig] = useState<PayrollConfig>({ pay_cycle: "weekly", period_start_day: "monday" });
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configMsg, setConfigMsg] = useState<string | null>(null);
 
   const [newOutlet, setNewOutlet] = useState("");
   const [svcForm, setSvcForm] = useState<Record<string, string>>({});
   const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string }>>({});
-  const [periodForm, setPeriodForm] = useState({ name: "", start_date: "", end_date: "", pay_date: "" });
 
   async function load() {
-    const [o, s, r, p] = await Promise.all([
+    const [o, s, r, c] = await Promise.all([
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/services").then((r) => r.json()),
       fetch("/api/outlet-roles").then((r) => r.json()),
-      fetch("/api/payroll-periods").then((r) => r.json()),
+      fetch("/api/setup").then((r) => r.json()),
     ]);
     setOutlets(Array.isArray(o) ? o : []);
     setServices(Array.isArray(s) ? s : []);
     setRoles(Array.isArray(r) ? r : []);
-    setPeriods(Array.isArray(p) ? p : []);
+    if (c && !c.error) {
+      setConfig({
+        pay_cycle: c.pay_cycle ?? "weekly",
+        period_start_day: c.period_start_day ?? "monday",
+      });
+    }
   }
   useEffect(() => { load(); }, []);
+
+  async function saveConfig(next: Partial<PayrollConfig>) {
+    const merged = { ...config, ...next };
+    setConfig(merged);
+    setSavingConfig(true);
+    setConfigMsg(null);
+    try {
+      const res = await fetch("/api/setup", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merged),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setConfigMsg(data.error || `Save failed (${res.status})`);
+      else setConfigMsg("Saved");
+    } catch (err) {
+      setConfigMsg(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setSavingConfig(false);
+      setTimeout(() => setConfigMsg(null), 2000);
+    }
+  }
 
   async function addOutlet(e: React.FormEvent) {
     e.preventDefault();
@@ -75,51 +110,46 @@ export default function SetupPage() {
     load();
   }
 
-  async function addPeriod(e: React.FormEvent) {
-    e.preventDefault();
-    await fetch("/api/payroll-periods", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(periodForm),
-    });
-    setPeriodForm({ name: "", start_date: "", end_date: "", pay_date: "" });
-    load();
-  }
-
-  async function removePeriod(id: string) {
-    await fetch(`/api/payroll-periods/${id}`, { method: "DELETE" });
-    load();
-  }
-
   return (
     <div>
       <header className="mb-6">
         <h1 className="text-3xl font-bold">Setup</h1>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>Payroll periods & outlet management</p>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Payroll configuration & outlet management</p>
       </header>
 
       <section className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-3">Payroll Periods</h2>
-        <form onSubmit={addPeriod} className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-4">
-          <input className="input" placeholder="Name (e.g. W1 Jan)" value={periodForm.name} onChange={(e) => setPeriodForm({ ...periodForm, name: e.target.value })} />
-          <input type="date" className="input" required value={periodForm.start_date} onChange={(e) => setPeriodForm({ ...periodForm, start_date: e.target.value })} />
-          <input type="date" className="input" required value={periodForm.end_date} onChange={(e) => setPeriodForm({ ...periodForm, end_date: e.target.value })} />
-          <input type="date" className="input" placeholder="Pay date" value={periodForm.pay_date} onChange={(e) => setPeriodForm({ ...periodForm, pay_date: e.target.value })} />
-          <button className="btn btn-primary" type="submit">+ Add Period</button>
-        </form>
-        <div className="flex flex-col gap-2">
-          {periods.length === 0 && <div className="text-sm" style={{ color: "var(--muted)" }}>No payroll periods yet.</div>}
-          {periods.map((p) => (
-            <div key={p.id} className="flex items-center justify-between p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
-              <div>
-                <div className="font-medium">{p.name || `${p.start_date} – ${p.end_date}`}</div>
-                <div className="text-xs" style={{ color: "var(--muted)" }}>
-                  {p.start_date} → {p.end_date}{p.pay_date && ` · pay ${p.pay_date}`}
-                </div>
-              </div>
-              <button className="text-xs" onClick={() => removePeriod(p.id)} style={{ color: "var(--danger)" }}>Remove</button>
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Payroll Configuration</h2>
+          {configMsg && (
+            <span className="text-xs" style={{ color: configMsg === "Saved" ? "var(--primary)" : "var(--danger)" }}>
+              {configMsg}
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="text-sm">Pay Cycle
+            <select
+              className="input mt-1"
+              value={config.pay_cycle}
+              disabled={savingConfig}
+              onChange={(e) => saveConfig({ pay_cycle: e.target.value as PayrollConfig["pay_cycle"] })}
+            >
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+            </select>
+          </label>
+          <label className="text-sm">Period Starts On
+            <select
+              className="input mt-1"
+              value={config.period_start_day}
+              disabled={savingConfig}
+              onChange={(e) => saveConfig({ period_start_day: e.target.value as PayrollConfig["period_start_day"] })}
+            >
+              {DAYS.map((d) => (
+                <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 
