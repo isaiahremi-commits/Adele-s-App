@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type Employee = { id: string; name: string };
 type Role = { id: string; role_name: string; points: number; outlet_id: string };
@@ -29,6 +29,7 @@ type Sheet = {
 
 export default function TipSheetEditor() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -140,8 +141,13 @@ export default function TipSheetEditor() {
 
   async function approve() {
     await save();
-    await fetch(`/api/tip-sheets/${id}/approve`, { method: "POST" });
-    load();
+    const res = await fetch(`/api/tip-sheets/${id}/approve`, { method: "PATCH" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || `Approve failed (${res.status})`);
+      return;
+    }
+    router.push("/tips");
   }
 
   async function addManager() {

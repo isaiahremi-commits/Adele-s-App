@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Stats = {
   staff_on_today: number;
@@ -8,16 +9,35 @@ type Stats = {
   total_employees: number;
 };
 
-function StatCard({ label, value, accent, suffix }: { label: string; value: string | number; accent?: "green" | "amber"; suffix?: string }) {
+function StatCard({
+  label,
+  value,
+  href,
+  accent,
+  suffix,
+}: {
+  label: string;
+  value: string | number;
+  href: string;
+  accent?: "green" | "amber";
+  suffix?: string;
+}) {
   const color = accent === "amber" ? "var(--amber)" : "var(--primary)";
   return (
-    <div className="card p-6">
-      <div className="text-sm mb-2" style={{ color: "var(--muted)" }}>{label}</div>
+    <Link
+      href={href}
+      className="card p-6 block transition-transform hover:-translate-y-0.5"
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm" style={{ color: "var(--muted)" }}>{label}</div>
+        <span style={{ color: "var(--muted)" }}>→</span>
+      </div>
       <div className="text-3xl font-semibold" style={{ color }}>
         {value}
         {suffix && <span className="text-base ml-1" style={{ color: "var(--muted)" }}>{suffix}</span>}
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -42,13 +62,27 @@ export default function DashboardPage() {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Staff on today" value={loading ? "—" : stats?.staff_on_today ?? 0} />
+        <StatCard
+          label="Staff on today"
+          value={loading ? "—" : stats?.staff_on_today ?? 0}
+          href="/scheduling"
+        />
         <StatCard
           label="Tips distributed"
           value={loading ? "—" : `$${(stats?.tips_distributed ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          href="/tips"
         />
-        <StatCard label="Pending tip sheets" value={loading ? "—" : stats?.pending_tip_sheets ?? 0} accent="amber" />
-        <StatCard label="Total employees" value={loading ? "—" : stats?.total_employees ?? 0} />
+        <StatCard
+          label="Pending tip sheets"
+          value={loading ? "—" : stats?.pending_tip_sheets ?? 0}
+          accent="amber"
+          href="/tips"
+        />
+        <StatCard
+          label="Total employees"
+          value={loading ? "—" : stats?.total_employees ?? 0}
+          href="/employees"
+        />
       </div>
     </div>
   );
