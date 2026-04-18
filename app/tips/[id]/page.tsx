@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 
 type Employee = { id: string; name: string };
 type Role = { id: string; role_name: string; points: number; outlet_id: string };
@@ -29,7 +29,6 @@ type Sheet = {
 
 export default function TipSheetEditor() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const id = params.id;
 
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -40,7 +39,7 @@ export default function TipSheetEditor() {
   const [saving, setSaving] = useState(false);
   const [newMgrId, setNewMgrId] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     const [sheetRes, emps] = await Promise.all([
       fetch(`/api/tip-sheets/${id}`).then((r) => r.json()),
       fetch("/api/employees").then((r) => r.json()),
@@ -61,9 +60,9 @@ export default function TipSheetEditor() {
       const r = await fetch(`/api/outlet-roles`).then((r) => r.json());
       setRoles(Array.isArray(r) ? r : []);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   const locked = sheet?.status === "approved";
 
@@ -303,8 +302,6 @@ export default function TipSheetEditor() {
           </table>
         </div>
       </div>
-      {/* suppress unused warning */}
-      <span style={{ display: "none" }}>{router ? "" : ""}</span>
     </div>
   );
 }
