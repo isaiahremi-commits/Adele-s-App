@@ -2,10 +2,19 @@
 import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 
-type Employee = { id: string; name: string; department?: string; position?: string };
-type Outlet = { id: string; name: string };
+type Employee = {
+  id: string;
+  name: string;
+  department?: string;
+  position?: string;
+  department_id?: string | null;
+  home_outlet_id?: string | null;
+  home_position?: string | null;
+};
+type Outlet = { id: string; name: string; department_id?: string | null };
 type Service = { id: string; name: string; outlet_id: string };
 type Role = { id: string; role_name: string; outlet_id: string };
+type Department = { id: string; name: string; type?: string };
 type Shift = {
   id: string;
   employee_id: string;
@@ -71,7 +80,9 @@ export default function SchedulingPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [deptFilter, setDeptFilter] = useState<string>("");
   const [modalOpen, setModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -90,18 +101,20 @@ export default function SchedulingPage() {
   async function load() {
     const start = toISODate(days[0]);
     const end = toISODate(days[6]);
-    const [eRes, sRes, oRes, svcRes, rRes] = await Promise.all([
+    const [eRes, sRes, oRes, svcRes, rRes, dRes] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch(`/api/shifts?start=${start}&end=${end}`).then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/services").then((r) => r.json()),
       fetch("/api/outlet-roles").then((r) => r.json()),
+      fetch("/api/departments").then((r) => r.json()),
     ]);
     setEmployees(Array.isArray(eRes) ? eRes : []);
     setShifts(Array.isArray(sRes) ? sRes : []);
     setOutlets(Array.isArray(oRes) ? oRes : []);
     setServices(Array.isArray(svcRes) ? svcRes : []);
     setRoles(Array.isArray(rRes) ? rRes : []);
+    setDepartments(Array.isArray(dRes) ? dRes : []);
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,6 +125,16 @@ export default function SchedulingPage() {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  const filteredEmployees = useMemo(() => {
+    if (!deptFilter) return employees;
+    return employees.filter((e) => e.department_id === deptFilter);
+  }, [employees, deptFilter]);
+
+  const filteredOutlets = useMemo(() => {
+    if (!deptFilter) return outlets;
+    return outlets.filter((o) => o.department_id === deptFilter);
+  }, [outlets, deptFilter]);
 
   function shiftsFor(empId: string, date: Date) {
     const iso = toISODate(date);
@@ -206,14 +229,13 @@ export default function SchedulingPage() {
 
     const weekShifts = shifts.filter((s) => s.outlet_id && s.shift_type);
     if (weekShifts.length === 0) {
-      setToast({ kind: "error", text: "No shifts with outlet + shift type this week. Nothing to approve." });
+      setToast({ kind: "error", text: "No shifts with outlet and shift type this week. Nothing to approve." });
       return;
     }
 
-    const confirmed = confirm(
-      `Approve this week's schedule? This will create or sync tip sheets for every outlet & shift. Safe to re-run if you edit shifts.`
-    );
-    if (!confirmed) return;
+    const msg = "Approve this weeks schedule? This will create or sync tip sheets for every outlet and shift. Safe to re-run if you edit shifts.";
+    const ok = confirm(msg);
+    if (!ok) return;
 
     setApproving(true);
     try {
@@ -230,12 +252,13 @@ export default function SchedulingPage() {
         setToast({ kind: "error", text: data.error || "Approval failed" });
         return;
       }
-      const { created = 0, updated = 0 } = data;
+      const created = data.created || 0;
+      const updated = data.updated || 0;
       const parts: string[] = [];
       if (created > 0) parts.push(`${created} created`);
       if (updated > 0) parts.push(`${updated} updated`);
       const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-      setToast({ kind: "success", text: `Week approved — tip sheets: ${summary}.` });
+      setToast({ kind: "success", text: `Week approved. Tip sheets: ${summary}.` });
     } catch (err) {
       setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
     } finally {
@@ -251,28 +274,61 @@ export default function SchedulingPage() {
 
   return (
     <div>
-      <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <header className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-bold">Scheduling</h1>
           <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Week of {days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – {days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+            Week of {days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} to {days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
-          <button className="btn btn-secondary" onClick={() => shiftWeek(-1)}>← Prev</button>
+          <button className="btn btn-secondary" onClick={() => shiftWeek(-1)}>Prev</button>
           <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</button>
-          <button className="btn btn-secondary" onClick={() => shiftWeek(1)}>Next →</button>
+          <button className="btn btn-secondary" onClick={() => shiftWeek(1)}>Next</button>
           <button
             className="btn btn-secondary"
             onClick={approveWeek}
             disabled={approving}
-            title="Creates or syncs tip sheets for every outlet & shift this week"
+            title="Creates or syncs tip sheets for every outlet and shift this week"
           >
-            {approving ? "Approving…" : "✓ Approve Week"}
+            {approving ? "Approving..." : "Approve Week"}
           </button>
           <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
         </div>
       </header>
+
+      {departments.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-xs" style={{ color: "var(--muted)" }}>Filter:</span>
+          <button
+            onClick={() => setDeptFilter("")}
+            className="chip"
+            style={{
+              background: deptFilter === "" ? "var(--primary)" : "var(--surface-2)",
+              color: deptFilter === "" ? "white" : "var(--foreground)",
+              cursor: "pointer",
+              border: "1px solid var(--border)",
+            }}
+          >
+            All departments
+          </button>
+          {departments.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setDeptFilter(d.id)}
+              className="chip"
+              style={{
+                background: deptFilter === d.id ? "var(--primary)" : "var(--surface-2)",
+                color: deptFilter === d.id ? "white" : "var(--foreground)",
+                cursor: "pointer",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {d.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {toast && (
         <div
@@ -301,62 +357,70 @@ export default function SchedulingPage() {
             </tr>
           </thead>
           <tbody>
-            {employees.length === 0 && (
-              <tr><td colSpan={8} className="p-6 text-center" style={{ color: "var(--muted)" }}>No employees yet. Add some on the Employees page.</td></tr>
+            {filteredEmployees.length === 0 && (
+              <tr><td colSpan={8} className="p-6 text-center" style={{ color: "var(--muted)" }}>
+                {deptFilter ? "No employees in this department." : "No employees yet. Add some on the Employees page."}
+              </td></tr>
             )}
-            {employees.map((emp) => (
-              <tr key={emp.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td className="p-3 align-top">
-                  <div className="font-medium">{emp.name}</div>
-                  <div className="text-xs" style={{ color: "var(--muted)" }}>{emp.position ?? emp.department ?? ""}</div>
-                </td>
-                {days.map((d) => {
-                  const list = shiftsFor(emp.id, d);
-                  const atCap = list.length >= MAX_SHIFTS_PER_DAY;
-                  return (
-                    <td key={d.toISOString()} className="p-2 align-top">
-                      <div className="flex flex-col gap-1">
-                        {list.map((s) => {
-                          const outletName = outlets.find((o) => o.id === s.outlet_id)?.name;
-                          return (
-                            <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                              <div className="flex items-center gap-1 mb-0.5">
-                                {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
-                              </div>
-                              <div className="font-medium" style={{ color: "var(--primary)" }}>
-                                {s.start_time?.slice(0, 5) ?? "?"}–{s.end_time?.slice(0, 5) ?? "?"}
-                              </div>
-                              {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
-                              {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
-                              <button
-                                onClick={() => removeShift(s.id)}
-                                className="absolute top-1 right-1 text-xs opacity-0 group-hover:opacity-100"
-                                style={{ color: "var(--danger)" }}
-                              >×</button>
-                            </div>
-                          );
-                        })}
-                        <button
-                          disabled={atCap}
-                          title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
-                          onClick={() => {
-                            setForm({ ...emptyForm, employee_id: emp.id, shift_date: toISODate(d) });
-                            setFormError(null);
-                            setModalOpen(true);
-                          }}
-                          className="text-xs py-1 rounded-md"
-                          style={{
-                            color: atCap ? "var(--border)" : "var(--muted)",
-                            border: "1px dashed var(--border)",
-                            cursor: atCap ? "not-allowed" : "pointer",
-                          }}
-                        >{atCap ? "Full" : "+"}</button>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {filteredEmployees.map((emp) => {
+              const empDept = departments.find((d) => d.id === emp.department_id);
+              return (
+                <tr key={emp.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td className="p-3 align-top">
+                    <div className="font-medium">{emp.name}</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>
+                      {emp.home_position ?? emp.position ?? ""}
+                      {empDept && <span> - {empDept.name}</span>}
+                    </div>
+                  </td>
+                  {days.map((d) => {
+                    const list = shiftsFor(emp.id, d);
+                    const atCap = list.length >= MAX_SHIFTS_PER_DAY;
+                    return (
+                      <td key={d.toISOString()} className="p-2 align-top">
+                        <div className="flex flex-col gap-1">
+                          {list.map((s) => {
+                            const outletName = outlets.find((o) => o.id === s.outlet_id)?.name;
+                            return (
+                              <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
+                                </div>
+                                <div className="font-medium" style={{ color: "var(--primary)" }}>
+                                  {s.start_time?.slice(0, 5) ?? "?"}-{s.end_time?.slice(0, 5) ?? "?"}
+                                </div>
+                                {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
+                                {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
+                                <button
+                                  onClick={() => removeShift(s.id)}
+                                  className="absolute top-1 right-1 text-xs opacity-0 group-hover:opacity-100"
+                                  style={{ color: "var(--danger)" }}
+                                  >x</button>
+                                </div>
+                              );
+                            })}
+                            <button
+                              disabled={atCap}
+                              title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
+                              onClick={() => {
+                                setForm({ ...emptyForm, employee_id: emp.id, shift_date: toISODate(d) });
+                                setFormError(null);
+                                setModalOpen(true);
+                              }}
+                              className="text-xs py-1 rounded-md"
+                              style={{
+                                color: atCap ? "var(--border)" : "var(--muted)",
+                                border: "1px dashed var(--border)",
+                                cursor: atCap ? "not-allowed" : "pointer",
+                              }}
+                            >{atCap ? "Full" : "+"}</button>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -370,8 +434,8 @@ export default function SchedulingPage() {
               value={form.employee_id}
               onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
             >
-              <option value="">Select…</option>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              <option value="">Select...</option>
+              {filteredEmployees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </label>
 
@@ -391,8 +455,8 @@ export default function SchedulingPage() {
               value={form.outlet_id}
               onChange={(e) => setForm({ ...form, outlet_id: e.target.value, shift_type: "", position: "" })}
             >
-              <option value="">Select…</option>
-              {outlets.map((o) => (
+              <option value="">Select...</option>
+              {filteredOutlets.map((o) => (
                 <option key={o.id} value={o.id}>{o.name}</option>
               ))}
             </select>
@@ -405,7 +469,7 @@ export default function SchedulingPage() {
               onChange={(e) => setForm({ ...form, shift_type: e.target.value })}
               disabled={!form.outlet_id}
             >
-              <option value="">{form.outlet_id ? "Select…" : "Pick outlet first"}</option>
+              <option value="">{form.outlet_id ? "Select..." : "Pick outlet first"}</option>
               {outletShiftTypes.map((s) => (
                 <option key={s.id} value={s.name}>{s.name}</option>
               ))}
@@ -428,7 +492,7 @@ export default function SchedulingPage() {
               onChange={(e) => setForm({ ...form, position: e.target.value })}
               disabled={!form.outlet_id}
             >
-              <option value="">{form.outlet_id ? "Select…" : "Pick outlet first"}</option>
+              <option value="">{form.outlet_id ? "Select..." : "Pick outlet first"}</option>
               {outletRoles.map((r) => (
                 <option key={r.id} value={r.role_name}>{r.role_name}</option>
               ))}
@@ -461,7 +525,7 @@ export default function SchedulingPage() {
           )}
           <div className="flex justify-end gap-2 mt-2">
             <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)} disabled={submitting}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving…" : "Add Shift"}</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Add Shift"}</button>
           </div>
         </form>
       </Modal>
