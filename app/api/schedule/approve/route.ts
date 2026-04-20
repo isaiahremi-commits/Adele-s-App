@@ -1,12 +1,39 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 
-// POST /api/schedule/approve
-// Body: { week_start: "YYYY-MM-DD", week_end: "YYYY-MM-DD" }
-// 
-// For each unique (outlet_id, shift_type, date) in shifts within the range,
-// create or sync a tip sheet with source='auto'. Pre-populate tip_sheet_rows 
-// with all employees scheduled for that combo.
+type ShiftRow = {
+  id: string;
+  employee_id: string | null;
+  date: string | null;
+  shift_type: string | null;
+  outlet_id: string | null;
+  position: string | null;
+  start_time: string | null;
+  end_time: string | null;
+};
+
+type Group = {
+  outlet_id: string;
+  shift_type: string;
+  date: string;
+  employee_ids: Set<string>;
+  hours_by_employee: Map<string, number>;
+  positions_by_employee: Map<string, string>;
+};
+
+function hoursBetween(start: string | null, end: string | null): number {
+  if (!start || !end) return 8;
+  try {
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    const mins = eh * 60 + em - (sh * 60 + sm);
+    if (mins <= 0) return 8;
+    return Math.round((mins / 60) * 100) / 100;
+  } catch {
+    return 8;
+  }
+}
+
 export async function POST(req: Request) {
   const body = (await req.json()) as { week_start?: string; week_end?: string };
   const { week_start, week_end } = body;
@@ -20,7 +47,6 @@ export async function POST(req: Request) {
 
   const supabase = createClient();
 
-  // 1. Get all shifts in the range that have outlet_id + shift_type + date
   const { data: shifts, error: shiftsErr } = await supabase
     .from("shifts")
     .select("id, employee_id, date, shift_type, outlet_id, position, start_time, end_time")
@@ -33,7 +59,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: shiftsErr.message }, { status: 500 });
   }
 
-  if (!shifts || shifts.length === 0) {
+  const shiftRows = (shifts ?? []) as ShiftRow[];
+
+  if (shiftRows.length === 0) {
     return NextResponse.json({
       created: 0,
       updated: 0,
@@ -41,46 +69,37 @@ export async function POST(req: Request) {
     });
   }
 
-  // 2. Get outlet names for service_name label
-  const outletIds = Array.from(new Set(shifts.map((s) => s.outlet_id).filter(Boolean)));
+  const outletIds = Array.from(
+    new Set(shiftRows.map((s) => s.outlet_id).filter((v): v is string => !!v))
+  );
   const { data: outlets } = await supabase
     .from("outlets")
     .select("id, name")
-    .in("id", outletIds as string[]);
+    .in("id", outletIds);
 
-  const outletMap = new Map((outlets ?? []).map((o) => [o.id, o.name]));
+  const outletMap = new Map<string, string>(
+    (outlets ?? []).map((o: { id: string; name: string }) => [o.id, o.name])
+  );
 
-  // 3. Group shifts by (outlet_id, shift_type, date)
-  type GroupKey = string;
-  const groups = new Map
-    GroupKey,
-    {
-      outlet_id: string;
-      shift_type: string;
-      date: string;
-      employee_ids: Set<string>;
-      hours_by_employee: Map<string, number>;
-      positions_by_employee: Map<string, string>;
-    }
-  >();
+  const groups = new Map<string, Group>();
 
-  for (const s of shifts) {
+  for (const s of shiftRows) {
     if (!s.outlet_id || !s.shift_type || !s.date || !s.employee_id) continue;
-    const key = `${s.outlet_id}|${s.shift_type}|${s.date}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
+    const key = s.outlet_id + "|" + s.shift_type + "|" + s.date;
+    let g = groups.get(key);
+    if (!g) {
+      g = {
         outlet_id: s.outlet_id,
         shift_type: s.shift_type,
         date: s.date,
-        employee_ids: new Set(),
-        hours_by_employee: new Map(),
-        positions_by_employee: new Map(),
-      });
+        employee_ids: new Set<string>(),
+        hours_by_employee: new Map<string, number>(),
+        positions_by_employee: new Map<string, string>(),
+      };
+      groups.set(key, g);
     }
-    const g = groups.get(key)!;
     g.employee_ids.add(s.employee_id);
-    const hrs = hoursBetween(s.start_time, s.end_time);
-    g.hours_by_employee.set(s.employee_id, hrs);
+    g.hours_by_employee.set(s.employee_id, hoursBetween(s.start_time, s.end_time));
     if (s.position) g.positions_by_employee.set(s.employee_id, s.position);
   }
 
@@ -88,10 +107,11 @@ export async function POST(req: Request) {
   let updated = 0;
   const errors: string[] = [];
 
-  // 4. For each group, upsert tip_sheet + replace tip_sheet_rows
-  for (const g of Array.from(groups.values())) {
+  const groupList = Array.from(groups.values());
+
+  for (const g of groupList) {
     const outletName = outletMap.get(g.outlet_id) ?? "Outlet";
-    const serviceName = `${outletName} · ${g.shift_type}`;
+    const serviceName = outletName + " \u00B7 " + g.shift_type;
 
     const { data: existing } = await supabase
       .from("tip_sheets")
@@ -134,7 +154,7 @@ export async function POST(req: Request) {
         .single();
 
       if (insErr || !inserted) {
-        errors.push(`Insert failed for ${serviceName} on ${g.date}: ${insErr?.message}`);
+        errors.push("Insert failed for " + serviceName + " on " + g.date + ": " + (insErr?.message ?? "unknown"));
         continue;
       }
       sheetId = inserted.id;
@@ -152,7 +172,7 @@ export async function POST(req: Request) {
     if (rows.length > 0) {
       const { error: rowsErr } = await supabase.from("tip_sheet_rows").insert(rows);
       if (rowsErr) {
-        errors.push(`Team sync failed for ${serviceName}: ${rowsErr.message}`);
+        errors.push("Team sync failed for " + serviceName + ": " + rowsErr.message);
       }
     }
   }
@@ -163,17 +183,4 @@ export async function POST(req: Request) {
     total_groups: groups.size,
     errors: errors.length > 0 ? errors : undefined,
   });
-}
-
-function hoursBetween(start?: string | null, end?: string | null): number {
-  if (!start || !end) return 8;
-  try {
-    const [sh, sm] = start.split(":").map(Number);
-    const [eh, em] = end.split(":").map(Number);
-    const mins = eh * 60 + em - (sh * 60 + sm);
-    if (mins <= 0) return 8;
-    return Math.round((mins / 60) * 100) / 100;
-  } catch {
-    return 8;
-  }
 }
