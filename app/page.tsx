@@ -45,7 +45,7 @@ function StatCard({
     >
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm" style={{ color: "var(--muted)" }}>{label}</div>
-        <span style={{ color: "var(--muted)" }}>→</span>
+        <span style={{ color: "var(--muted)" }}>{String.fromCharCode(8594)}</span>
       </div>
       <div className="text-3xl font-semibold" style={{ color }}>
         {value}
@@ -113,6 +113,11 @@ export default function DashboardPage() {
     return outlets.find((o) => o.id === id)?.name ?? "";
   }
 
+  const checkIcon = String.fromCharCode(10003);
+  const diamondIcon = String.fromCharCode(9672);
+  const circleIcon = String.fromCharCode(9673);
+  const arrowRight = String.fromCharCode(8594);
+
   return (
     <div>
       <header className="mb-8">
@@ -150,9 +155,9 @@ export default function DashboardPage() {
         <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <QuickAction href="/scheduling" icon="+" label="Add Shift" sub="Schedule an employee" />
-          <QuickAction href="/scheduling" icon="\u2713" label="Approve Week" sub="Sync tip sheets" />
-          <QuickAction href="/tips" icon="\u25C8" label="New Event Tip Sheet" sub="For one-off events" />
-          <QuickAction href="/employees" icon="\u25C9" label="Add Employee" sub="Onboard new staff" />
+          <QuickAction href="/scheduling" icon={checkIcon} label="Approve Week" sub="Sync tip sheets" />
+          <QuickAction href="/tips" icon={diamondIcon} label="New Event Tip Sheet" sub="For one-off events" />
+          <QuickAction href="/employees" icon={circleIcon} label="Add Employee" sub="Onboard new staff" />
         </div>
       </section>
 
@@ -160,7 +165,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Needs Your Attention</h2>
           {pending.length > 0 && (
-            <Link href="/tips" className="text-xs" style={{ color: "var(--primary)" }}>View all &rarr;</Link>
+            <Link href="/tips" className="text-xs" style={{ color: "var(--primary)" }}>View all {arrowRight}</Link>
           )}
         </div>
         {loading ? (
@@ -203,7 +208,7 @@ export default function DashboardPage() {
                     <div className="text-sm font-semibold" style={{ color: "var(--primary)" }}>
                       ${total.toFixed(2)}
                     </div>
-                    <div className="text-xs" style={{ color: "var(--muted)" }}>Review &rarr;</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Review {arrowRight}</div>
                   </div>
                 </Link>
               );
