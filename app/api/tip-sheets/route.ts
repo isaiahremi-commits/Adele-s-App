@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 
-// tip_sheets columns:
-//   id, department, service_name, shift_type, date,
-//   service_charge, non_cash_tips, status, created_at
-// No outlet_id / service_id columns — drop them if the client sends them.
-
 type TipSheetRow = {
   id: string;
   date?: string | null;
@@ -37,8 +32,6 @@ export async function POST(req: Request) {
 
   const dateValue = (body.date ?? body.sheet_date) as string | undefined;
 
-  // Whitelist to the exact column set of tip_sheets. Anything else (outlet_id,
-  // service_id, sheet_date, etc.) is intentionally NOT included.
   const payload: Record<string, unknown> = {
     department: body.department || null,
     service_name: body.service_name || null,
@@ -47,7 +40,11 @@ export async function POST(req: Request) {
     service_charge: Number(body.service_charge ?? 0),
     non_cash_tips: Number(body.non_cash_tips ?? 0),
     status: (body.status as string) || "pending",
+    source: (body.source as string) || "manual",
   };
+
+  if (body.outlet_id) payload.outlet_id = body.outlet_id;
+  if (body.week_start) payload.week_start = body.week_start;
 
   const supabase = createClient();
   const { data, error } = await supabase
