@@ -148,7 +148,7 @@ export default function SchedulingPage() {
     }
 
     // Enforce the 4-shifts-per-day cap against each target.
-    for (const iso of targets) {
+    for (const iso of Array.from(targets)) {
       if (shiftCountFor(form.employee_id, iso) >= MAX_SHIFTS_PER_DAY) {
         setFormError(`Employee already has ${MAX_SHIFTS_PER_DAY} shifts on ${iso}.`);
         return;
