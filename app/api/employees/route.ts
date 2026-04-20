@@ -35,7 +35,11 @@ export async function POST(req: Request) {
   const body = await req.json();
   const supabase = createClient();
 
-  const { name, ...rest } = body as { name?: string } & Record<string, unknown>;
+  const { name, assignments: _assignments, ...rest } = body as {
+    name?: string;
+    assignments?: unknown;
+  } & Record<string, unknown>;
+  void _assignments;
   const payload: Record<string, unknown> = { ...rest };
   if (name !== undefined) {
     const { first_name, last_name } = splitName(name);

@@ -17,7 +17,15 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="light">
+      <head>
+        <script
+          // Apply saved theme before paint to avoid a flash.
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}`,
+          }}
+        />
+      </head>
       <body className={`${dmSans.className} antialiased`}>
         <div className="flex min-h-screen">
           <Nav />

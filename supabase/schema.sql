@@ -88,6 +88,26 @@ create table if not exists setup (
   updated_at timestamptz default now()
 );
 
+create table if not exists departments (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_at timestamptz default now()
+);
+
+alter table employees add column if not exists department_id uuid references departments(id);
+alter table employees add column if not exists home_outlet_id uuid references outlets(id);
+alter table employees add column if not exists home_position text;
+
+create table if not exists employee_outlets (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references employees(id) on delete cascade,
+  outlet_id uuid references outlets(id) on delete cascade,
+  position_name text
+);
+
+alter table departments disable row level security;
+alter table employee_outlets disable row level security;
+
 create table if not exists payroll_periods (
   id uuid primary key default gen_random_uuid(),
   name text,

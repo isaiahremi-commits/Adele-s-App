@@ -3,17 +3,31 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 
 type Employee = { id: string; name: string; department?: string; position?: string };
-type ShiftType = "am" | "pm" | "all_day";
+type Outlet = { id: string; name: string };
+type Service = { id: string; name: string; outlet_id: string };
+type Role = { id: string; role_name: string; outlet_id: string };
 type Shift = {
   id: string;
   employee_id: string;
   shift_date: string;
   start_time?: string;
   end_time?: string;
-  shift_type?: ShiftType;
+  shift_type?: string;
   department?: string;
   position?: string;
+  outlet_id?: string;
 };
+
+// Mon..Sun to line up with the grid.
+const WEEKDAYS: { label: string; jsDay: number }[] = [
+  { label: "Mon", jsDay: 1 },
+  { label: "Tue", jsDay: 2 },
+  { label: "Wed", jsDay: 3 },
+  { label: "Thu", jsDay: 4 },
+  { label: "Fri", jsDay: 5 },
+  { label: "Sat", jsDay: 6 },
+  { label: "Sun", jsDay: 0 },
+];
 
 function startOfWeek(d: Date) {
   const x = new Date(d);
@@ -28,30 +42,39 @@ function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+type Form = {
+  employee_id: string;
+  shift_date: string;
+  outlet_id: string;
+  shift_type: string;
+  start_time: string;
+  end_time: string;
+  position: string;
+  apply_days: number[]; // jsDay values
+};
+
+const emptyForm: Form = {
+  employee_id: "",
+  shift_date: "",
+  outlet_id: "",
+  shift_type: "",
+  start_time: "09:00",
+  end_time: "17:00",
+  position: "",
+  apply_days: [],
+};
+
 export default function SchedulingPage() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [outlets, setOutlets] = useState<Outlet[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState<{
-    employee_id: string;
-    shift_date: string;
-    start_time: string;
-    end_time: string;
-    shift_type: ShiftType;
-    department: string;
-    position: string;
-  }>({
-    employee_id: "",
-    shift_date: "",
-    start_time: "09:00",
-    end_time: "17:00",
-    shift_type: "am",
-    department: "",
-    position: "",
-  });
+  const [form, setForm] = useState<Form>(emptyForm);
 
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -64,12 +87,18 @@ export default function SchedulingPage() {
   async function load() {
     const start = toISODate(days[0]);
     const end = toISODate(days[6]);
-    const [eRes, sRes] = await Promise.all([
+    const [eRes, sRes, oRes, svcRes, rRes] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch(`/api/shifts?start=${start}&end=${end}`).then((r) => r.json()),
+      fetch("/api/outlets").then((r) => r.json()),
+      fetch("/api/services").then((r) => r.json()),
+      fetch("/api/outlet-roles").then((r) => r.json()),
     ]);
     setEmployees(Array.isArray(eRes) ? eRes : []);
     setShifts(Array.isArray(sRes) ? sRes : []);
+    setOutlets(Array.isArray(oRes) ? oRes : []);
+    setServices(Array.isArray(svcRes) ? svcRes : []);
+    setRoles(Array.isArray(rRes) ? rRes : []);
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,53 +115,73 @@ export default function SchedulingPage() {
     return shifts.filter((s) => s.employee_id === empId && s.shift_date === iso).length;
   }
 
+  const outletShiftTypes = form.outlet_id ? services.filter((s) => s.outlet_id === form.outlet_id) : [];
+  const outletRoles = form.outlet_id ? roles.filter((r) => r.outlet_id === form.outlet_id) : [];
+
+  function toggleApplyDay(jsDay: number) {
+    setForm((f) => ({
+      ...f,
+      apply_days: f.apply_days.includes(jsDay)
+        ? f.apply_days.filter((d) => d !== jsDay)
+        : [...f.apply_days, jsDay],
+    }));
+  }
+
   async function addShift(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
 
-    // Enforce the 4-shifts-per-day cap.
-    if (form.employee_id && form.shift_date) {
-      const count = shiftCountFor(form.employee_id, form.shift_date);
-      if (count >= MAX_SHIFTS_PER_DAY) {
-        setFormError(`This employee already has ${MAX_SHIFTS_PER_DAY} shifts on ${form.shift_date}. Max is ${MAX_SHIFTS_PER_DAY}.`);
+    if (!form.employee_id || !form.shift_date) {
+      setFormError("Employee and date are required.");
+      return;
+    }
+
+    // Build target date list. Base date is always included; plus any checked weekdays
+    // within the visible week.
+    const targets = new Set<string>([form.shift_date]);
+    if (form.apply_days.length > 0) {
+      const weekISO = days.map((d) => toISODate(d));
+      for (const iso of weekISO) {
+        const js = new Date(iso + "T00:00:00").getDay();
+        if (form.apply_days.includes(js)) targets.add(iso);
+      }
+    }
+
+    // Enforce the 4-shifts-per-day cap against each target.
+    for (const iso of targets) {
+      if (shiftCountFor(form.employee_id, iso) >= MAX_SHIFTS_PER_DAY) {
+        setFormError(`Employee already has ${MAX_SHIFTS_PER_DAY} shifts on ${iso}.`);
         return;
       }
     }
 
     setSubmitting(true);
     try {
-      // If shift_type changes the times, let the server accept whatever is in
-      // the form — we still send them. Autofill from employee if blank.
-      const emp = employees.find((x) => x.id === form.employee_id);
-      const payload = {
+      const basePayload = {
         employee_id: form.employee_id,
-        shift_date: form.shift_date,
         start_time: form.start_time || null,
         end_time: form.end_time || null,
-        shift_type: form.shift_type,
-        department: form.department || emp?.department || null,
-        position: form.position || emp?.position || null,
+        shift_type: form.shift_type || null,
+        position: form.position || null,
+        outlet_id: form.outlet_id || null,
       };
-      const res = await fetch("/api/shifts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setFormError(data.error || `Save failed (${res.status})`);
+
+      const results = await Promise.all(
+        Array.from(targets).map((iso) =>
+          fetch("/api/shifts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...basePayload, shift_date: iso }),
+          }).then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }))
+        )
+      );
+      const failed = results.find((r) => !r.ok);
+      if (failed) {
+        setFormError(failed.data.error || `Save failed (${failed.status})`);
         return;
       }
       setModalOpen(false);
-      setForm({
-        employee_id: "",
-        shift_date: "",
-        start_time: "09:00",
-        end_time: "17:00",
-        shift_type: "am",
-        department: "",
-        position: "",
-      });
+      setForm(emptyForm);
       load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Network error");
@@ -165,7 +214,7 @@ export default function SchedulingPage() {
           <button className="btn btn-secondary" onClick={() => shiftWeek(-1)}>← Prev</button>
           <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</button>
           <button className="btn btn-secondary" onClick={() => shiftWeek(1)}>Next →</button>
-          <button className="btn btn-primary" onClick={() => setModalOpen(true)}>+ Add Shift</button>
+          <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
         </div>
       </header>
 
@@ -199,16 +248,17 @@ export default function SchedulingPage() {
                     <td key={d.toISOString()} className="p-2 align-top">
                       <div className="flex flex-col gap-1">
                         {list.map((s) => {
-                          const stLabel = s.shift_type === "all_day" ? "All Day" : s.shift_type?.toUpperCase();
+                          const outletName = outlets.find((o) => o.id === s.outlet_id)?.name;
                           return (
                             <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
                               <div className="flex items-center gap-1 mb-0.5">
-                                {stLabel && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{stLabel}</span>}
+                                {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
                               </div>
                               <div className="font-medium" style={{ color: "var(--primary)" }}>
                                 {s.start_time?.slice(0, 5) ?? "?"}–{s.end_time?.slice(0, 5) ?? "?"}
                               </div>
                               {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
+                              {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
                               <button
                                 onClick={() => removeShift(s.id)}
                                 className="absolute top-1 right-1 text-xs opacity-0 group-hover:opacity-100"
@@ -221,13 +271,7 @@ export default function SchedulingPage() {
                           disabled={atCap}
                           title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
                           onClick={() => {
-                            setForm({
-                              ...form,
-                              employee_id: emp.id,
-                              shift_date: toISODate(d),
-                              department: emp.department ?? "",
-                              position: emp.position ?? "",
-                            });
+                            setForm({ ...emptyForm, employee_id: emp.id, shift_date: toISODate(d) });
                             setFormError(null);
                             setModalOpen(true);
                           }}
@@ -255,41 +299,50 @@ export default function SchedulingPage() {
               className="input mt-1"
               required
               value={form.employee_id}
-              onChange={(e) => {
-                const emp = employees.find((x) => x.id === e.target.value);
-                setForm({
-                  ...form,
-                  employee_id: e.target.value,
-                  department: form.department || emp?.department || "",
-                  position: form.position || emp?.position || "",
-                });
-              }}
+              onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
             >
               <option value="">Select…</option>
               {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </label>
+
           <label className="text-sm">Date
-            <input type="date" className="input mt-1" required value={form.shift_date} onChange={(e) => setForm({ ...form, shift_date: e.target.value })} />
+            <input
+              type="date"
+              className="input mt-1"
+              required
+              value={form.shift_date}
+              onChange={(e) => setForm({ ...form, shift_date: e.target.value })}
+            />
           </label>
+
+          <label className="text-sm">Outlet
+            <select
+              className="input mt-1"
+              value={form.outlet_id}
+              onChange={(e) => setForm({ ...form, outlet_id: e.target.value, shift_type: "", position: "" })}
+            >
+              <option value="">Select…</option>
+              {outlets.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          </label>
+
           <label className="text-sm">Shift Type
             <select
               className="input mt-1"
               value={form.shift_type}
-              onChange={(e) => {
-                const st = e.target.value as ShiftType;
-                const next = { ...form, shift_type: st };
-                if (st === "am") { next.start_time = "09:00"; next.end_time = "15:00"; }
-                if (st === "pm") { next.start_time = "15:00"; next.end_time = "23:00"; }
-                if (st === "all_day") { next.start_time = "09:00"; next.end_time = "23:00"; }
-                setForm(next);
-              }}
+              onChange={(e) => setForm({ ...form, shift_type: e.target.value })}
+              disabled={!form.outlet_id}
             >
-              <option value="am">AM</option>
-              <option value="pm">PM</option>
-              <option value="all_day">All Day</option>
+              <option value="">{form.outlet_id ? "Select…" : "Pick outlet first"}</option>
+              {outletShiftTypes.map((s) => (
+                <option key={s.id} value={s.name}>{s.name}</option>
+              ))}
             </select>
           </label>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">Start
               <input type="time" className="input mt-1" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
@@ -298,14 +351,40 @@ export default function SchedulingPage() {
               <input type="time" className="input mt-1" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm">Department
-              <input type="text" className="input mt-1" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} placeholder="FOH, BOH…" />
-            </label>
-            <label className="text-sm">Position
-              <input type="text" className="input mt-1" value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="Server, Host…" />
-            </label>
+
+          <label className="text-sm">Position
+            <select
+              className="input mt-1"
+              value={form.position}
+              onChange={(e) => setForm({ ...form, position: e.target.value })}
+              disabled={!form.outlet_id}
+            >
+              <option value="">{form.outlet_id ? "Select…" : "Pick outlet first"}</option>
+              {outletRoles.map((r) => (
+                <option key={r.id} value={r.role_name}>{r.role_name}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="text-sm">
+            <div className="mb-1">Apply to multiple days (this week)</div>
+            <div className="flex flex-wrap gap-3">
+              {WEEKDAYS.map((w) => {
+                const checked = form.apply_days.includes(w.jsDay);
+                return (
+                  <label key={w.jsDay} className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleApplyDay(w.jsDay)}
+                    />
+                    {w.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
+
           {formError && (
             <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
               {formError}

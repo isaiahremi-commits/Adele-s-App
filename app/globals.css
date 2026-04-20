@@ -13,6 +13,21 @@
   --primary-dim: #3aa578;
   --amber: #ef9f27;
   --danger: #ef5a5a;
+  --primary-on: #05100b;
+}
+
+html[data-theme="light"] {
+  --background: #f8f9fa;
+  --surface: #ffffff;
+  --surface-2: #f1f3f5;
+  --border: #e2e6ea;
+  --foreground: #1a1a1a;
+  --muted: #6b7280;
+  --primary: #2db87a;
+  --primary-dim: #229966;
+  --amber: #d97706;
+  --danger: #dc2626;
+  --primary-on: #ffffff;
 }
 
 html, body {
@@ -51,7 +66,7 @@ html, body {
     align-items: center;
     gap: 6px;
   }
-  .btn-primary { background: var(--primary); color: #05100b; }
+  .btn-primary { background: var(--primary); color: var(--primary-on); }
   .btn-primary:hover { background: var(--primary-dim); }
   .btn-secondary { background: var(--surface-2); color: var(--foreground); border-color: var(--border); }
   .btn-secondary:hover { background: var(--border); }

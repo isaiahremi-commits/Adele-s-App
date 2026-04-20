@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: "◎" },
@@ -10,13 +11,54 @@ const links = [
   { href: "/setup", label: "Setup", icon: "⚙" },
 ];
 
+type Theme = "light" | "dark";
+
+function applyTheme(theme: Theme) {
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+}
+
 export default function Nav() {
   const pathname = usePathname();
+  const [theme, setTheme] = useState<Theme>("light");
+
+  useEffect(() => {
+    const saved = (typeof window !== "undefined" && (localStorage.getItem("theme") as Theme | null)) || "light";
+    setTheme(saved);
+    applyTheme(saved);
+  }, []);
+
+  function toggleTheme() {
+    const next: Theme = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    applyTheme(next);
+    if (typeof window !== "undefined") localStorage.setItem("theme", next);
+  }
+
   return (
-    <aside className="w-60 shrink-0 border-r p-5 flex flex-col gap-1" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <div className="px-2 py-4 mb-2">
-        <h1 className="text-xl font-bold" style={{ color: "var(--primary)" }}>Adele&apos;s</h1>
-        <p className="text-xs" style={{ color: "var(--muted)" }}>Staff &amp; Tips</p>
+    <aside
+      className="w-60 shrink-0 border-r p-5 flex flex-col gap-1"
+      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+    >
+      <div className="flex items-start justify-between px-2 py-4 mb-2">
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: "var(--primary)" }}>Adele&apos;s</h1>
+          <p className="text-xs" style={{ color: "var(--muted)" }}>Staff &amp; Tips</p>
+        </div>
+        <button
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+          title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          className="w-8 h-8 rounded-md flex items-center justify-center text-sm"
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            color: "var(--foreground)",
+          }}
+        >
+          {theme === "light" ? "☾" : "☀"}
+        </button>
       </div>
       {links.map((link) => {
         const active = pathname === link.href || (link.href !== "/" && pathname.startsWith(link.href));

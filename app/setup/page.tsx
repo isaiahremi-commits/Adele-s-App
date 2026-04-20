@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 type Outlet = { id: string; name: string };
 type Service = { id: string; name: string; outlet_id: string };
 type Role = { id: string; role_name: string; points: number; outlet_id: string };
+type Department = { id: string; name: string };
 type PayrollConfig = {
   pay_cycle: "weekly" | "biweekly";
   period_start_day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
@@ -17,25 +18,30 @@ export default function SetupPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [config, setConfig] = useState<PayrollConfig>({ pay_cycle: "weekly", period_start_day: "monday" });
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState<string | null>(null);
 
   const [newOutlet, setNewOutlet] = useState("");
+  const [newDept, setNewDept] = useState("");
+  const [deptError, setDeptError] = useState<string | null>(null);
   const [svcForm, setSvcForm] = useState<Record<string, string>>({});
   const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string }>>({});
   const [outletError, setOutletError] = useState<Record<string, string>>({});
 
   async function load() {
-    const [o, s, r, c] = await Promise.all([
+    const [o, s, r, c, d] = await Promise.all([
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/services").then((r) => r.json()),
       fetch("/api/outlet-roles").then((r) => r.json()),
       fetch("/api/setup").then((r) => r.json()),
+      fetch("/api/departments").then((r) => r.json()),
     ]);
     setOutlets(Array.isArray(o) ? o : []);
     setServices(Array.isArray(s) ? s : []);
     setRoles(Array.isArray(r) ? r : []);
+    setDepartments(Array.isArray(d) ? d : []);
     if (c && !c.error) {
       setConfig({
         pay_cycle: c.pay_cycle ?? "weekly",
@@ -67,6 +73,30 @@ export default function SetupPage() {
     }
   }
 
+  async function addDepartment(e: React.FormEvent) {
+    e.preventDefault();
+    setDeptError(null);
+    if (!newDept.trim()) return;
+    const res = await fetch("/api/departments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newDept }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setDeptError(data.error || `Save failed (${res.status})`);
+      return;
+    }
+    setNewDept("");
+    load();
+  }
+
+  async function removeDepartment(id: string) {
+    if (!confirm("Remove this department?")) return;
+    await fetch(`/api/departments/${id}`, { method: "DELETE" });
+    load();
+  }
+
   async function addOutlet(e: React.FormEvent) {
     e.preventDefault();
     if (!newOutlet.trim()) return;
@@ -76,7 +106,7 @@ export default function SetupPage() {
   }
 
   async function removeOutlet(id: string) {
-    if (!confirm("Remove outlet and all its services/roles?")) return;
+    if (!confirm("Remove outlet and all its shifts/roles?")) return;
     await fetch(`/api/outlets/${id}`, { method: "DELETE" });
     load();
   }
@@ -91,7 +121,7 @@ export default function SetupPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setOutletError({ ...outletError, [outletId]: data.error || `Service save failed (${res.status})` });
+      setOutletError({ ...outletError, [outletId]: data.error || `Shift save failed (${res.status})` });
       return;
     }
     setOutletError({ ...outletError, [outletId]: "" });
@@ -135,7 +165,7 @@ export default function SetupPage() {
     <div>
       <header className="mb-6">
         <h1 className="text-3xl font-bold">Setup</h1>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>Payroll configuration & outlet management</p>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Payroll configuration, departments & outlet management</p>
       </header>
 
       <section className="card p-6 mb-6">
@@ -174,6 +204,36 @@ export default function SetupPage() {
         </div>
       </section>
 
+      <section className="card p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-3">Departments</h2>
+        <form onSubmit={addDepartment} className="flex gap-2 mb-4">
+          <input
+            className="input"
+            placeholder="Department name (e.g. Front of House)"
+            value={newDept}
+            onChange={(e) => setNewDept(e.target.value)}
+          />
+          <button className="btn btn-primary" type="submit">+ Add Department</button>
+        </form>
+        {deptError && (
+          <div className="text-sm mb-3 p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+            {deptError}
+          </div>
+        )}
+        {departments.length === 0 ? (
+          <div className="text-sm" style={{ color: "var(--muted)" }}>No departments yet.</div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {departments.map((d) => (
+              <span key={d.id} className="chip chip-muted flex items-center gap-2">
+                {d.name}
+                <button onClick={() => removeDepartment(d.id)} style={{ color: "var(--danger)" }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="card p-6">
         <h2 className="text-lg font-semibold mb-3">Outlets</h2>
         <form onSubmit={addOutlet} className="flex gap-2 mb-5">
@@ -202,9 +262,9 @@ export default function SetupPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm font-medium mb-2" style={{ color: "var(--muted)" }}>Services</div>
+                    <div className="text-sm font-medium mb-2" style={{ color: "var(--muted)" }}>Shifts</div>
                     <div className="flex gap-2 mb-2">
-                      <input className="input" placeholder="Service name"
+                      <input className="input" placeholder="Shift name"
                         value={svcForm[o.id] ?? ""}
                         onChange={(e) => setSvcForm({ ...svcForm, [o.id]: e.target.value })} />
                       <button className="btn btn-secondary" onClick={() => addService(o.id)}>+</button>
