@@ -164,184 +164,307 @@ export default function SchedulingPage() {
     setSubmitting(true);
     try {
       const basePayload = {
-        employee_id: fo
-mkdir -p ~/Desktop/adeles-app/app/api/schedule/approve && cat > ~/Desktop/adeles-app/app/api/schedule/approve/route.ts << 'CLAUDE_EOF'
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+        employee_id: form.employee_id,
+        start_time: form.start_time || null,
+        end_time: form.end_time || null,
+        shift_type: form.shift_type || null,
+        position: form.position || null,
+        outlet_id: form.outlet_id || null,
+      };
 
-// POST /api/schedule/approve
-// Body: { week_start: "YYYY-MM-DD", week_end: "YYYY-MM-DD" }
-// 
-// For each unique (outlet_id, shift_type, date) in shifts within the range,
-// create or sync a tip sheet with source='auto'. Pre-populate tip_sheet_rows 
-// with all employees scheduled for that combo.
-export async function POST(req: Request) {
-  const body = (await req.json()) as { week_start?: string; week_end?: string };
-  const { week_start, week_end } = body;
+      const results = await Promise.all(
+        Array.from(targets).map((iso) =>
+          fetch("/api/shifts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...basePayload, shift_date: iso }),
+          }).then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }))
+        )
+      );
+      const failed = results.find((r) => !r.ok);
+      if (failed) {
+        setFormError(failed.data.error || `Save failed (${failed.status})`);
+        return;
+      }
+      setModalOpen(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-  if (!week_start || !week_end) {
-    return NextResponse.json(
-      { error: "week_start and week_end are required" },
-      { status: 400 }
+  async function removeShift(id: string) {
+    await fetch(`/api/shifts/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  async function approveWeek() {
+    if (approving) return;
+
+    const weekShifts = shifts.filter((s) => s.outlet_id && s.shift_type);
+    if (weekShifts.length === 0) {
+      setToast({ kind: "error", text: "No shifts with outlet + shift type this week. Nothing to approve." });
+      return;
+    }
+
+    const confirmed = confirm(
+      `Approve this week's schedule? This will create or sync tip sheets for every outlet & shift. Safe to re-run if you edit shifts.`
     );
-  }
+    if (!confirmed) return;
 
-  const supabase = createClient();
-
-  // 1. Get all shifts in the range that have outlet_id + shift_type + date
-  const { data: shifts, error: shiftsErr } = await supabase
-    .from("shifts")
-    .select("id, employee_id, date, shift_type, outlet_id, position, start_time, end_time")
-    .gte("date", week_start)
-    .lte("date", week_end)
-    .not("outlet_id", "is", null)
-    .not("shift_type", "is", null);
-
-  if (shiftsErr) {
-    return NextResponse.json({ error: shiftsErr.message }, { status: 500 });
-  }
-
-  if (!shifts || shifts.length === 0) {
-    return NextResponse.json({
-      created: 0,
-      updated: 0,
-      message: "No shifts with outlet + shift type in this week.",
-    });
-  }
-
-  // 2. Get outlet names for service_name label
-  const outletIds = Array.from(new Set(shifts.map((s) => s.outlet_id).filter(Boolean)));
-  const { data: outlets } = await supabase
-    .from("outlets")
-    .select("id, name")
-    .in("id", outletIds as string[]);
-
-  const outletMap = new Map((outlets ?? []).map((o) => [o.id, o.name]));
-
-  // 3. Group shifts by (outlet_id, shift_type, date)
-  type GroupKey = string;
-  const groups = new Map
-    GroupKey,
-    {
-      outlet_id: string;
-      shift_type: string;
-      date: string;
-      employee_ids: Set<string>;
-      hours_by_employee: Map<string, number>;
-      positions_by_employee: Map<string, string>;
-    }
-  >();
-
-  for (const s of shifts) {
-    if (!s.outlet_id || !s.shift_type || !s.date || !s.employee_id) continue;
-    const key = `${s.outlet_id}|${s.shift_type}|${s.date}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        outlet_id: s.outlet_id,
-        shift_type: s.shift_type,
-        date: s.date,
-        employee_ids: new Set(),
-        hours_by_employee: new Map(),
-        positions_by_employee: new Map(),
+    setApproving(true);
+    try {
+      const res = await fetch("/api/schedule/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week_start: toISODate(days[0]),
+          week_end: toISODate(days[6]),
+        }),
       });
-    }
-    const g = groups.get(key)!;
-    g.employee_ids.add(s.employee_id);
-    const hrs = hoursBetween(s.start_time, s.end_time);
-    g.hours_by_employee.set(s.employee_id, hrs);
-    if (s.position) g.positions_by_employee.set(s.employee_id, s.position);
-  }
-
-  let created = 0;
-  let updated = 0;
-  const errors: string[] = [];
-
-  // 4. For each group, upsert tip_sheet + replace tip_sheet_rows
-  for (const g of Array.from(groups.values())) {
-    const outletName = outletMap.get(g.outlet_id) ?? "Outlet";
-    const serviceName = `${outletName} · ${g.shift_type}`;
-
-    const { data: existing } = await supabase
-      .from("tip_sheets")
-      .select("id")
-      .eq("outlet_id", g.outlet_id)
-      .eq("shift_type", g.shift_type)
-      .eq("date", g.date)
-      .eq("source", "auto")
-      .maybeSingle();
-
-    let sheetId: string;
-
-    if (existing) {
-      sheetId = existing.id;
-      await supabase
-        .from("tip_sheets")
-        .update({
-          service_name: serviceName,
-          department: outletName,
-          week_start: week_start,
-        })
-        .eq("id", sheetId);
-      updated++;
-    } else {
-      const { data: inserted, error: insErr } = await supabase
-        .from("tip_sheets")
-        .insert({
-          outlet_id: g.outlet_id,
-          shift_type: g.shift_type,
-          date: g.date,
-          service_name: serviceName,
-          department: outletName,
-          source: "auto",
-          status: "pending",
-          week_start: week_start,
-          service_charge: 0,
-          non_cash_tips: 0,
-        })
-        .select("id")
-        .single();
-
-      if (insErr || !inserted) {
-        errors.push(`Insert failed for ${serviceName} on ${g.date}: ${insErr?.message}`);
-        continue;
+      const data = await res.json();
+      if (!res.ok) {
+        setToast({ kind: "error", text: data.error || "Approval failed" });
+        return;
       }
-      sheetId = inserted.id;
-      created++;
-    }
-
-    await supabase.from("tip_sheet_rows").delete().eq("tip_sheet_id", sheetId);
-
-    const rows = Array.from(g.employee_ids).map((empId) => ({
-      tip_sheet_id: sheetId,
-      employee_id: empId,
-      hours: g.hours_by_employee.get(empId) ?? 8,
-    }));
-
-    if (rows.length > 0) {
-      const { error: rowsErr } = await supabase.from("tip_sheet_rows").insert(rows);
-      if (rowsErr) {
-        errors.push(`Team sync failed for ${serviceName}: ${rowsErr.message}`);
-      }
+      const { created = 0, updated = 0 } = data;
+      const parts: string[] = [];
+      if (created > 0) parts.push(`${created} created`);
+      if (updated > 0) parts.push(`${updated} updated`);
+      const summary = parts.length > 0 ? parts.join(", ") : "no changes";
+      setToast({ kind: "success", text: `Week approved — tip sheets: ${summary}.` });
+    } catch (err) {
+      setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setApproving(false);
     }
   }
 
-  return NextResponse.json({
-    created,
-    updated,
-    total_groups: groups.size,
-    errors: errors.length > 0 ? errors : undefined,
-  });
-}
-
-function hoursBetween(start?: string | null, end?: string | null): number {
-  if (!start || !end) return 8;
-  try {
-    const [sh, sm] = start.split(":").map(Number);
-    const [eh, em] = end.split(":").map(Number);
-    const mins = eh * 60 + em - (sh * 60 + sm);
-    if (mins <= 0) return 8;
-    return Math.round((mins / 60) * 100) / 100;
-  } catch {
-    return 8;
+  function shiftWeek(offset: number) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + offset * 7);
+    setWeekStart(d);
   }
+
+  return (
+    <div>
+      <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h1 className="text-3xl font-bold">Scheduling</h1>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Week of {days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – {days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+          </p>
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <button className="btn btn-secondary" onClick={() => shiftWeek(-1)}>← Prev</button>
+          <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</button>
+          <button className="btn btn-secondary" onClick={() => shiftWeek(1)}>Next →</button>
+          <button
+            className="btn btn-secondary"
+            onClick={approveWeek}
+            disabled={approving}
+            title="Creates or syncs tip sheets for every outlet & shift this week"
+          >
+            {approving ? "Approving…" : "✓ Approve Week"}
+          </button>
+          <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
+        </div>
+      </header>
+
+      {toast && (
+        <div
+          className="mb-4 p-3 rounded-md text-sm"
+          style={{
+            background: toast.kind === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,90,90,0.15)",
+            color: toast.kind === "success" ? "var(--primary)" : "var(--danger)",
+            border: `1px solid ${toast.kind === "success" ? "var(--primary)" : "var(--danger)"}`,
+          }}
+        >
+          {toast.text}
+        </div>
+      )}
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <th className="text-left p-3 font-medium" style={{ color: "var(--muted)", minWidth: 200 }}>Employee</th>
+              {days.map((d) => (
+                <th key={d.toISOString()} className="text-left p-3 font-medium" style={{ color: "var(--muted)", minWidth: 140 }}>
+                  <div>{d.toLocaleDateString(undefined, { weekday: "short" })}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>{d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {employees.length === 0 && (
+              <tr><td colSpan={8} className="p-6 text-center" style={{ color: "var(--muted)" }}>No employees yet. Add some on the Employees page.</td></tr>
+            )}
+            {employees.map((emp) => (
+              <tr key={emp.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td className="p-3 align-top">
+                  <div className="font-medium">{emp.name}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>{emp.position ?? emp.department ?? ""}</div>
+                </td>
+                {days.map((d) => {
+                  const list = shiftsFor(emp.id, d);
+                  const atCap = list.length >= MAX_SHIFTS_PER_DAY;
+                  return (
+                    <td key={d.toISOString()} className="p-2 align-top">
+                      <div className="flex flex-col gap-1">
+                        {list.map((s) => {
+                          const outletName = outlets.find((o) => o.id === s.outlet_id)?.name;
+                          return (
+                            <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                              <div className="flex items-center gap-1 mb-0.5">
+                                {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
+                              </div>
+                              <div className="font-medium" style={{ color: "var(--primary)" }}>
+                                {s.start_time?.slice(0, 5) ?? "?"}–{s.end_time?.slice(0, 5) ?? "?"}
+                              </div>
+                              {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
+                              {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
+                              <button
+                                onClick={() => removeShift(s.id)}
+                                className="absolute top-1 right-1 text-xs opacity-0 group-hover:opacity-100"
+                                style={{ color: "var(--danger)" }}
+                              >×</button>
+                            </div>
+                          );
+                        })}
+                        <button
+                          disabled={atCap}
+                          title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
+                          onClick={() => {
+                            setForm({ ...emptyForm, employee_id: emp.id, shift_date: toISODate(d) });
+                            setFormError(null);
+                            setModalOpen(true);
+                          }}
+                          className="text-xs py-1 rounded-md"
+                          style={{
+                            color: atCap ? "var(--border)" : "var(--muted)",
+                            border: "1px dashed var(--border)",
+                            cursor: atCap ? "not-allowed" : "pointer",
+                          }}
+                        >{atCap ? "Full" : "+"}</button>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Shift">
+        <form onSubmit={addShift} className="flex flex-col gap-3">
+          <label className="text-sm">Employee
+            <select
+              className="input mt-1"
+              required
+              value={form.employee_id}
+              onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
+            >
+              <option value="">Select…</option>
+              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </label>
+
+          <label className="text-sm">Date
+            <input
+              type="date"
+              className="input mt-1"
+              required
+              value={form.shift_date}
+              onChange={(e) => setForm({ ...form, shift_date: e.target.value })}
+            />
+          </label>
+
+          <label className="text-sm">Outlet
+            <select
+              className="input mt-1"
+              value={form.outlet_id}
+              onChange={(e) => setForm({ ...form, outlet_id: e.target.value, shift_type: "", position: "" })}
+            >
+              <option value="">Select…</option>
+              {outlets.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm">Shift Type
+            <select
+              className="input mt-1"
+              value={form.shift_type}
+              onChange={(e) => setForm({ ...form, shift_type: e.target.value })}
+              disabled={!form.outlet_id}
+            >
+              <option value="">{form.outlet_id ? "Select…" : "Pick outlet first"}</option>
+              {outletShiftTypes.map((s) => (
+                <option key={s.id} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">Start
+              <input type="time" className="input mt-1" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
+            </label>
+            <label className="text-sm">End
+              <input type="time" className="input mt-1" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
+            </label>
+          </div>
+
+          <label className="text-sm">Position
+            <select
+              className="input mt-1"
+              value={form.position}
+              onChange={(e) => setForm({ ...form, position: e.target.value })}
+              disabled={!form.outlet_id}
+            >
+              <option value="">{form.outlet_id ? "Select…" : "Pick outlet first"}</option>
+              {outletRoles.map((r) => (
+                <option key={r.id} value={r.role_name}>{r.role_name}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="text-sm">
+            <div className="mb-1">Apply to multiple days (this week)</div>
+            <div className="flex flex-wrap gap-3">
+              {WEEKDAYS.map((w) => {
+                const checked = form.apply_days.includes(w.jsDay);
+                return (
+                  <label key={w.jsDay} className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleApplyDay(w.jsDay)}
+                    />
+                    {w.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {formError && (
+            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+              {formError}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-2">
+            <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)} disabled={submitting}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving…" : "Add Shift"}</button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
 }
