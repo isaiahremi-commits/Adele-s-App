@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type Outlet = { id: string; name: string };
+type Outlet = { id: string; name: string; department_id?: string | null };
 type Service = { id: string; name: string; outlet_id: string };
 type Role = { id: string; role_name: string; points: number; outlet_id: string };
-type Department = { id: string; name: string };
+type Department = { id: string; name: string; type?: string; tip_pool_strategy?: string };
 type PayrollConfig = {
+  company_name: string;
   pay_cycle: "weekly" | "biweekly";
   period_start_day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 };
@@ -19,12 +20,18 @@ export default function SetupPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [config, setConfig] = useState<PayrollConfig>({ pay_cycle: "weekly", period_start_day: "monday" });
+  const [config, setConfig] = useState<PayrollConfig>({
+    company_name: "",
+    pay_cycle: "weekly",
+    period_start_day: "monday",
+  });
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState<string | null>(null);
 
   const [newOutlet, setNewOutlet] = useState("");
+  const [newOutletDeptId, setNewOutletDeptId] = useState("");
   const [newDept, setNewDept] = useState("");
+  const [newDeptType, setNewDeptType] = useState<"front_of_house" | "back_of_house" | "custom">("custom");
   const [deptError, setDeptError] = useState<string | null>(null);
   const [svcForm, setSvcForm] = useState<Record<string, string>>({});
   const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string }>>({});
@@ -44,6 +51,7 @@ export default function SetupPage() {
     setDepartments(Array.isArray(d) ? d : []);
     if (c && !c.error) {
       setConfig({
+        company_name: c.company_name ?? "My Restaurant",
         pay_cycle: c.pay_cycle ?? "weekly",
         period_start_day: c.period_start_day ?? "monday",
       });
@@ -58,7 +66,7 @@ export default function SetupPage() {
     setConfigMsg(null);
     try {
       const res = await fetch("/api/setup", {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(merged),
       });
@@ -77,10 +85,11 @@ export default function SetupPage() {
     e.preventDefault();
     setDeptError(null);
     if (!newDept.trim()) return;
+    const tipPoolStrategy = newDeptType === "back_of_house" ? "pooled_across_outlets" : "per_outlet_per_shift";
     const res = await fetch("/api/departments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newDept }),
+      body: JSON.stringify({ name: newDept, type: newDeptType, tip_pool_strategy: tipPoolStrategy }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -88,6 +97,7 @@ export default function SetupPage() {
       return;
     }
     setNewDept("");
+    setNewDeptType("custom");
     load();
   }
 
@@ -100,8 +110,16 @@ export default function SetupPage() {
   async function addOutlet(e: React.FormEvent) {
     e.preventDefault();
     if (!newOutlet.trim()) return;
-    await fetch("/api/outlets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newOutlet }) });
+    await fetch("/api/outlets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newOutlet,
+        department_id: newOutletDeptId || null,
+      }),
+    });
     setNewOutlet("");
+    setNewOutletDeptId("");
     load();
   }
 
@@ -161,22 +179,50 @@ export default function SetupPage() {
     load();
   }
 
+  function deptLabel(d: Department): string {
+    if (d.type === "front_of_house") return "Front of House";
+    if (d.type === "back_of_house") return "Back of House";
+    return "Custom";
+  }
+
+  function deptChipClass(d: Department): string {
+    if (d.type === "front_of_house") return "chip-green";
+    if (d.type === "back_of_house") return "chip-amber";
+    return "chip-muted";
+  }
+
   return (
     <div>
       <header className="mb-6">
         <h1 className="text-3xl font-bold">Setup</h1>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>Payroll configuration, departments & outlet management</p>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Company, payroll, departments, and outlet management</p>
       </header>
 
       <section className="card p-6 mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Payroll Configuration</h2>
+          <h2 className="text-lg font-semibold">Company</h2>
           {configMsg && (
             <span className="text-xs" style={{ color: configMsg === "Saved" ? "var(--primary)" : "var(--danger)" }}>
               {configMsg}
             </span>
           )}
         </div>
+        <label className="text-sm block">Restaurant / Company Name
+          <input
+            className="input mt-1"
+            value={config.company_name}
+            placeholder="e.g. Manadel"
+            onChange={(e) => setConfig({ ...config, company_name: e.target.value })}
+            onBlur={(e) => saveConfig({ company_name: e.target.value })}
+          />
+        </label>
+        <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
+          This name shows in the sidebar and app header.
+        </p>
+      </section>
+
+      <section className="card p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-3">Payroll Configuration</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="text-sm">Pay Cycle
             <select
@@ -205,14 +251,27 @@ export default function SetupPage() {
       </section>
 
       <section className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-3">Departments</h2>
-        <form onSubmit={addDepartment} className="flex gap-2 mb-4">
+        <h2 className="text-lg font-semibold mb-1">Departments</h2>
+        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          Front of House = tips pool per outlet per shift. Back of House = one pool across all outlets.
+        </p>
+        <form onSubmit={addDepartment} className="flex gap-2 mb-4 flex-wrap">
           <input
-            className="input"
-            placeholder="Department name (e.g. Front of House)"
+            className="input flex-1 min-w-[200px]"
+            placeholder="Department name"
             value={newDept}
             onChange={(e) => setNewDept(e.target.value)}
           />
+          <select
+            className="input"
+            style={{ maxWidth: 220 }}
+            value={newDeptType}
+            onChange={(e) => setNewDeptType(e.target.value as typeof newDeptType)}
+          >
+            <option value="custom">Custom</option>
+            <option value="front_of_house">Front of House</option>
+            <option value="back_of_house">Back of House</option>
+          </select>
           <button className="btn btn-primary" type="submit">+ Add Department</button>
         </form>
         {deptError && (
@@ -225,8 +284,8 @@ export default function SetupPage() {
         ) : (
           <div className="flex flex-wrap gap-2">
             {departments.map((d) => (
-              <span key={d.id} className="chip chip-muted flex items-center gap-2">
-                {d.name}
+              <span key={d.id} className={`chip ${deptChipClass(d)} flex items-center gap-2`}>
+                {d.name} <span className="opacity-60">({deptLabel(d)})</span>
                 <button onClick={() => removeDepartment(d.id)} style={{ color: "var(--danger)" }}>×</button>
               </span>
             ))}
@@ -236,8 +295,24 @@ export default function SetupPage() {
 
       <section className="card p-6">
         <h2 className="text-lg font-semibold mb-3">Outlets</h2>
-        <form onSubmit={addOutlet} className="flex gap-2 mb-5">
-          <input className="input" placeholder="Outlet name" value={newOutlet} onChange={(e) => setNewOutlet(e.target.value)} />
+        <form onSubmit={addOutlet} className="flex gap-2 mb-5 flex-wrap">
+          <input
+            className="input flex-1 min-w-[200px]"
+            placeholder="Outlet name"
+            value={newOutlet}
+            onChange={(e) => setNewOutlet(e.target.value)}
+          />
+          <select
+            className="input"
+            style={{ maxWidth: 220 }}
+            value={newOutletDeptId}
+            onChange={(e) => setNewOutletDeptId(e.target.value)}
+          >
+            <option value="">No department</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
           <button className="btn btn-primary" type="submit">+ Add Outlet</button>
         </form>
 
@@ -248,10 +323,18 @@ export default function SetupPage() {
             const oSvcs = services.filter((s) => s.outlet_id === o.id);
             const oRoles = roles.filter((r) => r.outlet_id === o.id);
             const rf = roleForm[o.id] ?? { role_name: "", points: "1" };
+            const dept = departments.find((d) => d.id === o.department_id);
             return (
               <div key={o.id} className="p-4 rounded-lg" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">{o.name}</h3>
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-semibold">{o.name}</h3>
+                    {dept && (
+                      <span className={`chip ${deptChipClass(dept)}`} style={{ fontSize: 10 }}>
+                        {dept.name}
+                      </span>
+                    )}
+                  </div>
                   <button className="text-xs" onClick={() => removeOutlet(o.id)} style={{ color: "var(--danger)" }}>Remove outlet</button>
                 </div>
                 {outletError[o.id] && (

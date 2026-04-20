@@ -1,15 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 
-// Singleton config row. We read the first row; if missing we return defaults.
-// PUT upserts by id if one exists, otherwise inserts.
-
-const DEFAULTS = {
-  pay_cycle: "weekly" as "weekly" | "biweekly",
-  period_start_day: "monday" as
-    | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday",
-};
-
 export async function GET() {
   const supabase = createClient();
   const { data, error } = await supabase
@@ -18,31 +9,40 @@ export async function GET() {
     .limit(1)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? DEFAULTS);
+  return NextResponse.json(data ?? { company_name: "My Restaurant", pay_cycle: "weekly", period_start_day: "monday" });
 }
 
-export async function PUT(req: Request) {
-  const body = await req.json();
-  const payload = {
-    pay_cycle: body.pay_cycle ?? DEFAULTS.pay_cycle,
-    period_start_day: body.period_start_day ?? DEFAULTS.period_start_day,
-  };
-
+export async function PATCH(req: Request) {
+  const body = (await req.json()) as Record<string, unknown>;
   const supabase = createClient();
-  const existing = await supabase.from("setup").select("id").limit(1).maybeSingle();
 
-  if (existing.data?.id) {
+  const { data: existing } = await supabase.from("setup").select("id").limit(1).maybeSingle();
+
+  if (existing) {
     const { data, error } = await supabase
       .from("setup")
-      .update(payload)
-      .eq("id", existing.data.id)
+      .update({
+        company_name: body.company_name,
+        pay_cycle: body.pay_cycle,
+        period_start_day: body.period_start_day,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
+  } else {
+    const { data, error } = await supabase
+      .from("setup")
+      .insert({
+        company_name: body.company_name || "My Restaurant",
+        pay_cycle: body.pay_cycle || "weekly",
+        period_start_day: body.period_start_day || "monday",
+      })
       .select()
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   }
-
-  const { data, error } = await supabase.from("setup").insert(payload).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
 }
