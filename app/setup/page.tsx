@@ -272,7 +272,7 @@ export default function SetupPage() {
             <option value="front_of_house">Front of House</option>
             <option value="back_of_house">Back of House</option>
           </select>
-          <button className="btn btn-primary" type="submit">+ Add Department</button>
+          <button className="btn btn-primary" type="submit">Add Department</button>
         </form>
         {deptError && (
           <div className="text-sm mb-3 p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
@@ -313,7 +313,7 @@ export default function SetupPage() {
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
-          <button className="btn btn-primary" type="submit">+ Add Outlet</button>
+          <button className="btn btn-primary" type="submit">Add Outlet</button>
         </form>
 
         {outlets.length === 0 && <div className="text-sm" style={{ color: "var(--muted)" }}>No outlets yet.</div>}
@@ -350,7 +350,7 @@ export default function SetupPage() {
                       <input className="input" placeholder="Shift name"
                         value={svcForm[o.id] ?? ""}
                         onChange={(e) => setSvcForm({ ...svcForm, [o.id]: e.target.value })} />
-                      <button className="btn btn-secondary" onClick={() => addService(o.id)}>+</button>
+                      <button className="btn btn-secondary" onClick={() => addService(o.id)}>Add</button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {oSvcs.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>None</span>}
@@ -372,7 +372,7 @@ export default function SetupPage() {
                       <input className="input" style={{ maxWidth: 80 }} type="number" step="0.1" placeholder="Pts"
                         value={rf.points}
                         onChange={(e) => setRoleForm({ ...roleForm, [o.id]: { ...rf, points: e.target.value } })} />
-                      <button className="btn btn-secondary" onClick={() => addRole(o.id)}>+</button>
+                      <button className="btn btn-secondary" onClick={() => addRole(o.id)}>Add</button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {oRoles.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>None</span>}
