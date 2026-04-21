@@ -17,6 +17,8 @@ type Employee = {
 
 type Outlet = { id: string; name: string };
 type Department = { id: string; name: string };
+type Totals = { total_tips: number; total_sc: number; total_nc: number };
+type ViewMode = "grid" | "list";
 type Role = { id: string; role_name: string; outlet_id: string };
 type Assignment = { outlet_id: string; position_name: string };
 
@@ -50,18 +52,36 @@ export default function EmployeesPage() {
   const [form, setForm] = useState<Form>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [totals, setTotals] = useState<Record<string, Totals>>({});
+  const [assignmentsByEmp, setAssignmentsByEmp] = useState<Record<string, Assignment[]>>({});
 
   async function load() {
-    const [r, o, d, rl] = await Promise.all([
+    const [r, o, d, rl, t, a] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/departments").then((r) => r.json()),
       fetch("/api/outlet-roles").then((r) => r.json()),
+      fetch("/api/employees/totals").then((r) => r.json()).catch(() => ({})),
+      fetch("/api/employee-outlets").then((r) => r.json()).catch(() => []),
     ]);
     setRows(Array.isArray(r) ? r : []);
     setOutlets(Array.isArray(o) ? o : []);
     setDepartments(Array.isArray(d) ? d : []);
     setRoles(Array.isArray(rl) ? rl : []);
+    setTotals(typeof t === "object" && t !== null && !Array.isArray(t) ? t : {});
+    const byEmp: Record<string, Assignment[]> = {};
+    if (Array.isArray(a)) {
+      for (const row of a) {
+        const empId = row.employee_id as string;
+        if (!empId) continue;
+        if (!byEmp[empId]) byEmp[empId] = [];
+        byEmp[empId].push({ outlet_id: row.outlet_id, position_name: row.position_name ?? "" });
+      }
+    }
+    setAssignmentsByEmp(byEmp);
   }
   useEffect(() => { load(); }, []);
 
@@ -187,41 +207,142 @@ export default function EmployeesPage() {
         <button className="btn btn-primary" onClick={openAdd}>+ Add Employee</button>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rows.length === 0 && <div className="card p-6" style={{ color: "var(--muted)" }}>No employees yet.</div>}
-        {rows.map((e) => {
-          const dept = departments.find((d) => d.id === e.department_id)?.name ?? e.department;
-          const homeOutlet = outlets.find((o) => o.id === e.home_outlet_id)?.name;
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <input
+          type="text"
+          placeholder="Search employees..."
+          className="input"
+          style={{ maxWidth: 320, flex: 1 }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="flex gap-1 rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
+          <button
+            className="text-xs px-3 py-1 rounded-md"
+            onClick={() => setViewMode("grid")}
+            style={{
+              background: viewMode === "grid" ? "var(--surface)" : "transparent",
+              color: viewMode === "grid" ? "var(--primary)" : "var(--muted)",
+              fontWeight: viewMode === "grid" ? 600 : 400,
+            }}
+          >
+            Grid
+          </button>
+          <button
+            className="text-xs px-3 py-1 rounded-md"
+            onClick={() => setViewMode("list")}
+            style={{
+              background: viewMode === "list" ? "var(--surface)" : "transparent",
+              color: viewMode === "list" ? "var(--primary)" : "var(--muted)",
+              fontWeight: viewMode === "list" ? 600 : 400,
+            }}
+          >
+            List
+          </button>
+        </div>
+      </div>
+
+      {(() => {
+        const filtered = rows.filter((e) => {
+          if (!search.trim()) return true;
+          const q = search.toLowerCase();
+          const dept = departments.find((d) => d.id === e.department_id)?.name ?? e.department ?? "";
+          const homeOutlet = outlets.find((o) => o.id === e.home_outlet_id)?.name ?? "";
           return (
-            <div key={e.id} className="card p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold">{e.name}</h3>
-                  <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                    {e.home_position || e.position || "—"}{dept && ` · ${dept}`}
+            (e.name ?? "").toLowerCase().includes(q) ||
+            (e.home_position ?? e.position ?? "").toLowerCase().includes(q) ||
+            dept.toLowerCase().includes(q) ||
+            homeOutlet.toLowerCase().includes(q) ||
+            (e.email ?? "").toLowerCase().includes(q) ||
+            (e.phone ?? "").toLowerCase().includes(q)
+          );
+        });
+
+        if (filtered.length === 0) {
+          return <div className="card p-6 text-center" style={{ color: "var(--muted)" }}>
+            {rows.length === 0 ? "No employees yet." : "No employees match your search."}
+          </div>;
+        }
+
+        return (
+          <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-2"}>
+            {filtered.map((e) => {
+              const dept = departments.find((d) => d.id === e.department_id)?.name ?? e.department;
+              const homeOutlet = outlets.find((o) => o.id === e.home_outlet_id)?.name;
+              const isExpanded = expandedId === e.id;
+              const empTotals = totals[e.id] ?? { total_tips: 0, total_sc: 0, total_nc: 0 };
+              const extraAssignments = assignmentsByEmp[e.id] ?? [];
+
+              return (
+                <div
+                  key={e.id}
+                  className="card p-5 cursor-pointer transition-all"
+                  onClick={() => setExpandedId(isExpanded ? null : e.id)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-semibold shrink-0" style={{ background: "var(--surface-2)", color: "var(--primary)" }}>
+                        {e.name?.[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate">{e.name}</h3>
+                        <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                          {e.home_position || e.position || "-"}{dept && ` · ${dept}`}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-xs" style={{ color: "var(--muted)" }}>
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
                   </div>
-                  {homeOutlet && (
-                    <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                      Home: {homeOutlet}
+
+                  {isExpanded && (
+                    <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+                      {homeOutlet && (
+                        <div className="text-xs mb-2" style={{ color: "var(--muted)" }}>
+                          Home outlet: <span style={{ color: "var(--foreground)" }}>{homeOutlet}</span>
+                        </div>
+                      )}
+                      {extraAssignments.length > 0 && (
+                        <div className="text-xs mb-2" style={{ color: "var(--muted)" }}>
+                          Also works at: {extraAssignments.map((a, i) => {
+                            const oName = outlets.find((o) => o.id === a.outlet_id)?.name ?? "?";
+                            return <span key={i} style={{ color: "var(--foreground)" }}>{oName}{a.position_name && ` (${a.position_name})`}{i < extraAssignments.length - 1 ? ", " : ""}</span>;
+                          })}
+                        </div>
+                      )}
+                      <div className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+                        {e.phone && <div>{e.phone}</div>}
+                        {e.email && <div>{e.email}</div>}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="rounded-md p-2" style={{ background: "var(--surface-2)" }}>
+                          <div className="text-xs" style={{ color: "var(--muted)" }}>Total tips</div>
+                          <div className="font-semibold text-sm" style={{ color: "var(--primary)" }}>${empTotals.total_tips.toFixed(2)}</div>
+                        </div>
+                        <div className="rounded-md p-2" style={{ background: "var(--surface-2)" }}>
+                          <div className="text-xs" style={{ color: "var(--muted)" }}>Service charge</div>
+                          <div className="font-semibold text-sm">${empTotals.total_sc.toFixed(2)}</div>
+                        </div>
+                        <div className="rounded-md p-2" style={{ background: "var(--surface-2)" }}>
+                          <div className="text-xs" style={{ color: "var(--muted)" }}>Non-cash tips</div>
+                          <div className="font-semibold text-sm">${empTotals.total_nc.toFixed(2)}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button className="btn btn-secondary text-xs" onClick={(ev) => { ev.stopPropagation(); openEdit(e); }}>Edit</button>
+                        <button className="btn btn-secondary text-xs" onClick={(ev) => { ev.stopPropagation(); remove(e.id); }} style={{ color: "var(--danger)" }}>Remove</button>
+                      </div>
                     </div>
                   )}
                 </div>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center font-semibold" style={{ background: "var(--surface-2)", color: "var(--primary)" }}>
-                  {e.name?.[0]?.toUpperCase()}
-                </div>
-              </div>
-              <div className="text-sm space-y-1" style={{ color: "var(--muted)" }}>
-                {e.phone && <div>📞 {e.phone}</div>}
-                {e.email && <div>✉ {e.email}</div>}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button className="btn btn-secondary text-xs" onClick={() => openEdit(e)}>Edit</button>
-                <button className="btn btn-secondary text-xs" onClick={() => remove(e.id)} style={{ color: "var(--danger)" }}>Remove</button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Employee" : "Add Employee"}>
         <form onSubmit={submit} className="flex flex-col gap-3">
