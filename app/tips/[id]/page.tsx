@@ -166,6 +166,14 @@ export default function TipSheetEditor() {
     load();
   }
 
+  function handleBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/tips");
+    }
+  }
+
   async function approve() {
     await save();
     const res = await fetch(`/api/tip-sheets/${id}/approve`, { method: "PATCH" });
