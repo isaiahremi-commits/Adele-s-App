@@ -117,7 +117,11 @@ export default function TipsPage() {
       .sort((a, b) => {
         const ad = a.sheet_date || a.date || "";
         const bd = b.sheet_date || b.date || "";
-        return ad.localeCompare(bd);
+        if (ad !== bd) return ad.localeCompare(bd);
+        const order: Record<string, number> = { am: 0, all_day: 1, pm: 2 };
+        const as = order[a.shift_type ?? ""] ?? 99;
+        const bs = order[b.shift_type ?? ""] ?? 99;
+        return as - bs;
       });
   }
 
