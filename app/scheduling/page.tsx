@@ -168,6 +168,14 @@ export default function SchedulingPage() {
     }));
   }
 
+  function toggleAllDays() {
+    const allDays = WEEKDAYS.map((w) => w.jsDay);
+    setForm((f) => ({
+      ...f,
+      apply_days: f.apply_days.length === allDays.length ? [] : allDays,
+    }));
+  }
+
   async function addShift(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
@@ -511,6 +519,14 @@ export default function SchedulingPage() {
           <div className="text-sm">
             <div className="mb-1">Apply to multiple days (this week)</div>
             <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-1 text-xs cursor-pointer font-semibold" style={{ color: "var(--primary)" }}>
+                <input
+                  type="checkbox"
+                  checked={form.apply_days.length === WEEKDAYS.length}
+                  onChange={toggleAllDays}
+                />
+                Select all
+              </label>
               {WEEKDAYS.map((w) => {
                 const checked = form.apply_days.includes(w.jsDay);
                 return (
