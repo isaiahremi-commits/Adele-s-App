@@ -138,7 +138,16 @@ export default function SchedulingPage() {
 
   function shiftsFor(empId: string, date: Date) {
     const iso = toISODate(date);
-    return shifts.filter((s) => s.employee_id === empId && s.shift_date === iso);
+    const order: Record<string, number> = { am: 0, all_day: 1, pm: 2 };
+    return shifts
+      .filter((s) => s.employee_id === empId && s.shift_date === iso)
+      .sort((a, b) => {
+        const at = (a.start_time ?? "").localeCompare(b.start_time ?? "");
+        if (at !== 0) return at;
+        const ao = order[a.shift_type ?? ""] ?? 99;
+        const bo = order[b.shift_type ?? ""] ?? 99;
+        return ao - bo;
+      });
   }
 
   const MAX_SHIFTS_PER_DAY = 4;
