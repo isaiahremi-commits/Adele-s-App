@@ -88,7 +88,7 @@ export default function Nav() {
       })}
       <div className="mt-auto pt-6 px-2">
         <p className="text-xs" style={{ color: "var(--muted)" }}>
-          Powered by <span style={{ color: "var(--primary)" }}>Apptage</span>
+          Powered by <span style={{ color: "var(--primary)" }}>Manadel</span>
         </p>
       </div>
     </aside>
