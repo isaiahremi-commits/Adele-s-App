@@ -89,6 +89,14 @@ export default function SchedulingPage() {
   const [approving, setApproving] = useState(false);
   const [form, setForm] = useState<Form>(emptyForm);
   const [toast, setToast] = useState<Toast>(null);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyForm, setCopyForm] = useState<{ filter: "all" | "department" | "position"; department_id: string; position: string; overwrite: boolean }>({
+    filter: "all",
+    department_id: "",
+    position: "",
+    overwrite: false,
+  });
+  const [copying, setCopying] = useState(false);
 
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -136,6 +144,12 @@ export default function SchedulingPage() {
     return outlets.filter((o) => o.department_id === deptFilter);
   }, [outlets, deptFilter]);
 
+  const uniquePositions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of roles) if (r.role_name) set.add(r.role_name);
+    return Array.from(set).sort();
+  }, [roles]);
+
   function shiftsFor(empId: string, date: Date) {
     const iso = toISODate(date);
     const order: Record<string, number> = { am: 0, all_day: 1, pm: 2 };
@@ -174,6 +188,47 @@ export default function SchedulingPage() {
       ...f,
       apply_days: f.apply_days.length === allDays.length ? [] : allDays,
     }));
+  }
+
+  async function submitCopy() {
+    setCopying(true);
+    try {
+      const fromWeek = toISODate(new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000));
+      const toWeek = toISODate(weekStart);
+      const payload: Record<string, unknown> = {
+        from_week: fromWeek,
+        to_week: toWeek,
+        overwrite: copyForm.overwrite,
+      };
+      if (copyForm.filter === "department" && copyForm.department_id) {
+        payload.department_id = copyForm.department_id;
+      }
+      if (copyForm.filter === "position" && copyForm.position) {
+        payload.position = copyForm.position;
+      }
+      const res = await fetch("/api/shifts/copy-week", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", text: data.error || "Copy failed" });
+        return;
+      }
+      if (data.copied === 0) {
+        setToast({ kind: "error", text: data.message || "Nothing to copy." });
+      } else {
+        setToast({ kind: "success", text: `Copied ${data.copied} shift${data.copied === 1 ? "" : "s"} from last week.` });
+      }
+      setCopyModalOpen(false);
+      setCopyForm({ filter: "all", department_id: "", position: "", overwrite: false });
+      load();
+    } catch (err) {
+      setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setCopying(false);
+    }
   }
 
   async function addShift(e: React.FormEvent) {
@@ -302,6 +357,7 @@ export default function SchedulingPage() {
           <button className="btn btn-secondary" onClick={() => shiftWeek(-1)}>Prev</button>
           <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</button>
           <button className="btn btn-secondary" onClick={() => shiftWeek(1)}>Next</button>
+          <button className="btn btn-secondary" onClick={() => setCopyModalOpen(true)}>Copy Previous Week</button>
           <button
             className="btn btn-secondary"
             onClick={approveWeek}
@@ -553,6 +609,77 @@ export default function SchedulingPage() {
             <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Add Shift"}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={copyModalOpen} onClose={() => setCopyModalOpen(false)} title="Copy Previous Week">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Copy all shifts from last week ({toISODate(new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000))}) into this week ({toISODate(weekStart)}).
+          </p>
+
+          <label className="text-sm">What to copy
+            <select
+              className="input mt-1"
+              value={copyForm.filter}
+              onChange={(e) => setCopyForm({ ...copyForm, filter: e.target.value as "all" | "department" | "position", department_id: "", position: "" })}
+            >
+              <option value="all">All departments</option>
+              <option value="department">Specific department</option>
+              <option value="position">Specific position</option>
+            </select>
+          </label>
+
+          {copyForm.filter === "department" && (
+            <label className="text-sm">Department
+              <select
+                className="input mt-1"
+                value={copyForm.department_id}
+                onChange={(e) => setCopyForm({ ...copyForm, department_id: e.target.value })}
+              >
+                <option value="">Select...</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {copyForm.filter === "position" && (
+            <label className="text-sm">Position
+              <select
+                className="input mt-1"
+                value={copyForm.position}
+                onChange={(e) => setCopyForm({ ...copyForm, position: e.target.value })}
+              >
+                <option value="">Select...</option>
+                {uniquePositions.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={copyForm.overwrite}
+              onChange={(e) => setCopyForm({ ...copyForm, overwrite: e.target.checked })}
+            />
+            Overwrite existing shifts in this week
+          </label>
+
+          <div className="flex justify-end gap-2 mt-2">
+            <button type="button" className="btn btn-secondary" onClick={() => setCopyModalOpen(false)} disabled={copying}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={submitCopy}
+              disabled={copying || (copyForm.filter === "department" && !copyForm.department_id) || (copyForm.filter === "position" && !copyForm.position)}
+            >
+              {copying ? "Copying..." : "Copy shifts"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

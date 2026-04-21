@@ -85,6 +85,11 @@ export default function SetupPage() {
     e.preventDefault();
     setDeptError(null);
     if (!newDept.trim()) return;
+    const normalized = newDept.trim().toLowerCase();
+    if (departments.some((d) => d.name.trim().toLowerCase() === normalized)) {
+      setDeptError(`A department named "${newDept.trim()}" already exists.`);
+      return;
+    }
     const tipPoolStrategy = newDeptType === "back_of_house" ? "pooled_across_outlets" : "per_outlet_per_shift";
     const res = await fetch("/api/departments", {
       method: "POST",
@@ -110,6 +115,11 @@ export default function SetupPage() {
   async function addOutlet(e: React.FormEvent) {
     e.preventDefault();
     if (!newOutlet.trim()) return;
+    const normalized = newOutlet.trim().toLowerCase();
+    if (outlets.some((o) => o.name.trim().toLowerCase() === normalized)) {
+      setDeptError(`An outlet named "${newOutlet.trim()}" already exists.`);
+      return;
+    }
     await fetch("/api/outlets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,6 +142,14 @@ export default function SetupPage() {
   async function addService(outletId: string) {
     const name = svcForm[outletId]?.trim();
     if (!name) return;
+    const normalized = name.toLowerCase();
+    const duplicate = services.some(
+      (s) => s.outlet_id === outletId && s.name.trim().toLowerCase() === normalized
+    );
+    if (duplicate) {
+      setOutletError({ ...outletError, [outletId]: `Shift type "${name}" already exists for this outlet.` });
+      return;
+    }
     const res = await fetch("/api/services", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -155,6 +173,14 @@ export default function SetupPage() {
   async function addRole(outletId: string) {
     const f = roleForm[outletId];
     if (!f?.role_name.trim()) return;
+    const normalized = f.role_name.trim().toLowerCase();
+    const duplicate = roles.some(
+      (r) => r.outlet_id === outletId && r.role_name.trim().toLowerCase() === normalized
+    );
+    if (duplicate) {
+      setOutletError({ ...outletError, [outletId]: `Role "${f.role_name.trim()}" already exists for this outlet.` });
+      return;
+    }
     const res = await fetch("/api/outlet-roles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
