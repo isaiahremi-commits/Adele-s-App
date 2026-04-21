@@ -42,6 +42,8 @@ export default function TipSheetEditor() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [saving, setSaving] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [newMgrId, setNewMgrId] = useState("");
   const [newMgrPct, setNewMgrPct] = useState<string>("10");
 
@@ -69,6 +71,12 @@ export default function TipSheetEditor() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const locked = sheet?.status === "approved";
 
@@ -143,6 +151,65 @@ export default function TipSheetEditor() {
   }
   function removeAllocationRow(idx: number) {
     setAllocations((rows) => rows.filter((_, i) => i !== idx));
+  }
+
+  function hoursBetween(start?: string, end?: string): number {
+    if (!start || !end) return 8;
+    try {
+      const [sh, sm] = start.split(":").map(Number);
+      const [eh, em] = end.split(":").map(Number);
+      const mins = eh * 60 + em - (sh * 60 + sm);
+      if (mins <= 0) return 8;
+      return Math.round((mins / 60) * 100) / 100;
+    } catch {
+      return 8;
+    }
+  }
+
+  async function autoFillTeam() {
+    if (!sheet || autoFilling || locked) return;
+    const sheetDate = sheet.sheet_date;
+    const outletId = sheet.outlet_id;
+    const shiftType = (sheet as any).shift_type;
+    if (!sheetDate || !outletId || !shiftType) {
+      setToast({ kind: "error", text: "This sheet needs outlet + shift type + date to auto-fill." });
+      return;
+    }
+    setAutoFilling(true);
+    try {
+      const res = await fetch(`/api/shifts?start=${sheetDate}&end=${sheetDate}`).then((r) => r.json());
+      const list: any[] = Array.isArray(res) ? res : [];
+      const matching = list.filter((s) =>
+        s.outlet_id === outletId &&
+        s.shift_type === shiftType &&
+        (s.shift_date === sheetDate || s.date === sheetDate)
+      );
+      if (matching.length === 0) {
+        setToast({ kind: "error", text: "No scheduled staff found for this outlet and shift on this day." });
+        return;
+      }
+      const existingEmpIds = new Set(allocations.map((a) => a.employee_id).filter(Boolean));
+      const newRows: Allocation[] = [];
+      for (const s of matching) {
+        if (existingEmpIds.has(s.employee_id)) continue;
+        const roleName = s.position ?? "";
+        const roleDef = roles.find((r) => r.role_name === roleName);
+        const points = roleDef ? Number(roleDef.points) : 1;
+        const hours = hoursBetween(s.start_time, s.end_time);
+        newRows.push({ employee_id: s.employee_id, role: roleName, points, hours });
+        existingEmpIds.add(s.employee_id);
+      }
+      if (newRows.length === 0) {
+        setToast({ kind: "success", text: "All scheduled employees are already in the team." });
+        return;
+      }
+      setAllocations((rows) => [...rows, ...newRows]);
+      setToast({ kind: "success", text: `Added ${newRows.length} scheduled employee(s) to the team.` });
+    } catch (err) {
+      setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setAutoFilling(false);
+    }
   }
 
   async function save() {
@@ -236,10 +303,17 @@ export default function TipSheetEditor() {
           <div className="text-sm" style={{ color: "var(--muted)" }}>{sheet.department} · {new Date(sheet.sheet_date).toLocaleDateString()}</div>
         </div>
         <div className="flex gap-2">
+          {!locked && (<button className="btn btn-secondary" onClick={autoFillTeam} disabled={autoFilling} title="Pull employees from scheduled shifts into the team">{autoFilling ? "Filling..." : "Auto-fill from schedule"}</button>)}
           <button className="btn btn-secondary" onClick={save} disabled={locked || saving}>{saving ? "Saving…" : "Save"}</button>
           <button className="btn btn-primary" onClick={approve} disabled={locked}>{locked ? "Locked" : "Approve & Lock"}</button>
         </div>
       </header>
+
+      {toast && (
+        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: toast.kind === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,90,90,0.15)", color: toast.kind === "success" ? "var(--primary)" : "var(--danger)" }}>
+          {toast.text}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <div className="card p-4">
@@ -281,7 +355,7 @@ export default function TipSheetEditor() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold">Event Managers</h3>
           <span className="text-xs" style={{ color: "var(--muted)" }}>
-            Commission is deducted from service charge before team split
+            Commission is deducted from service charge only (not non-cash tips)
           </span>
         </div>
 
