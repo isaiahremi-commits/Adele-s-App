@@ -220,7 +220,7 @@ export default function TipSheetEditor() {
     <div>
       <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <Link href="/tips" className="text-sm mb-1 inline-block" style={{ color: "var(--muted)" }}>← Back to tips</Link>
+          <button onClick={handleBack} className="text-sm mb-1 inline-block" style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Back</button>
           <h1 className="text-2xl font-bold flex items-center gap-3">
             {sheet.service_name || "Untitled"}
             {locked ? <span className="chip chip-green">Approved</span> : <span className="chip chip-amber">Pending</span>}
