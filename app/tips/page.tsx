@@ -25,7 +25,7 @@ type View =
   | { kind: "outlets" }
   | { kind: "weeks"; outletId: string }
   | { kind: "days"; outletId: string; weekStart: string }
-  | { kind: "events" };
+
 
 function startOfWeekISO(isoDate: string): string {
   const d = new Date(isoDate + "T00:00:00");
@@ -65,6 +65,7 @@ export default function TipsPage() {
     department: "",
     shift_type: "am" as "am" | "pm" | "all_day",
     sheet_date: new Date().toISOString().slice(0, 10),
+    outlet_id: "",
   });
 
   async function load() {
@@ -80,20 +81,18 @@ export default function TipsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const autoSheets = useMemo(() => sheets.filter((s) => s.source === "auto"), [sheets]);
-  const eventSheets = useMemo(() => sheets.filter((s) => s.source !== "auto"), [sheets]);
 
   // Group auto sheets by outlet_id
   const sheetsByOutlet = useMemo(() => {
     const m = new Map<string, TipSheet[]>();
-    for (const s of autoSheets) {
+    for (const s of sheets) {
       if (!s.outlet_id) continue;
       const arr = m.get(s.outlet_id) ?? [];
       arr.push(s);
       m.set(s.outlet_id, arr);
     }
     return m;
-  }, [autoSheets]);
+  }, [sheets]);
 
   // For a given outlet, group by week_start
   function sheetsByWeekForOutlet(outletId: string): Map<string, TipSheet[]> {
@@ -144,6 +143,7 @@ export default function TipsPage() {
         department: "",
         shift_type: "am",
         sheet_date: new Date().toISOString().slice(0, 10),
+        outlet_id: "",
       });
       load();
     } catch (err) {
@@ -174,12 +174,7 @@ export default function TipsPage() {
             <h1 className="text-3xl font-bold">Tip Distribution</h1>
             <p className="text-sm" style={{ color: "var(--muted)" }}>Pick an outlet to see its tip sheets</p>
           </div>
-          <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={() => setView({ kind: "events" })}>
-              Events ({eventSheets.length})
-            </button>
-            <button className="btn btn-primary" onClick={() => setOpen(true)}>+ New Event Tip Sheet</button>
-          </div>
+          
         </div>
 
         {outletsWithSheets.length === 0 ? (
@@ -248,7 +243,18 @@ export default function TipsPage() {
               </span>
             )}
           </div>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>Pick a week to see daily tip sheets</p>
+          <div className="flex items-center justify-between flex-wrap gap-3 mt-1">
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Pick a week to see daily tip sheets</p>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setForm((f) => ({ ...f, outlet_id: outletId }));
+                setOpen(true);
+              }}
+            >
+              + New Event Tip Sheet
+            </button>
+          </div>
         </div>
 
         {weeks.length === 0 ? (
@@ -299,8 +305,21 @@ export default function TipsPage() {
           <button className="text-sm mb-2" onClick={() => setView({ kind: "weeks", outletId })} style={{ color: "var(--muted)" }}>
             ← Back to weeks
           </button>
-          <h1 className="text-3xl font-bold">{outletName(outletId)}</h1>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>Week of {formatWeek(weekStart)}</p>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-3xl font-bold">{outletName(outletId)}</h1>
+              <p className="text-sm" style={{ color: "var(--muted)" }}>Week of {formatWeek(weekStart)}</p>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setForm((f) => ({ ...f, outlet_id: outletId, sheet_date: weekStart }));
+                setOpen(true);
+              }}
+            >
+              + New Event Tip Sheet
+            </button>
+          </div>
         </div>
 
         {list.length === 0 ? (
@@ -347,72 +366,11 @@ export default function TipsPage() {
     );
   }
 
-  // ---------- View: events (manual sheets) ----------
-  function renderEventsView() {
-    return (
-      <>
-        <div className="mb-6">
-          <button className="text-sm mb-2" onClick={() => setView({ kind: "outlets" })} style={{ color: "var(--muted)" }}>
-            ← Back to outlets
-          </button>
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <h1 className="text-3xl font-bold">Events</h1>
-              <p className="text-sm" style={{ color: "var(--muted)" }}>Manually created tip sheets for one-off events</p>
-            </div>
-            <button className="btn btn-primary" onClick={() => setOpen(true)}>+ New Event Tip Sheet</button>
-          </div>
-        </div>
-
-        {eventSheets.length === 0 ? (
-          <div className="card p-8 text-center" style={{ color: "var(--muted)" }}>No event tip sheets yet.</div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {eventSheets.map((s) => {
-              const total = Number(s.service_charge ?? 0) + Number(s.non_cash_tips ?? 0);
-              return (
-                <div key={s.id} className="card p-5 flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex-1 min-w-[200px]">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className="font-semibold">{s.service_name || "Untitled event"}</h3>
-                      {s.status === "approved"
-                        ? <span className="chip chip-green">Approved</span>
-                        : <span className="chip chip-amber">Pending</span>}
-                    </div>
-                    <div className="text-xs" style={{ color: "var(--muted)" }}>
-                      {s.department || "—"} · {formatDate(s.sheet_date || s.date)}
-                    </div>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div>
-                      <div className="text-xs" style={{ color: "var(--muted)" }}>Service charge</div>
-                      <div>${Number(s.service_charge ?? 0).toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs" style={{ color: "var(--muted)" }}>Non-cash tips</div>
-                      <div>${Number(s.non_cash_tips ?? 0).toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs" style={{ color: "var(--muted)" }}>Total</div>
-                      <div className="font-semibold" style={{ color: "var(--primary)" }}>${total.toFixed(2)}</div>
-                    </div>
-                  </div>
-                  <Link href={`/tips/${s.id}`} className="btn btn-secondary">Review →</Link>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </>
-    );
-  }
-
   return (
     <div>
       {view.kind === "outlets" && renderOutletsView()}
       {view.kind === "weeks" && renderWeeksView(view.outletId)}
       {view.kind === "days" && renderDaysView(view.outletId, view.weekStart)}
-      {view.kind === "events" && renderEventsView()}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New Event Tip Sheet">
         <form onSubmit={createSheet} className="flex flex-col gap-3">
