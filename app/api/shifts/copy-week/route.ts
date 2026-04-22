@@ -11,8 +11,9 @@ export async function POST(req: Request) {
   const body = (await req.json()) as {
     from_week: string;
     to_week: string;
-    department_id?: string | null;
-    position?: string | null;
+    department_ids?: string[];
+    positions?: string[];
+    employee_ids?: string[];
     overwrite?: boolean;
   };
 
@@ -21,54 +22,55 @@ export async function POST(req: Request) {
   }
 
   const supabase = createClient();
-
-  // Compute source and target week date ranges (7 days each)
   const fromEnd = addDaysISO(body.from_week, 6);
   const toEnd = addDaysISO(body.to_week, 6);
 
-  // Fetch source week shifts
-  let query = supabase
+  const { data: sourceShifts, error: srcErr } = await supabase
     .from("shifts")
     .select("*, employees(department_id)")
     .gte("shift_date", body.from_week)
     .lte("shift_date", fromEnd);
 
-  const { data: sourceShifts, error: srcErr } = await query;
   if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 500 });
 
   if (!sourceShifts || sourceShifts.length === 0) {
     return NextResponse.json({ copied: 0, skipped: 0, message: "No shifts found in source week." });
   }
 
-  // Filter by department_id (via employee.department_id) or position
+  const deptSet = new Set((body.department_ids ?? []).filter(Boolean));
+  const posSet = new Set((body.positions ?? []).filter(Boolean).map((p) => p.trim().toLowerCase()));
+  const empSet = new Set((body.employee_ids ?? []).filter(Boolean));
+
   let filtered = sourceShifts;
-  if (body.department_id) {
+
+  if (deptSet.size > 0) {
     filtered = filtered.filter((s) => {
       const emp = s.employees as { department_id?: string | null } | null;
-      return emp?.department_id === body.department_id;
+      return emp?.department_id ? deptSet.has(emp.department_id) : false;
     });
   }
-  if (body.position) {
-    const pos = body.position.trim().toLowerCase();
-    filtered = filtered.filter((s) => (s.position ?? "").trim().toLowerCase() === pos);
+
+  if (posSet.size > 0) {
+    filtered = filtered.filter((s) => posSet.has((s.position ?? "").trim().toLowerCase()));
+  }
+
+  if (empSet.size > 0) {
+    filtered = filtered.filter((s) => empSet.has(s.employee_id));
   }
 
   if (filtered.length === 0) {
     return NextResponse.json({ copied: 0, skipped: 0, message: "No shifts matched filters." });
   }
 
-  // Optionally wipe target week first (scoped to same filters)
   if (body.overwrite) {
-    let delQuery = supabase
+    const { error: delErr } = await supabase
       .from("shifts")
       .delete()
       .gte("shift_date", body.to_week)
       .lte("shift_date", toEnd);
-    const { error: delErr } = await delQuery;
     if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
   }
 
-  // Map each source shift to target week (shift dates forward by 7 days * N weeks)
   const fromStart = new Date(body.from_week + "T00:00:00");
   const toStart = new Date(body.to_week + "T00:00:00");
   const diffDays = Math.round((toStart.getTime() - fromStart.getTime()) / (1000 * 60 * 60 * 24));

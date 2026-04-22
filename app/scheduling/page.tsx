@@ -90,10 +90,10 @@ export default function SchedulingPage() {
   const [form, setForm] = useState<Form>(emptyForm);
   const [toast, setToast] = useState<Toast>(null);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
-  const [copyForm, setCopyForm] = useState<{ filter: "all" | "department" | "position"; department_id: string; position: string; overwrite: boolean }>({
-    filter: "all",
-    department_id: "",
-    position: "",
+  const [copyForm, setCopyForm] = useState<{ department_ids: string[]; positions: string[]; employee_ids: string[]; overwrite: boolean }>({
+    department_ids: [],
+    positions: [],
+    employee_ids: [],
     overwrite: false,
   });
   const [copying, setCopying] = useState(false);
@@ -200,12 +200,9 @@ export default function SchedulingPage() {
         to_week: toWeek,
         overwrite: copyForm.overwrite,
       };
-      if (copyForm.filter === "department" && copyForm.department_id) {
-        payload.department_id = copyForm.department_id;
-      }
-      if (copyForm.filter === "position" && copyForm.position) {
-        payload.position = copyForm.position;
-      }
+      if (copyForm.department_ids.length > 0) payload.department_ids = copyForm.department_ids;
+      if (copyForm.positions.length > 0) payload.positions = copyForm.positions;
+      if (copyForm.employee_ids.length > 0) payload.employee_ids = copyForm.employee_ids;
       const res = await fetch("/api/shifts/copy-week", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -222,7 +219,7 @@ export default function SchedulingPage() {
         setToast({ kind: "success", text: `Copied ${data.copied} shift${data.copied === 1 ? "" : "s"} from last week.` });
       }
       setCopyModalOpen(false);
-      setCopyForm({ filter: "all", department_id: "", position: "", overwrite: false });
+      setCopyForm({ department_ids: [], positions: [], employee_ids: [], overwrite: false });
       load();
     } catch (err) {
       setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
@@ -612,74 +609,121 @@ export default function SchedulingPage() {
       </Modal>
 
       <Modal open={copyModalOpen} onClose={() => setCopyModalOpen(false)} title="Copy Previous Week">
-        <div className="flex flex-col gap-3">
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Copy all shifts from last week ({toISODate(new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000))}) into this week ({toISODate(weekStart)}).
-          </p>
+        {(() => {
+          const filteredPositions = copyForm.department_ids.length === 0
+            ? uniquePositions
+            : Array.from(new Set(
+                roles
+                  .filter((r) => {
+                    const outlet = outlets.find((o) => o.id === r.outlet_id);
+                    return outlet?.department_id ? copyForm.department_ids.includes(outlet.department_id) : false;
+                  })
+                  .map((r) => r.role_name)
+              )).sort();
 
-          <label className="text-sm">What to copy
-            <select
-              className="input mt-1"
-              value={copyForm.filter}
-              onChange={(e) => setCopyForm({ ...copyForm, filter: e.target.value as "all" | "department" | "position", department_id: "", position: "" })}
-            >
-              <option value="all">All departments</option>
-              <option value="department">Specific department</option>
-              <option value="position">Specific position</option>
-            </select>
-          </label>
+          const filteredEmps = employees.filter((e) => {
+            if (copyForm.department_ids.length > 0 && !copyForm.department_ids.includes(e.department_id ?? "")) return false;
+            if (copyForm.positions.length > 0) {
+              const empPos = (e.home_position ?? e.position ?? "").trim().toLowerCase();
+              const posMatch = copyForm.positions.some((p) => p.trim().toLowerCase() === empPos);
+              if (!posMatch) return false;
+            }
+            return true;
+          });
 
-          {copyForm.filter === "department" && (
-            <label className="text-sm">Department
-              <select
-                className="input mt-1"
-                value={copyForm.department_id}
-                onChange={(e) => setCopyForm({ ...copyForm, department_id: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
+          const toggle = <T,>(arr: T[], val: T): T[] =>
+            arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
 
-          {copyForm.filter === "position" && (
-            <label className="text-sm">Position
-              <select
-                className="input mt-1"
-                value={copyForm.position}
-                onChange={(e) => setCopyForm({ ...copyForm, position: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {uniquePositions.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </label>
-          )}
+          const selectAllDepts = () =>
+            setCopyForm({ ...copyForm, department_ids: copyForm.department_ids.length === departments.length ? [] : departments.map((d) => d.id), positions: [], employee_ids: [] });
+          const selectAllPositions = () =>
+            setCopyForm({ ...copyForm, positions: copyForm.positions.length === filteredPositions.length ? [] : [...filteredPositions], employee_ids: [] });
+          const selectAllEmps = () =>
+            setCopyForm({ ...copyForm, employee_ids: copyForm.employee_ids.length === filteredEmps.length ? [] : filteredEmps.map((e) => e.id) });
 
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={copyForm.overwrite}
-              onChange={(e) => setCopyForm({ ...copyForm, overwrite: e.target.checked })}
-            />
-            Overwrite existing shifts in this week
-          </label>
+          return (
+            <div className="flex flex-col gap-4" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+              <p className="text-sm" style={{ color: "var(--muted)" }}>
+                From <strong>{toISODate(new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000))}</strong> → <strong>{toISODate(weekStart)}</strong>. Leave a section empty to include everything.
+              </p>
 
-          <div className="flex justify-end gap-2 mt-2">
-            <button type="button" className="btn btn-secondary" onClick={() => setCopyModalOpen(false)} disabled={copying}>Cancel</button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={submitCopy}
-              disabled={copying || (copyForm.filter === "department" && !copyForm.department_id) || (copyForm.filter === "position" && !copyForm.position)}
-            >
-              {copying ? "Copying..." : "Copy shifts"}
-            </button>
-          </div>
-        </div>
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold">Departments</h4>
+                  <button type="button" className="text-xs" style={{ color: "var(--primary)" }} onClick={selectAllDepts}>
+                    {copyForm.department_ids.length === departments.length ? "Clear all" : "Select all"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {departments.map((d) => {
+                    const checked = copyForm.department_ids.includes(d.id);
+                    return (
+                      <label key={d.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, department_ids: toggle(copyForm.department_ids, d.id), positions: [], employee_ids: [] })} style={{ display: "none" }} />
+                        {d.name}
+                      </label>
+                    );
+                  })}
+                  {departments.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>No departments yet.</span>}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold">Positions {copyForm.department_ids.length > 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>(filtered by department)</span>}</h4>
+                  <button type="button" className="text-xs" style={{ color: "var(--primary)" }} onClick={selectAllPositions} disabled={filteredPositions.length === 0}>
+                    {copyForm.positions.length === filteredPositions.length && filteredPositions.length > 0 ? "Clear all" : "Select all"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {filteredPositions.map((p) => {
+                    const checked = copyForm.positions.includes(p);
+                    return (
+                      <label key={p} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, positions: toggle(copyForm.positions, p), employee_ids: [] })} style={{ display: "none" }} />
+                        {p}
+                      </label>
+                    );
+                  })}
+                  {filteredPositions.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>No positions available.</span>}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold">Employees {(copyForm.department_ids.length > 0 || copyForm.positions.length > 0) && <span className="text-xs" style={{ color: "var(--muted)" }}>(filtered)</span>}</h4>
+                  <button type="button" className="text-xs" style={{ color: "var(--primary)" }} onClick={selectAllEmps} disabled={filteredEmps.length === 0}>
+                    {copyForm.employee_ids.length === filteredEmps.length && filteredEmps.length > 0 ? "Clear all" : "Select all"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {filteredEmps.map((e) => {
+                    const checked = copyForm.employee_ids.includes(e.id);
+                    return (
+                      <label key={e.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, employee_ids: toggle(copyForm.employee_ids, e.id) })} style={{ display: "none" }} />
+                        {e.name}
+                      </label>
+                    );
+                  })}
+                  {filteredEmps.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>No employees match.</span>}
+                </div>
+              </section>
+
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={copyForm.overwrite} onChange={(e) => setCopyForm({ ...copyForm, overwrite: e.target.checked })} />
+                Overwrite existing shifts in this week
+              </label>
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button type="button" className="btn btn-secondary" onClick={() => setCopyModalOpen(false)} disabled={copying}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={submitCopy} disabled={copying}>
+                  {copying ? "Copying..." : "Copy shifts"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );
