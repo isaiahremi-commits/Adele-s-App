@@ -28,8 +28,8 @@ export async function POST(req: Request) {
   const { data: sourceShifts, error: srcErr } = await supabase
     .from("shifts")
     .select("*, employees(department_id)")
-    .gte("shift_date", body.from_week)
-    .lte("shift_date", fromEnd);
+    .gte("date", body.from_week)
+    .lte("date", fromEnd);
 
   if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 500 });
 
@@ -66,8 +66,8 @@ export async function POST(req: Request) {
     const { error: delErr } = await supabase
       .from("shifts")
       .delete()
-      .gte("shift_date", body.to_week)
-      .lte("shift_date", toEnd);
+      .gte("date", body.to_week)
+      .lte("date", toEnd);
     if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
   }
 
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
 
   const newRows = filtered.map((s) => ({
     employee_id: s.employee_id,
-    shift_date: addDaysISO(s.shift_date, diffDays),
+    date: addDaysISO(s.date, diffDays),
     start_time: s.start_time,
     end_time: s.end_time,
     shift_type: s.shift_type,
