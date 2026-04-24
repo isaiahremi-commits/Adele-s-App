@@ -13,6 +13,9 @@ type Employee = {
   department_id?: string | null;
   home_outlet_id?: string | null;
   home_position?: string | null;
+  sms_opt_in?: boolean;
+  sms_opt_in_pending?: boolean;
+  sms_opted_in_at?: string | null;
 };
 
 type Outlet = { id: string; name: string };
@@ -52,6 +55,8 @@ export default function EmployeesPage() {
   const [form, setForm] = useState<Form>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [smsBusy, setSmsBusy] = useState(false);
+  const [smsMsg, setSmsMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -93,12 +98,14 @@ export default function EmployeesPage() {
     setEditing(null);
     setForm(emptyForm);
     setError(null);
+    setSmsMsg(null);
     setOpen(true);
   }
 
   async function openEdit(e: Employee) {
     setEditing(e);
     setError(null);
+    setSmsMsg(null);
     // Fetch existing additional-outlet assignments.
     let assignments: Assignment[] = [];
     try {
@@ -168,6 +175,55 @@ export default function EmployeesPage() {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function sendOptInInvite() {
+    if (!editing) return;
+    setSmsBusy(true);
+    setSmsMsg(null);
+    try {
+      const res = await fetch("/api/sms/opt-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: editing.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSmsMsg({ kind: "err", text: data.error || "Could not send invite" });
+        return;
+      }
+      setSmsMsg({ kind: "ok", text: "Invite sent. They need to reply YES." });
+      setEditing({ ...editing, sms_opt_in_pending: true });
+    } catch (err) {
+      setSmsMsg({ kind: "err", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setSmsBusy(false);
+    }
+  }
+
+  async function revokeOptIn() {
+    if (!editing) return;
+    if (!confirm("Revoke SMS consent for this employee? They will stop receiving texts immediately.")) return;
+    setSmsBusy(true);
+    setSmsMsg(null);
+    try {
+      const res = await fetch(`/api/employees/${editing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sms_opt_in: false, sms_opt_in_pending: false, sms_opted_in_at: null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSmsMsg({ kind: "err", text: data.error || "Could not revoke" });
+        return;
+      }
+      setSmsMsg({ kind: "ok", text: "SMS consent revoked." });
+      setEditing({ ...editing, sms_opt_in: false, sms_opt_in_pending: false, sms_opted_in_at: null });
+    } catch (err) {
+      setSmsMsg({ kind: "err", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setSmsBusy(false);
     }
   }
 
@@ -397,6 +453,52 @@ export default function EmployeesPage() {
           <label className="text-sm">Email
             <input type="email" className="input mt-1" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </label>
+
+          {editing && (
+            <div className="mt-2 p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
+              <div className="text-sm font-medium mb-2">SMS Notifications</div>
+              {editing.sms_opt_in ? (
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="chip chip-green" style={{ fontSize: 11 }}>Opted in</span>
+                    {editing.sms_opted_in_at && (
+                      <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
+                        on {new Date(editing.sms_opted_in_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  <button type="button" className="btn btn-secondary text-xs" onClick={revokeOptIn} disabled={smsBusy} style={{ color: "var(--danger)" }}>
+                    {smsBusy ? "Working..." : "Revoke consent"}
+                  </button>
+                </div>
+              ) : editing.sms_opt_in_pending ? (
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="chip chip-amber" style={{ fontSize: 11 }}>Pending — waiting for YES reply</span>
+                  </div>
+                  <button type="button" className="btn btn-secondary text-xs" onClick={sendOptInInvite} disabled={smsBusy || !editing.phone}>
+                    {smsBusy ? "Sending..." : "Resend invite"}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs mb-2" style={{ color: "var(--muted)" }}>
+                    {editing.phone
+                      ? "Send a one-time text asking them to reply YES to receive schedule and tip notifications."
+                      : "Add a phone number above to enable SMS opt-in."}
+                  </p>
+                  <button type="button" className="btn btn-secondary text-xs" onClick={sendOptInInvite} disabled={smsBusy || !editing.phone}>
+                    {smsBusy ? "Sending..." : "Send opt-in invite via SMS"}
+                  </button>
+                </div>
+              )}
+              {smsMsg && (
+                <div className="text-xs mt-2" style={{ color: smsMsg.kind === "ok" ? "var(--primary)" : "var(--danger)" }}>
+                  {smsMsg.text}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-2">
             <div className="flex items-center justify-between mb-2">
