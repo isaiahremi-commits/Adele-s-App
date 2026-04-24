@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import { notifySchedulePublished } from "@/lib/twilio";
 
 type ShiftRow = {
   id: string;
@@ -177,10 +178,19 @@ export async function POST(req: Request) {
     }
   }
 
+  // Fire SMS notifications (non-blocking — failures don't break approval)
+  let sms_summary: { attempted: number; sent: number; blocked: number; failed: number } | null = null;
+  try {
+    sms_summary = await notifySchedulePublished(week_start);
+  } catch (err) {
+    console.error("notifySchedulePublished failed:", err);
+  }
+
   return NextResponse.json({
     created,
     updated,
     total_groups: groups.size,
     errors: errors.length > 0 ? errors : undefined,
+    sms_summary,
   });
 }

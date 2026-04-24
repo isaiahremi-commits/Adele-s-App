@@ -57,7 +57,7 @@ export default function SetupPage() {
       });
     }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadSmsSettings(); }, []);
 
   async function saveConfig(next: Partial<PayrollConfig>) {
     const merged = { ...config, ...next };
@@ -78,6 +78,43 @@ export default function SetupPage() {
     } finally {
       setSavingConfig(false);
       setTimeout(() => setConfigMsg(null), 2000);
+    }
+  }
+
+  type SmsSettings = {
+    schedule_published_enabled: boolean;
+    shift_reminder_enabled: boolean;
+    shift_reminder_hours_before: number;
+    tip_approved_enabled: boolean;
+  };
+
+  const [smsSettings, setSmsSettings] = useState<SmsSettings | null>(null);
+  const [smsSavingKey, setSmsSavingKey] = useState<string | null>(null);
+
+  async function loadSmsSettings() {
+    try {
+      const res = await fetch("/api/sms/settings");
+      const data = await res.json();
+      setSmsSettings(data);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function updateSmsSetting(patch: Partial<SmsSettings>) {
+    setSmsSavingKey(Object.keys(patch)[0] ?? "");
+    try {
+      const res = await fetch("/api/sms/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (res.ok) setSmsSettings(data);
+    } catch {
+      // ignore
+    } finally {
+      setSmsSavingKey(null);
     }
   }
 
@@ -274,6 +311,81 @@ export default function SetupPage() {
             </select>
           </label>
         </div>
+      </section>
+
+      <section className="card p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-1">SMS Notifications</h2>
+        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          Configure which automatic text notifications get sent. Employees must opt in individually before they receive any messages.
+        </p>
+
+        {!smsSettings ? (
+          <div className="text-xs" style={{ color: "var(--muted)" }}>Loading...</div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <label className="flex items-start justify-between gap-3 p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
+              <div className="flex-1">
+                <div className="text-sm font-medium">Schedule published</div>
+                <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                  Text employees when a weekly schedule is approved.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={smsSettings.schedule_published_enabled}
+                onChange={(e) => updateSmsSetting({ schedule_published_enabled: e.target.checked })}
+                disabled={smsSavingKey === "schedule_published_enabled"}
+                style={{ marginTop: 2 }}
+              />
+            </label>
+
+            <label className="flex items-start justify-between gap-3 p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
+              <div className="flex-1">
+                <div className="text-sm font-medium">Shift reminder</div>
+                <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                  Text employees a few hours before their shift starts. Requires Vercel Cron setup (Phase 2).
+                </div>
+                {smsSettings.shift_reminder_enabled && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs" style={{ color: "var(--muted)" }}>Hours before:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={24}
+                      className="input"
+                      style={{ maxWidth: 70, padding: "4px 8px" }}
+                      value={smsSettings.shift_reminder_hours_before}
+                      onChange={(e) => updateSmsSetting({ shift_reminder_hours_before: Number(e.target.value) })}
+                    />
+                  </div>
+                )}
+              </div>
+              <input
+                type="checkbox"
+                checked={smsSettings.shift_reminder_enabled}
+                onChange={(e) => updateSmsSetting({ shift_reminder_enabled: e.target.checked })}
+                disabled={smsSavingKey === "shift_reminder_enabled"}
+                style={{ marginTop: 2 }}
+              />
+            </label>
+
+            <label className="flex items-start justify-between gap-3 p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
+              <div className="flex-1">
+                <div className="text-sm font-medium">Tip sheet approved</div>
+                <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                  Text employees their tip amount when a tip sheet is approved and locked.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={smsSettings.tip_approved_enabled}
+                onChange={(e) => updateSmsSetting({ tip_approved_enabled: e.target.checked })}
+                disabled={smsSavingKey === "tip_approved_enabled"}
+                style={{ marginTop: 2 }}
+              />
+            </label>
+          </div>
+        )}
       </section>
 
       <section className="card p-6 mb-6">

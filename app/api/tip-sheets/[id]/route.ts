@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import { notifyTipSheetApproved } from "@/lib/twilio";
 
 type TipSheetRow = {
   id: string;
@@ -55,6 +56,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (d !== undefined) payload.date = d;
 
   const supabase = createClient();
+
+  // Read current status before update so we can detect pending -> approved transition
+  let prevStatus: string | null = null;
+  if (payload.status !== undefined) {
+    const { data: prev } = await supabase
+      .from("tip_sheets")
+      .select("status")
+      .eq("id", params.id)
+      .single();
+    prevStatus = (prev?.status as string) ?? null;
+  }
+
   const { data, error } = await supabase
     .from("tip_sheets")
     .update(payload)
@@ -62,7 +75,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(toClient(data as TipSheetRow));
+
+  // Fire SMS only on the pending -> approved transition (non-blocking)
+  let sms_summary: { attempted: number; sent: number; blocked: number; failed: number } | null = null;
+  if (payload.status === "approved" && prevStatus !== "approved") {
+    try {
+      sms_summary = await notifyTipSheetApproved(params.id);
+    } catch (err) {
+      console.error("notifyTipSheetApproved failed:", err);
+    }
+  }
+
+  return NextResponse.json({ ...toClient(data as TipSheetRow), sms_summary });
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {

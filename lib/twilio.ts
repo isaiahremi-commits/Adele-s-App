@@ -267,3 +267,196 @@ export async function initiateOptIn(employeeId: string): Promise<SendResult> {
     skipFooter: true, // Has its own compliant language built in
   });
 }
+
+// ============================================================
+// Notification helpers — called from approve flows etc.
+// Each one checks the global settings toggle before sending.
+// Each one sends to all opted-in employees affected by the event.
+// ============================================================
+
+type NotifyResult = {
+  attempted: number;
+  sent: number;
+  blocked: number;
+  failed: number;
+};
+
+async function getSettings() {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("sms_settings")
+    .select("*")
+    .eq("id", 1)
+    .single();
+  return data;
+}
+
+/**
+ * Notify all employees whose shifts were just approved for a given week.
+ * Triggered by /api/schedule/approve.
+ */
+export async function notifySchedulePublished(weekStartISO: string): Promise<NotifyResult> {
+  const result: NotifyResult = { attempted: 0, sent: 0, blocked: 0, failed: 0 };
+  const settings = await getSettings();
+  if (!settings?.schedule_published_enabled) return result;
+
+  const supabase = createClient();
+  const weekEnd = new Date(weekStartISO + "T00:00:00");
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndISO = weekEnd.toISOString().slice(0, 10);
+
+  // Get distinct employee IDs that have shifts in this week
+  const { data: shifts } = await supabase
+    .from("shifts")
+    .select("employee_id")
+    .gte("date", weekStartISO)
+    .lte("date", weekEndISO);
+
+  const employeeIds = Array.from(new Set((shifts ?? []).map((s) => s.employee_id).filter(Boolean)));
+  if (employeeIds.length === 0) return result;
+
+  const { data: emps } = await supabase
+    .from("employees")
+    .select("id, first_name, phone, sms_opt_in")
+    .in("id", employeeIds);
+
+  for (const emp of emps ?? []) {
+    result.attempted++;
+    if (!emp.sms_opt_in || !emp.phone) {
+      result.blocked++;
+      continue;
+    }
+    const firstName = emp.first_name ?? "";
+    const message = `Hi ${firstName}, your Manadele schedule is published for the week of ${weekStartISO}. Open the app to see your shifts.`;
+    const r = await sendSMS({
+      to: emp.phone,
+      message,
+      smsType: "schedule_published",
+      recipientEmployeeId: emp.id,
+      relatedEntityType: "schedule_week",
+      relatedEntityId: null,
+    });
+    if (r.status === "sent" || r.status === "test_mode") result.sent++;
+    else result.failed++;
+  }
+
+  return result;
+}
+
+/**
+ * Notify all employees on a tip sheet that's just been approved.
+ * Triggered by /api/tip-sheets/[id] PATCH when status flips to approved.
+ */
+export async function notifyTipSheetApproved(tipSheetId: string): Promise<NotifyResult> {
+  const result: NotifyResult = { attempted: 0, sent: 0, blocked: 0, failed: 0 };
+  const settings = await getSettings();
+  if (!settings?.tip_approved_enabled) return result;
+
+  const supabase = createClient();
+
+  const { data: sheet } = await supabase
+    .from("tip_sheets")
+    .select("id, date, outlet_id, outlets(name)")
+    .eq("id", tipSheetId)
+    .single();
+
+  const outletName = (() => {
+    const o = sheet?.outlets as { name?: string } | { name?: string }[] | null;
+    return Array.isArray(o) ? o[0]?.name ?? "" : o?.name ?? "";
+  })();
+
+  // Get all allocations on this sheet with the dollar amount per employee
+  const { data: allocs } = await supabase
+    .from("tip_allocations")
+    .select("employee_id, total_amount")
+    .eq("tip_sheet_id", tipSheetId);
+
+  if (!allocs || allocs.length === 0) return result;
+
+  const employeeIds = allocs.map((a) => a.employee_id).filter(Boolean);
+  const { data: emps } = await supabase
+    .from("employees")
+    .select("id, first_name, phone, sms_opt_in")
+    .in("id", employeeIds);
+
+  const empById = new Map((emps ?? []).map((e) => [e.id, e]));
+
+  for (const a of allocs) {
+    result.attempted++;
+    const emp = empById.get(a.employee_id);
+    if (!emp || !emp.sms_opt_in || !emp.phone) {
+      result.blocked++;
+      continue;
+    }
+    const amount = Number(a.total_amount ?? 0).toFixed(2);
+    const dateLabel = sheet?.date ?? "";
+    const firstName = emp.first_name ?? "";
+    const message = `Hi ${firstName}, your tips from ${dateLabel}${outletName ? ` at ${outletName}` : ""}: $${amount}. Open Manadele to see the breakdown.`;
+    const r = await sendSMS({
+      to: emp.phone,
+      message,
+      smsType: "tip_approved",
+      recipientEmployeeId: emp.id,
+      relatedEntityType: "tip_sheet",
+      relatedEntityId: tipSheetId,
+    });
+    if (r.status === "sent" || r.status === "test_mode") result.sent++;
+    else result.failed++;
+  }
+
+  return result;
+}
+
+/**
+ * Send a shift reminder to a single employee.
+ * Called by the cron job (set up separately via Vercel Cron).
+ */
+export async function notifyShiftReminder(shiftId: string): Promise<NotifyResult> {
+  const result: NotifyResult = { attempted: 0, sent: 0, blocked: 0, failed: 0 };
+  const settings = await getSettings();
+  if (!settings?.shift_reminder_enabled) return result;
+
+  const supabase = createClient();
+
+  const { data: shift } = await supabase
+    .from("shifts")
+    .select("id, employee_id, date, start_time, end_time, position, outlets(name)")
+    .eq("id", shiftId)
+    .single();
+
+  if (!shift?.employee_id) return result;
+
+  const { data: emp } = await supabase
+    .from("employees")
+    .select("id, first_name, phone, sms_opt_in")
+    .eq("id", shift.employee_id)
+    .single();
+
+  result.attempted++;
+  if (!emp || !emp.sms_opt_in || !emp.phone) {
+    result.blocked++;
+    return result;
+  }
+
+  const outletName = (() => {
+    const o = shift.outlets as { name?: string } | { name?: string }[] | null;
+    return Array.isArray(o) ? o[0]?.name ?? "" : o?.name ?? "";
+  })();
+
+  const firstName = emp.first_name ?? "";
+  const time = `${shift.start_time ?? ""}–${shift.end_time ?? ""}`;
+  const message = `Hi ${firstName}, reminder: you're scheduled today${outletName ? ` at ${outletName}` : ""} from ${time}${shift.position ? ` (${shift.position})` : ""}.`;
+
+  const r = await sendSMS({
+    to: emp.phone,
+    message,
+    smsType: "shift_reminder",
+    recipientEmployeeId: emp.id,
+    relatedEntityType: "shift",
+    relatedEntityId: shiftId,
+  });
+  if (r.status === "sent" || r.status === "test_mode") result.sent++;
+  else result.failed++;
+
+  return result;
+}
