@@ -315,9 +315,14 @@ export default function SetupPage() {
 
       <section className="card p-6 mb-6">
         <h2 className="text-lg font-semibold mb-1">SMS Notifications</h2>
-        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-          Configure which automatic text notifications get sent. Employees must opt in individually before they receive any messages.
-        </p>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <p className="text-xs flex-1" style={{ color: "var(--muted)" }}>
+            Configure which automatic text notifications get sent. Employees must opt in individually before they receive any messages.
+          </p>
+          <a href="/setup/sms-log" className="text-xs" style={{ color: "var(--primary)", whiteSpace: "nowrap" }}>
+            View SMS log &rarr;
+          </a>
+        </div>
 
         {!smsSettings ? (
           <div className="text-xs" style={{ color: "var(--muted)" }}>Loading...</div>
