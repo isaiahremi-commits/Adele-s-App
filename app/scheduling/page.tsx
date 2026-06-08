@@ -82,6 +82,8 @@ export default function SchedulingPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  // Read-time lateness flags keyed by shift_id (from approved timecards).
+  const [lateness, setLateness] = useState<Record<string, { tier: number; minutes_late: number }>>({});
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [modalOpen, setModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -109,16 +111,24 @@ export default function SchedulingPage() {
   async function load() {
     const start = toISODate(days[0]);
     const end = toISODate(days[6]);
-    const [eRes, sRes, oRes, svcRes, rRes, dRes] = await Promise.all([
+    const [eRes, sRes, oRes, svcRes, rRes, dRes, lRes] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch(`/api/shifts?start=${start}&end=${end}`).then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/services").then((r) => r.json()),
       fetch("/api/outlet-roles").then((r) => r.json()),
       fetch("/api/departments").then((r) => r.json()),
+      fetch(`/api/timecards/lateness?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
     ]);
     setEmployees(Array.isArray(eRes) ? eRes : []);
     setShifts(Array.isArray(sRes) ? sRes : []);
+    const lateMap: Record<string, { tier: number; minutes_late: number }> = {};
+    if (Array.isArray(lRes)) {
+      for (const l of lRes) {
+        if (l && l.shift_id) lateMap[l.shift_id] = { tier: l.lateness_tier, minutes_late: l.minutes_late };
+      }
+    }
+    setLateness(lateMap);
     setOutlets(Array.isArray(oRes) ? oRes : []);
     setServices(Array.isArray(svcRes) ? svcRes : []);
     setRoles(Array.isArray(rRes) ? rRes : []);
@@ -455,6 +465,12 @@ export default function SchedulingPage() {
                               <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
                                 <div className="flex items-center gap-1 mb-0.5">
                                   {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
+                                  {lateness[s.id] && (
+                                    <span
+                                      title={`Tier ${lateness[s.id].tier}: ${lateness[s.id].minutes_late} min late`}
+                                      style={{ color: "var(--amber)", fontSize: 11, lineHeight: 1 }}
+                                    >⏰</span>
+                                  )}
                                 </div>
                                 <div className="font-medium" style={{ color: "var(--primary)" }}>
                                   {s.start_time?.slice(0, 5) ?? "?"}-{s.end_time?.slice(0, 5) ?? "?"}
