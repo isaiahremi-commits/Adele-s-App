@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import SignOutButton from "@/components/SignOutButton";
 
 const links = [
   { href: "/", label: "Dashboard", icon: "◎" },
@@ -26,6 +27,8 @@ function applyTheme(theme: Theme) {
 
 export default function Nav() {
   const pathname = usePathname();
+  // The login screen renders standalone (no sidebar).
+  const hidden = pathname === "/login";
   const [theme, setTheme] = useState<Theme>("light");
   const [companyName, setCompanyName] = useState<string>("Loading...");
 
@@ -49,6 +52,8 @@ export default function Nav() {
     applyTheme(next);
     if (typeof window !== "undefined") localStorage.setItem("theme", next);
   }
+
+  if (hidden) return null;
 
   return (
     <aside
@@ -92,6 +97,9 @@ export default function Nav() {
         );
       })}
       <div className="mt-auto pt-6 px-2">
+        <div className="pb-3 mb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <SignOutButton />
+        </div>
         <p className="text-xs" style={{ color: "var(--muted)" }}>
           Powered by <span style={{ color: "var(--primary)" }}>Manadele</span>
         </p>
