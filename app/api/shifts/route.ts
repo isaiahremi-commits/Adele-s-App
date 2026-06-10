@@ -48,6 +48,26 @@ export async function POST(req: Request) {
   if (body.notes) payload.notes = body.notes;
 
   const supabase = createClient();
+
+  // PTO guard: block shift creation on an employee's approved-PTO dates.
+  if (payload.employee_id && dateValue) {
+    const { data: pto } = await supabase
+      .from("pto_requests")
+      .select("id, reason")
+      .eq("employee_id", payload.employee_id)
+      .eq("status", "approved")
+      .lte("start_date", dateValue)
+      .gte("end_date", dateValue)
+      .limit(1);
+    if (pto && pto.length > 0) {
+      const r = pto[0] as { id: string; reason: string };
+      return NextResponse.json(
+        { error: `Employee has approved PTO on this date (${r.reason}, request #${r.id.slice(0, 8)})` },
+        { status: 409 }
+      );
+    }
+  }
+
   const { data, error } = await supabase.from("shifts").insert(payload).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(toClient(data as ShiftRow));
