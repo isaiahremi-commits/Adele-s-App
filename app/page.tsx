@@ -46,6 +46,15 @@ type TipsByOutletResponse = {
 
 type Range = "weekly" | "biweekly";
 
+type PayrollPrediction = {
+  period_start: string;
+  period_end: string;
+  total: number;
+  incomplete: boolean;
+  by_outlet: { name: string; total: number }[];
+  by_department: { name: string; total: number }[];
+};
+
 function StatCard({
   label,
   value,
@@ -99,6 +108,14 @@ export default function DashboardPage() {
   const [range, setRange] = useState<Range>("weekly");
   const [tipsByOutlet, setTipsByOutlet] = useState<TipsByOutletResponse | null>(null);
   const [tipsLoading, setTipsLoading] = useState(true);
+  const [payrollPred, setPayrollPred] = useState<PayrollPrediction | null>(null);
+
+  useEffect(() => {
+    fetch("/api/dashboard/payroll-prediction")
+      .then((r) => r.json())
+      .then((d) => setPayrollPred(d && !d.error ? d : null))
+      .catch(() => setPayrollPred(null));
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -169,6 +186,50 @@ export default function DashboardPage() {
           href="/employees"
         />
       </div>
+
+      {payrollPred && (
+        <Link
+          href="/payroll"
+          className="card p-6 block mb-8 transition-transform hover:-translate-y-0.5"
+          style={{ textDecoration: "none", color: "inherit" }}
+        >
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div>
+              <div className="text-sm" style={{ color: "var(--muted)" }}>
+                Payroll prediction · period-to-date
+              </div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                {formatRange(payrollPred.period_start, payrollPred.period_end)}
+              </div>
+            </div>
+            <span style={{ color: "var(--muted)" }}>{arrowRight}</span>
+          </div>
+          <div className="text-3xl font-semibold mb-3" style={{ color: "var(--primary)" }}>
+            {money(payrollPred.total)}
+            {payrollPred.incomplete && (
+              <span className="text-xs ml-2" style={{ color: "var(--amber)" }}>⚠ some rates missing</span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>By outlet</div>
+              {payrollPred.by_outlet.map((o) => (
+                <div key={o.name} className="flex justify-between text-sm py-0.5">
+                  <span>{o.name}</span><span className="font-medium">{money(o.total)}</span>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>By department</div>
+              {payrollPred.by_department.map((d) => (
+                <div key={d.name} className="flex justify-between text-sm py-0.5">
+                  <span>{d.name}</span><span className="font-medium">{money(d.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Link>
+      )}
 
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
