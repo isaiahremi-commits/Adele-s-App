@@ -229,12 +229,6 @@ export default function PayrollPage() {
         </div>
       </div>
 
-      {/* Tip-sheet integration note (Tier 1 #3 not yet shipped) */}
-      <div className="card p-3 mb-4 text-xs" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>
-        Tip-sheet dollar amounts are not yet populated (Tier 1 #3 ships next). Tip pay currently reflects
-        large-party manager commission only; per-row tip allocations will appear once the tip sheet engine lands.
-      </div>
-
       {mode === "prediction" && (
         <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
           Prediction = approved/posted hours so far + scheduled-but-unclocked shifts projected as regular hours (no OT).

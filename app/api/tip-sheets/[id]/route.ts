@@ -61,6 +61,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const payload: Record<string, unknown> = { ...rest };
   const d = date ?? sheet_date;
   if (d !== undefined) payload.date = d;
+  // Keep shift_type canonical lowercase on edit (Migration 005).
+  if (typeof payload.shift_type === "string") payload.shift_type = payload.shift_type.toLowerCase();
 
   const supabase = createClient();
 

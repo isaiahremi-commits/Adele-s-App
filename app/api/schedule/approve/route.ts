@@ -86,12 +86,15 @@ export async function POST(req: Request) {
 
   for (const s of shiftRows) {
     if (!s.outlet_id || !s.shift_type || !s.date || !s.employee_id) continue;
-    const key = s.outlet_id + "|" + s.shift_type + "|" + s.date;
+    // Persist tip_sheets.shift_type lowercase (Migration 005). Coerce here so the
+    // group key, existing-sheet lookup, and insert all use the canonical value.
+    const shiftType = s.shift_type.toLowerCase();
+    const key = s.outlet_id + "|" + shiftType + "|" + s.date;
     let g = groups.get(key);
     if (!g) {
       g = {
         outlet_id: s.outlet_id,
-        shift_type: s.shift_type,
+        shift_type: shiftType,
         date: s.date,
         employee_ids: new Set<string>(),
         hours_by_employee: new Map<string, number>(),

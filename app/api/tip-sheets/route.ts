@@ -35,7 +35,8 @@ export async function POST(req: Request) {
   const payload: Record<string, unknown> = {
     department: body.department || null,
     service_name: body.service_name || null,
-    shift_type: body.shift_type || null,
+    // Persist shift_type lowercase so the column stays canonical (Migration 005).
+    shift_type: typeof body.shift_type === "string" ? body.shift_type.toLowerCase() : (body.shift_type || null),
     date: dateValue || null,
     service_charge: Number(body.service_charge ?? 0),
     non_cash_tips: Number(body.non_cash_tips ?? 0),
