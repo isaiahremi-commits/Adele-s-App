@@ -9,6 +9,7 @@ type Employee = {
   last_name?: string | null;
   department?: string;
   position?: string;
+  title?: string | null;
   phone?: string;
   email?: string;
   active?: boolean;
@@ -349,7 +350,12 @@ export default function EmployeesPage() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold truncate">{e.name}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                          {e.home_position || e.position || "-"}{dept && ` · ${dept}`}
+                          {(() => {
+                            const pos = e.home_position || e.position;
+                            if (pos) return dept ? `${pos} · ${dept}` : pos;
+                            if (dept) return dept;
+                            return e.title || "—"; // managers have a title but no staff position/dept
+                          })()}
                         </div>
                       </div>
                     </div>

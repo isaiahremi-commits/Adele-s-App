@@ -254,6 +254,9 @@ export default function SetupPage() {
     return "chip-muted";
   }
 
+  // SMS is a Phase 2 feature — hidden by default. Set NEXT_PUBLIC_SMS_ENABLED=true to surface it.
+  const smsEnabled = process.env.NEXT_PUBLIC_SMS_ENABLED === "true";
+
   return (
     <div>
       <header className="mb-6">
@@ -313,6 +316,7 @@ export default function SetupPage() {
         </div>
       </section>
 
+      {smsEnabled && (
       <section className="card p-6 mb-6">
         <h2 className="text-lg font-semibold mb-1">SMS Notifications</h2>
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -392,6 +396,7 @@ export default function SetupPage() {
           </div>
         )}
       </section>
+      )}
 
       <section className="card p-6 mb-6">
         <h2 className="text-lg font-semibold mb-1">Departments</h2>
