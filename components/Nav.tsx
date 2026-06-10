@@ -10,6 +10,8 @@ const links = [
   { href: "/payroll", label: "Payroll", icon: "▣" },
   { href: "/pto", label: "PTO", icon: "❖" },
   { href: "/tips", label: "Tips", icon: "◈" },
+  { href: "/reports", label: "Reports", icon: "▤" },
+  { href: "/swaps", label: "Swaps", icon: "⇄" },
   { href: "/employees", label: "Employees", icon: "◉" },
   { href: "/setup", label: "Setup", icon: "⚙" },
 ];

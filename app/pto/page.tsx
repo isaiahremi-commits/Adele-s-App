@@ -36,7 +36,8 @@ export default function PTOPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [tab, setTab] = useState<"pending" | "history">("pending");
+  const [tab, setTab] = useState<"pending" | "approved" | "denied">("pending");
+  const [reasonFilter, setReasonFilter] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -72,9 +73,13 @@ export default function PTOPage() {
     [employees]
   );
   const empName = (id: string) => employees.find((e) => e.id === id)?.name ?? "—";
+  const balanceOf = (id: string) => Number(balances.find((b) => b.employee_id === id)?.balance_hours ?? 0);
 
-  const pending = requests.filter((r) => r.status === "pending");
-  const decided = requests.filter((r) => r.status !== "pending");
+  const byReason = (r: Request) => !reasonFilter || r.reason === reasonFilter;
+  const pending = requests.filter((r) => r.status === "pending" && byReason(r));
+  const approved = requests.filter((r) => r.status === "approved" && byReason(r));
+  const denied = requests.filter((r) => r.status === "denied" && byReason(r));
+  const visible = tab === "pending" ? pending : tab === "approved" ? approved : denied;
 
   async function post(body: Record<string, unknown>) {
     const res = await fetch("/api/pto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -178,64 +183,87 @@ export default function PTOPage() {
       </div>
 
       {/* Tabs */}
-      <div className="inline-flex rounded-lg p-1 mb-4" style={{ background: "var(--surface-2)" }}>
-        {(["pending", "history"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className="text-xs px-3 py-1 rounded-md"
-            style={{ background: tab === t ? "var(--surface)" : "transparent", color: tab === t ? "var(--primary)" : "var(--muted)", fontWeight: tab === t ? 600 : 400, border: "none", cursor: "pointer" }}>
-            {t === "pending" ? `Pending (${pending.length})` : "Decisions (30d)"}
-          </button>
-        ))}
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <div className="inline-flex rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
+          {([["pending", `Pending (${pending.length})`], ["approved", "Approved"], ["denied", "Denied"]] as const).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t)} className="text-xs px-3 py-1 rounded-md"
+              style={{ background: tab === t ? "var(--surface)" : "transparent", color: tab === t ? "var(--primary)" : "var(--muted)", fontWeight: tab === t ? 600 : 400, border: "none", cursor: "pointer" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Reason filter chips */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <button onClick={() => setReasonFilter(null)} className="chip" style={{ cursor: "pointer", background: reasonFilter === null ? "var(--primary)" : "var(--surface-2)", color: reasonFilter === null ? "var(--primary-on)" : "var(--muted)" }}>All</button>
+          {PTO_REASONS.map((r) => (
+            <button key={r} onClick={() => setReasonFilter(reasonFilter === r ? null : r)} className="chip" style={{ cursor: "pointer", background: reasonFilter === r ? "var(--primary)" : "var(--surface-2)", color: reasonFilter === r ? "var(--primary-on)" : "var(--muted)" }}>{r}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Requests list */}
-      <div className="card overflow-x-auto mb-6">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
-              <th className="text-left p-3 font-medium">Employee</th>
-              <th className="text-left p-3 font-medium">Dates</th>
-              <th className="text-right p-3 font-medium">Hours</th>
-              <th className="text-left p-3 font-medium">Reason</th>
-              <th className="text-left p-3 font-medium">{tab === "pending" ? "Notes" : "Decided"}</th>
-              <th className="text-right p-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(tab === "pending" ? pending : decided).length === 0 && (
-              <tr><td colSpan={6} className="p-6 text-center" style={{ color: "var(--muted)" }}>
-                {tab === "pending" ? "No pending requests." : "No decisions in the last 30 days."}
-              </td></tr>
-            )}
-            {(tab === "pending" ? pending : decided).map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td className="p-3">{r.employees?.name || empName(r.employee_id)}</td>
-                <td className="p-3">{fmt(r.start_date)} – {fmt(r.end_date)} <span style={{ color: "var(--muted)" }}>({daysInRange(r.start_date, r.end_date)}d)</span></td>
-                <td className="p-3 text-right">{Number(r.total_hours_requested).toFixed(2)}</td>
-                <td className="p-3">{reasonChip(r.reason)}</td>
-                <td className="p-3" style={{ color: "var(--muted)" }}>
-                  {tab === "pending" ? (r.notes || "—") : (
-                    <span className={`chip ${r.status === "approved" ? "chip-green" : "chip-amber"}`}>{r.status}</span>
-                  )}
-                </td>
-                <td className="p-3 text-right">
-                  <div className="flex gap-1 justify-end flex-wrap">
-                    {r.status === "pending" && (
-                      <>
-                        <button className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => approve(r)}>Approve</button>
-                        <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => deny(r)}>Deny</button>
-                        <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => del(r)}>Delete</button>
-                      </>
-                    )}
-                    {r.status === "approved" && (
-                      <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => unapprove(r)}>Unapprove</button>
-                    )}
+      {/* Pending = card-style inbox with live balance impact; others = compact history */}
+      {tab === "pending" ? (
+        <div className="flex flex-col gap-3 mb-6">
+          {pending.length === 0 && <div className="card p-6 text-center" style={{ color: "var(--muted)" }}>No pending requests.</div>}
+          {pending.map((r) => {
+            const cur = balanceOf(r.employee_id);
+            const after = cur - Number(r.total_hours_requested);
+            return (
+              <div key={r.id} className="card p-4 flex items-start justify-between flex-wrap gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0" style={{ background: "var(--surface-2)", color: "var(--primary)" }}>
+                    {(r.employees?.name || empName(r.employee_id)).split(" ").map((w) => w[0]).slice(0, 2).join("")}
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  <div>
+                    <div className="font-medium flex items-center gap-2 flex-wrap">
+                      {r.employees?.name || empName(r.employee_id)}
+                      <span className="chip chip-muted">{r.reason}</span>
+                    </div>
+                    <div className="text-sm" style={{ color: "var(--muted)" }}>
+                      {fmt(r.start_date)} – {fmt(r.end_date)} ({daysInRange(r.start_date, r.end_date)}d) · {Number(r.total_hours_requested).toFixed(2)}h requested
+                    </div>
+                    <div className="text-xs mt-1">
+                      Balance impact: <span style={{ color: "var(--muted)" }}>{cur.toFixed(2)}h → </span>
+                      <span style={{ color: after < 0 ? "var(--amber)" : "var(--primary)" }}>{after.toFixed(2)}h{after < 0 ? " ⚠" : ""}</span>
+                    </div>
+                    {r.notes && <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{r.notes}</div>}
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                  <button className="btn btn-primary" style={{ padding: "4px 12px", fontSize: 12 }} disabled={busy === r.id} onClick={() => approve(r)}>Approve</button>
+                  <button className="btn btn-secondary" style={{ padding: "4px 12px", fontSize: 12 }} disabled={busy === r.id} onClick={() => deny(r)}>Deny</button>
+                  <button className="btn btn-secondary" style={{ padding: "4px 12px", fontSize: 12 }} disabled={busy === r.id} onClick={() => del(r)}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="card overflow-x-auto mb-6" style={{ maxHeight: 420, overflowY: "auto" }}>
+          <table className="w-full text-sm">
+            <thead><tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
+              <th className="text-left p-3">Employee</th><th className="text-left p-3">Dates</th>
+              <th className="text-right p-3">Hours</th><th className="text-left p-3">Reason</th>
+              <th className="text-left p-3">Decided</th><th className="text-right p-3">Actions</th>
+            </tr></thead>
+            <tbody>
+              {visible.length === 0 && <tr><td colSpan={6} className="p-6 text-center" style={{ color: "var(--muted)" }}>No {tab} requests.</td></tr>}
+              {visible.map((r) => (
+                <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td className="p-3">{r.employees?.name || empName(r.employee_id)}</td>
+                  <td className="p-3">{fmt(r.start_date)} – {fmt(r.end_date)}</td>
+                  <td className="p-3 text-right">{Number(r.total_hours_requested).toFixed(2)}</td>
+                  <td className="p-3">{reasonChip(r.reason)}</td>
+                  <td className="p-3" style={{ color: "var(--muted)" }}>{r.decided_at ? new Date(r.decided_at).toLocaleDateString() : "—"}</td>
+                  <td className="p-3 text-right">
+                    {r.status === "approved" && <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => unapprove(r)}>Unapprove</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Balances */}
       <h2 className="text-lg font-semibold mb-3">Balances</h2>
