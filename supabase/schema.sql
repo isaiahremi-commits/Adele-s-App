@@ -60,13 +60,9 @@ create table if not exists tip_sheets (
   approved_at timestamptz
 );
 
-create table if not exists tip_event_managers (
-  id uuid primary key default gen_random_uuid(),
-  tip_sheet_id uuid references tip_sheets(id) on delete cascade,
-  employee_id uuid references employees(id) on delete cascade,
-  commission_pct numeric not null default 0,
-  created_at timestamptz default now()
-);
+-- tip_event_managers dropped in Migration 003 — commission now lives in
+-- large_party_revenues. Definition removed so a schema.sql re-run can't
+-- resurrect the dropped table.
 
 create table if not exists tip_allocations (
   id uuid primary key default gen_random_uuid(),
