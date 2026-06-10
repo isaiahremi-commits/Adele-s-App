@@ -84,6 +84,12 @@ export default function SchedulingPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   // Read-time lateness flags keyed by shift_id (from approved timecards).
   const [lateness, setLateness] = useState<Record<string, { tier: number; minutes_late: number }>>({});
+  // Tier 2: approved-PTO overlay + swap badges/trace (read-time, additive).
+  const [ptoOverlay, setPtoOverlay] = useState<Array<{ employee_id: string; name: string; start_date: string; end_date: string; reason: string }>>([]);
+  const [swaps, setSwaps] = useState<Array<{ id: string; shift_id: string; status: string; original_name: string; new_name: string; created_at: string }>>([]);
+  const [swapModal, setSwapModal] = useState<{ shift: Shift; mode: "record" | "manage" } | null>(null);
+  const [swapNewEmp, setSwapNewEmp] = useState("");
+  const [swapNotes, setSwapNotes] = useState("");
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [modalOpen, setModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -120,6 +126,13 @@ export default function SchedulingPage() {
       fetch("/api/departments").then((r) => r.json()),
       fetch(`/api/timecards/lateness?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
     ]);
+    // Tier 2 reads (batched for the visible week), tolerant of missing endpoints.
+    const [ptoRes, swapRes] = await Promise.all([
+      fetch(`/api/scheduling/pto-overlay?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
+      fetch(`/api/swaps?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
+    ]);
+    setPtoOverlay(Array.isArray(ptoRes) ? ptoRes : []);
+    setSwaps(Array.isArray(swapRes) ? swapRes : []);
     setEmployees(Array.isArray(eRes) ? eRes : []);
     setShifts(Array.isArray(sRes) ? sRes : []);
     const lateMap: Record<string, { tier: number; minutes_late: number }> = {};
@@ -178,6 +191,37 @@ export default function SchedulingPage() {
 
   function shiftCountFor(empId: string, iso: string) {
     return shifts.filter((s) => s.employee_id === empId && s.shift_date === iso).length;
+  }
+
+  // Tier 2 helpers (read-time, additive).
+  function ptoFor(empId: string, iso: string) {
+    return ptoOverlay.find((p) => p.employee_id === empId && p.start_date <= iso && p.end_date >= iso) ?? null;
+  }
+  function swapFor(shiftId: string) {
+    const rows = swaps.filter((s) => s.shift_id === shiftId);
+    return {
+      pending: rows.find((s) => s.status === "pending") ?? null,
+      completed: rows.filter((s) => s.status === "completed").sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    };
+  }
+  async function swapAction(url: string, body?: Record<string, unknown>) {
+    const res = await fetch(url, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setToast({ kind: "error", text: data.error || "Swap failed" }); return false; }
+    return true;
+  }
+  async function submitRecordSwap() {
+    if (!swapModal || !swapNewEmp) return;
+    if (await swapAction("/api/swaps", { shift_id: swapModal.shift.id, new_employee_id: swapNewEmp, notes: swapNotes || null })) {
+      setToast({ kind: "success", text: "Swap recorded (pending)." });
+      setSwapModal(null); setSwapNewEmp(""); setSwapNotes(""); load();
+    }
+  }
+  async function acceptSwap(swapId: string) {
+    if (await swapAction(`/api/swaps/${swapId}/accept`)) { setToast({ kind: "success", text: "Swap accepted." }); setSwapModal(null); load(); }
+  }
+  async function cancelSwap(swapId: string) {
+    if (await swapAction(`/api/swaps/${swapId}/cancel`)) { setToast({ kind: "success", text: "Swap cancelled." }); setSwapModal(null); load(); }
   }
 
   const outletShiftTypes = form.outlet_id ? services.filter((s) => s.outlet_id === form.outlet_id) : [];
@@ -456,11 +500,19 @@ export default function SchedulingPage() {
                   {days.map((d) => {
                     const list = shiftsFor(emp.id, d);
                     const atCap = list.length >= MAX_SHIFTS_PER_DAY;
+                    const pto = ptoFor(emp.id, toISODate(d));
                     return (
                       <td key={d.toISOString()} className="p-2 align-top">
                         <div className="flex flex-col gap-1">
+                          {pto && (
+                            <div className="rounded-md text-xs px-2 py-1" title={`Approved PTO: ${pto.name} (${pto.reason})`}
+                              style={{ background: "rgba(239,159,39,0.18)", border: "1px dashed var(--amber)", color: "var(--amber)" }}>
+                              PTO · {pto.reason}
+                            </div>
+                          )}
                           {list.map((s) => {
                             const outletName = outlets.find((o) => o.id === s.outlet_id)?.name;
+                            const sw = swapFor(s.id);
                             return (
                               <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
                                 <div className="flex items-center gap-1 mb-0.5">
@@ -471,17 +523,26 @@ export default function SchedulingPage() {
                                       style={{ color: "var(--amber)", fontSize: 11, lineHeight: 1 }}
                                     >⏰</span>
                                   )}
+                                  {sw.pending && (
+                                    <span title={`Pending: ${sw.pending.original_name} → ${sw.pending.new_name}`}
+                                      style={{ color: "var(--amber)", fontSize: 11, lineHeight: 1, cursor: "pointer" }}
+                                      onClick={() => setSwapModal({ shift: s, mode: "manage" })}>⇄</span>
+                                  )}
+                                  {!sw.pending && sw.completed.length > 0 && (
+                                    <span title={`Originally: ${sw.completed[0].original_name} · Current: ${sw.completed[sw.completed.length - 1].new_name} (swapped ${sw.completed[sw.completed.length - 1].created_at.slice(0, 10)})`}
+                                      style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1, cursor: "pointer" }}
+                                      onClick={() => setSwapModal({ shift: s, mode: "manage" })}>↺</span>
+                                  )}
                                 </div>
                                 <div className="font-medium" style={{ color: "var(--primary)" }}>
                                   {s.start_time?.slice(0, 5) ?? "?"}-{s.end_time?.slice(0, 5) ?? "?"}
                                 </div>
                                 {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
                                 {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
-                                <button
-                                  onClick={() => removeShift(s.id)}
-                                  className="absolute top-1 right-1 text-xs opacity-0 group-hover:opacity-100"
-                                  style={{ color: "var(--danger)" }}
-                                  >x</button>
+                                <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100">
+                                  <button onClick={() => setSwapModal({ shift: s, mode: "record" })} title="Record swap" style={{ color: "var(--muted)" }}>⇄</button>
+                                  <button onClick={() => removeShift(s.id)} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>
+                                </div>
                                 </div>
                               );
                             })}
@@ -737,6 +798,53 @@ export default function SchedulingPage() {
                   {copying ? "Copying..." : "Copy shifts"}
                 </button>
               </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Swap dialog (record new / manage pending or completed) */}
+      <Modal open={!!swapModal} onClose={() => { setSwapModal(null); setSwapNewEmp(""); setSwapNotes(""); }} title="Shift swap" width={440}>
+        {swapModal && (() => {
+          const sw = swapFor(swapModal.shift.id);
+          const recording = swapModal.mode === "record" || (swapModal.mode === "manage" && !sw.pending && sw.completed.length === 0);
+          return (
+            <div className="flex flex-col gap-3">
+              {sw.pending ? (
+                <>
+                  <div className="text-sm">Pending swap: <b>{sw.pending.original_name}</b> → <b>{sw.pending.new_name}</b></div>
+                  <div className="flex gap-2">
+                    <button className="btn btn-primary" onClick={() => acceptSwap(sw.pending!.id)}>Accept swap</button>
+                    <button className="btn btn-secondary" onClick={() => cancelSwap(sw.pending!.id)}>Cancel swap</button>
+                  </div>
+                </>
+              ) : recording ? (
+                <>
+                  <label className="text-sm"><span style={{ color: "var(--muted)" }}>Swap to employee</span>
+                    <select className="input mt-1" value={swapNewEmp} onChange={(e) => setSwapNewEmp(e.target.value)}>
+                      <option value="">Select…</option>
+                      {employees.filter((e) => e.id !== swapModal.shift.employee_id).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm"><span style={{ color: "var(--muted)" }}>Notes</span>
+                    <input className="input mt-1" value={swapNotes} onChange={(e) => setSwapNotes(e.target.value)} />
+                  </label>
+                  <div className="flex justify-end gap-2">
+                    <button className="btn btn-secondary" onClick={() => setSwapModal(null)}>Cancel</button>
+                    <button className="btn btn-primary" disabled={!swapNewEmp} onClick={submitRecordSwap}>Record swap (pending)</button>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <h4 className="font-semibold mb-2 text-sm">Swap history</h4>
+                  {sw.completed.map((c) => (
+                    <div key={c.id} className="text-xs mb-1" style={{ color: "var(--muted)" }}>
+                      {c.created_at.slice(0, 10)}: {c.original_name} → {c.new_name}
+                    </div>
+                  ))}
+                  <button className="btn btn-secondary mt-2" onClick={() => setSwapModal({ shift: swapModal.shift, mode: "record" })}>+ New swap</button>
+                </div>
+              )}
             </div>
           );
         })()}
