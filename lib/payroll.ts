@@ -43,6 +43,19 @@ export function currentPeriod(cycleLen: number, todayIso: string): Period {
   return periodFor(todayIso, cycleLen);
 }
 
+// Map every date in [startIso, endIso] to the pay period that contains it.
+// Used by the PTO allocator so per-day pay_period boundaries come from the
+// same periodFor() the pay engine uses — no duplicated period math.
+export function periodsForRange(startIso: string, endIso: string, cycleLen: number): Record<string, Period> {
+  const out: Record<string, Period> = {};
+  let d = startIso;
+  while (d <= endIso) {
+    out[d] = periodFor(d, cycleLen);
+    d = addDays(d, 1);
+  }
+  return out;
+}
+
 export function previousPeriod(period: Period, cycleLen: number): Period {
   const start = addDays(period.start, -cycleLen);
   const end = addDays(start, cycleLen - 1);

@@ -8,6 +8,7 @@ const links = [
   { href: "/scheduling", label: "Scheduling", icon: "▦" },
   { href: "/timecards", label: "Timecards", icon: "◷" },
   { href: "/payroll", label: "Payroll", icon: "▣" },
+  { href: "/pto", label: "PTO", icon: "❖" },
   { href: "/tips", label: "Tips", icon: "◈" },
   { href: "/employees", label: "Employees", icon: "◉" },
   { href: "/setup", label: "Setup", icon: "⚙" },
