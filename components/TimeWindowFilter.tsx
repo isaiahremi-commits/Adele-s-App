@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { getWindow, todayISO, type Window, type WindowKind } from "@/lib/timeWindow";
+import { useMounted } from "@/lib/useMounted";
 
 const KINDS: { kind: WindowKind; label: string }[] = [
   { kind: "weekly", label: "Weekly" },
@@ -23,6 +24,7 @@ export default function TimeWindowFilter({
   const [customStart, setCustomStart] = useState(todayISO());
   const [customEnd, setCustomEnd] = useState(todayISO());
   const [error, setError] = useState<string | null>(null);
+  const mounted = useMounted();
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -72,7 +74,7 @@ export default function TimeWindowFilter({
           </div>
         )}
         <span className="text-sm" style={{ color: "var(--muted)" }}>
-          {(() => { try { return getWindow(kind, todayISO(), { customStart, customEnd, payCycle }).label; } catch { return ""; } })()}
+          {mounted ? (() => { try { return getWindow(kind, todayISO(), { customStart, customEnd, payCycle }).label; } catch { return ""; } })() : ""}
         </span>
       </div>
       {error && <span className="text-xs" style={{ color: "var(--danger)" }}>{error}</span>}

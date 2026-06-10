@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMounted } from "@/lib/useMounted";
 import Modal from "@/components/Modal";
 
 // ---------------------------------------------------------------------------
@@ -148,6 +149,7 @@ const OVERRIDE_FIELDS = [
 // Page
 // ---------------------------------------------------------------------------
 export default function TimecardsPage() {
+  const mounted = useMounted();
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [rows, setRows] = useState<Row[]>([]);
   const [setup, setSetup] = useState<Setup | null>(null);
@@ -386,7 +388,7 @@ export default function TimecardsPage() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Timecards</h1>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>{niceDate}</p>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>{mounted ? niceDate : " "}</p>
         </div>
         <div className="flex items-center gap-2">
           <button

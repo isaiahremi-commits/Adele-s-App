@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import { createClient } from "@/lib/supabase";
+import { useMounted } from "@/lib/useMounted";
 import { buildEarningsCSV, buildHoursCSV } from "@/lib/payrollExport";
 import {
   cycleLength,
@@ -69,6 +70,7 @@ function downloadCSV(filename: string, csv: string) {
 }
 
 export default function PayrollPage() {
+  const mounted = useMounted();
   const [cycle, setCycle] = useState(14);
   const [period, setPeriod] = useState<Period>(() => currentPeriod(14, todayISO()));
   const [mode, setMode] = useState<Mode>("actual");
@@ -197,7 +199,7 @@ export default function PayrollPage() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Payroll</h1>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>{formatPeriod(period)}</p>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>{mounted ? formatPeriod(period) : " "}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button className="btn btn-secondary" onClick={() => setPeriod(previousPeriod(period, cycle))}>‹ Prev</button>
