@@ -1,5 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import Modal from "@/components/Modal";
+import { createClient } from "@/lib/supabase";
+import { buildEarningsCSV, buildHoursCSV } from "@/lib/payrollExport";
 import {
   cycleLength,
   currentPeriod,
@@ -25,6 +29,7 @@ type PayRow = {
   projected_hours: string | number;
   approved_count: number;
   scheduled_count: number;
+  regular_rate: string | number | null;
   regular_pay: string | number | null;
   ot_pay: string | number | null;
   training_pay: string | number | null;
@@ -51,6 +56,18 @@ function hrs(n: string | number): string {
   return Number(n).toFixed(2);
 }
 
+function downloadCSV(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function PayrollPage() {
   const [cycle, setCycle] = useState(14);
   const [period, setPeriod] = useState<Period>(() => currentPeriod(14, todayISO()));
@@ -59,15 +76,29 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
+  // Export support: employee_number map (not in pay_breakdown) + pay frequency.
+  const [empNumbers, setEmpNumbers] = useState<Record<string, string>>({});
+  const [payCycle, setPayCycle] = useState("biweekly");
+  const [validate, setValidate] = useState<{ kind: "earnings" | "hours"; missingRates: PayRow[]; unposted: number } | null>(null);
 
   // Resolve the configured cycle once, then re-anchor the default period.
   useEffect(() => {
     fetch("/api/setup")
       .then((r) => r.json())
       .then((s) => {
+        setPayCycle(s?.pay_cycle ?? "biweekly");
         const c = cycleLength(s?.pay_cycle ?? "biweekly");
         setCycle(c);
         setPeriod(currentPeriod(c, todayISO()));
+      })
+      .catch(() => {});
+    // employee_number isn't part of pay_breakdown — fetch it for the export.
+    fetch("/api/employees")
+      .then((r) => r.json())
+      .then((list) => {
+        const m: Record<string, string> = {};
+        for (const e of Array.isArray(list) ? list : []) if (e.employee_number) m[e.id] = String(e.employee_number);
+        setEmpNumbers(m);
       })
       .catch(() => {});
   }, []);
@@ -131,6 +162,33 @@ export default function PayrollPage() {
     }
   }
 
+  function doExport(kind: "earnings" | "hours") {
+    const ctx = { periodStart: period.start, periodEnd: period.end, empNumbers, payFrequency: payCycle };
+    const csv = kind === "earnings" ? buildEarningsCSV(rows, ctx) : buildHoursCSV(rows, ctx);
+    const fn = `manadele_${kind}_${period.start}_to_${period.end}.csv`;
+    downloadCSV(fn, csv);
+    setToast({ kind: "success", text: `Downloaded ${fn}` });
+  }
+
+  // Advisory pre-export gate: NULL regular_rate + approved-but-unposted timecards.
+  async function requestExport(kind: "earnings" | "hours") {
+    const missingRates = rows.filter((r) => r.regular_rate === null || r.regular_rate === undefined);
+    let unposted = 0;
+    try {
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("timecards")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "approved")
+        .gte("date", period.start)
+        .lte("date", period.end);
+      unposted = count ?? 0;
+    } catch { /* advisory only */ }
+
+    if (missingRates.length > 0 || unposted > 0) setValidate({ kind, missingRates, unposted });
+    else doExport(kind);
+  }
+
   const todayPeriod = currentPeriod(cycle, todayISO());
   const isCurrent = period.start === todayPeriod.start;
 
@@ -164,6 +222,8 @@ export default function PayrollPage() {
               </button>
             ))}
           </div>
+          <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("earnings")}>Export earnings</button>
+          <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("hours")}>Export hours</button>
         </div>
       </div>
 
@@ -285,6 +345,39 @@ export default function PayrollPage() {
           {posting ? "Posting…" : "Post period (lock approved → posted)"}
         </button>
       </div>
+
+      {/* Advisory pre-export validation modal */}
+      <Modal open={!!validate} onClose={() => setValidate(null)} title="Before you export" width={480}>
+        {validate && (
+          <div className="flex flex-col gap-3 text-sm">
+            <p style={{ color: "var(--muted)" }}>
+              This is advisory — you can export anyway (e.g. a partial period for review).
+            </p>
+            {validate.missingRates.length > 0 && (
+              <div className="card p-3" style={{ borderColor: "var(--amber)" }}>
+                <div style={{ color: "var(--amber)" }}>⚠ {validate.missingRates.length} employee{validate.missingRates.length === 1 ? "" : "s"} missing a regular rate</div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                  {validate.missingRates.map((r) => `${r.first_name} ${r.last_name}`).join(", ")}
+                </div>
+                <Link href="/employees" className="text-xs" style={{ color: "var(--primary)" }}>Set rates in Employees →</Link>
+              </div>
+            )}
+            {validate.unposted > 0 && (
+              <div className="card p-3" style={{ borderColor: "var(--amber)" }}>
+                <div style={{ color: "var(--amber)" }}>⚠ {validate.unposted} timecard{validate.unposted === 1 ? "" : "s"} approved but not posted in this period</div>
+                <button className="btn btn-secondary mt-2" style={{ fontSize: 12, padding: "4px 10px" }} disabled={posting}
+                  onClick={async () => { await postPeriod(); setValidate(null); }}>
+                  {posting ? "Posting…" : "Post period now"}
+                </button>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 mt-2">
+              <button className="btn btn-secondary" onClick={() => setValidate(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { const k = validate.kind; setValidate(null); doExport(k); }}>Export anyway</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {toast && (
         <div className="fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm z-50"
