@@ -80,7 +80,8 @@ export async function POST(req: Request) {
     date: addDaysISO(s.date, diffDays),
     start_time: s.start_time,
     end_time: s.end_time,
-    shift_type: s.shift_type,
+    // Keep shift_type canonical lowercase when copying shifts (Migration 002).
+    shift_type: typeof s.shift_type === "string" ? s.shift_type.toLowerCase() : s.shift_type,
     position: s.position,
     outlet_id: s.outlet_id,
     department: s.department,

@@ -40,7 +40,9 @@ export async function POST(req: Request) {
     date: dateValue ?? null,
     start_time: body.start_time || null,
     end_time: body.end_time || null,
-    shift_type: body.shift_type ?? null,
+    // shift_type is the selected outlet_service name; persist it lowercase so
+    // the column stays canonical (Migration 002). Display labels are unchanged.
+    shift_type: typeof body.shift_type === "string" ? body.shift_type.toLowerCase() : (body.shift_type ?? null),
     department: body.department ?? null,
     position: body.position ?? null,
   };
