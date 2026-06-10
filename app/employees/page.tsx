@@ -5,6 +5,8 @@ import Modal from "@/components/Modal";
 type Employee = {
   id: string;
   name: string;
+  first_name?: string | null;
+  last_name?: string | null;
   department?: string;
   position?: string;
   phone?: string;
@@ -26,7 +28,8 @@ type Role = { id: string; role_name: string; outlet_id: string };
 type Assignment = { outlet_id: string; position_name: string };
 
 type Form = {
-  name: string;
+  first_name: string;
+  last_name: string;
   department_id: string;
   home_outlet_id: string;
   home_position: string;
@@ -36,7 +39,8 @@ type Form = {
 };
 
 const emptyForm: Form = {
-  name: "",
+  first_name: "",
+  last_name: "",
   department_id: "",
   home_outlet_id: "",
   home_position: "",
@@ -118,7 +122,8 @@ export default function EmployeesPage() {
       }
     } catch {}
     setForm({
-      name: e.name ?? "",
+      first_name: e.first_name ?? "",
+      last_name: e.last_name ?? "",
       department_id: e.department_id ?? "",
       home_outlet_id: e.home_outlet_id ?? "",
       home_position: e.home_position ?? "",
@@ -135,7 +140,8 @@ export default function EmployeesPage() {
     setSubmitting(true);
     try {
       const payload = {
-        name: form.name,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
         department_id: form.department_id || null,
         home_outlet_id: form.home_outlet_id || null,
         home_position: form.home_position || null,
@@ -402,9 +408,14 @@ export default function EmployeesPage() {
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Employee" : "Add Employee"}>
         <form onSubmit={submit} className="flex flex-col gap-3">
-          <label className="text-sm">Name
-            <input className="input mt-1" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-sm">First name
+              <input className="input mt-1" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
+            </label>
+            <label className="text-sm">Last name
+              <input className="input mt-1" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
+            </label>
+          </div>
 
           <label className="text-sm">Department
             <select

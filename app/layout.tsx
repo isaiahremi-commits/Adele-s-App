@@ -17,7 +17,9 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="light">
+    // suppressHydrationWarning: the inline script below sets data-theme from
+    // localStorage before paint, intentionally diverging from the SSR value.
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <script
           // Apply saved theme before paint to avoid a flash.

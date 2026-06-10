@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useMounted } from "@/lib/useMounted";
 
 type Stats = {
   staff_on_today: number;
@@ -101,6 +102,7 @@ function money(n: number): string {
 }
 
 export default function DashboardPage() {
+  const mounted = useMounted();
   const [stats, setStats] = useState<Stats | null>(null);
   const [pending, setPending] = useState<TipSheet[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -159,7 +161,7 @@ export default function DashboardPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Today &middot; {new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          Today{mounted && ` · ${new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`}
         </p>
       </header>
 

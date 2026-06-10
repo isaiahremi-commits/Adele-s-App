@@ -186,7 +186,7 @@ export default function TipSheetEditor() {
             <span className="chip chip-muted">{mode === "pool" ? "Pool" : "Individual"}</span>
           </h1>
           <div className="text-sm" style={{ color: "var(--muted)" }}>
-            {outlet?.name}{sheet.department ? ` · ${sheet.department}` : ""} · {new Date(sheet.sheet_date).toLocaleDateString()}
+            {outlet?.name}{sheet.department ? ` · ${sheet.department}` : ""} · {new Date(sheet.sheet_date + "T00:00:00").toLocaleDateString()}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">

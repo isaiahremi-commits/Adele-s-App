@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
+import { useMounted } from "@/lib/useMounted";
 
 type Employee = {
   id: string;
@@ -36,6 +37,11 @@ const WEEKDAYS: { label: string; jsDay: number }[] = [
   { label: "Sat", jsDay: 6 },
   { label: "Sun", jsDay: 0 },
 ];
+
+// Deterministic (locale-independent) labels so the always-visible grid headers
+// render identically on server and client — no hydration mismatch.
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function startOfWeek(d: Date) {
   const x = new Date(d);
@@ -75,6 +81,7 @@ const emptyForm: Form = {
 type Toast = { kind: "success" | "error"; text: string } | null;
 
 export default function SchedulingPage() {
+  const mounted = useMounted();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -401,7 +408,7 @@ export default function SchedulingPage() {
         <div>
           <h1 className="text-3xl font-bold">Scheduling</h1>
           <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Week of {days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} to {days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+            {mounted ? `Week of ${days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} to ${days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : " "}
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
@@ -474,8 +481,8 @@ export default function SchedulingPage() {
               <th className="text-left p-3 font-medium" style={{ color: "var(--muted)", minWidth: 200 }}>Employee</th>
               {days.map((d) => (
                 <th key={d.toISOString()} className="text-left p-3 font-medium" style={{ color: "var(--muted)", minWidth: 140 }}>
-                  <div>{d.toLocaleDateString(undefined, { weekday: "short" })}</div>
-                  <div className="text-xs" style={{ color: "var(--muted)" }}>{d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>
+                  <div>{DOW[d.getDay()]}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>{MON[d.getMonth()]} {d.getDate()}</div>
                 </th>
               ))}
             </tr>
