@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMounted } from "@/lib/useMounted";
+import { currentPeriod, cycleLength, todayISO } from "@/lib/payroll";
 
 type Stats = {
   staff_on_today: number;
@@ -127,8 +128,16 @@ export default function DashboardPage() {
     ]).then(([s, ts, o]) => {
       setStats(s);
       const list = Array.isArray(ts) ? ts : [];
+      // Only surface pending sheets within the current pay period (biweekly,
+      // Saturday-anchored — same math as the pay engine). Historical sheets stay
+      // in the DB but don't clutter the day-one feed.
+      const period = currentPeriod(cycleLength("biweekly"), todayISO());
       const pendingList = list
         .filter((x) => x.status === "pending")
+        .filter((x) => {
+          const d = x.sheet_date || x.date || "";
+          return d >= period.start && d <= period.end;
+        })
         .sort((a, b) => {
           const ad = a.sheet_date || a.date || "";
           const bd = b.sheet_date || b.date || "";
