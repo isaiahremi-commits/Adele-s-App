@@ -13,9 +13,21 @@ function toClient(row: TipSheetRow) {
   return { ...row, sheet_date: row.date ?? row.sheet_date ?? null };
 }
 
-// employees table uses first_name/last_name, so nested selects must use those.
 const EMPLOYEE_COLS = "first_name, last_name";
 
+type EmpEmbed = { first_name?: string; last_name?: string } | null;
+function withName<T extends { employees?: EmpEmbed }>(rows: T[]) {
+  return rows.map((r) => ({
+    ...r,
+    employees: r.employees
+      ? { ...r.employees, name: [r.employees.first_name, r.employees.last_name].filter(Boolean).join(" ").trim() }
+      : r.employees,
+  }));
+}
+
+// Tip-engine read model: sheet + large parties (commission) + per-employee rows.
+// Commission now comes from the large_party_revenues table (legacy commission
+// table is no longer read by app code).
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
   const { data: sheet, error } = await supabase
@@ -24,27 +36,22 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .eq("id", params.id)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const { data: managers } = await supabase
-    .from("tip_event_managers")
-    .select(`*, employees(${EMPLOYEE_COLS})`)
-    .eq("tip_sheet_id", params.id);
-  const { data: allocations } = await supabase
-    .from("tip_allocations")
-    .select(`*, employees(${EMPLOYEE_COLS})`)
-    .eq("tip_sheet_id", params.id);
 
-  const addName = (rows: Array<{ employees?: { first_name?: string; last_name?: string } | null }>) =>
-    rows.map((r) => ({
-      ...r,
-      employees: r.employees
-        ? { ...r.employees, name: [r.employees.first_name, r.employees.last_name].filter(Boolean).join(" ").trim() }
-        : r.employees,
-    }));
+  const { data: largeParties } = await supabase
+    .from("large_party_revenues")
+    .select(`*, employees(${EMPLOYEE_COLS})`)
+    .eq("tip_sheet_id", params.id)
+    .order("created_at");
+
+  const { data: rows } = await supabase
+    .from("tip_sheet_rows")
+    .select(`*, employees(${EMPLOYEE_COLS})`)
+    .eq("tip_sheet_id", params.id);
 
   return NextResponse.json({
     sheet: toClient(sheet as TipSheetRow),
-    managers: addName(managers ?? []),
-    allocations: addName(allocations ?? []),
+    large_parties: withName(largeParties ?? []),
+    rows: withName(rows ?? []),
   });
 }
 
@@ -57,14 +64,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const supabase = createClient();
 
-  // Read current status before update so we can detect pending -> approved transition
   let prevStatus: string | null = null;
   if (payload.status !== undefined) {
-    const { data: prev } = await supabase
-      .from("tip_sheets")
-      .select("status")
-      .eq("id", params.id)
-      .single();
+    const { data: prev } = await supabase.from("tip_sheets").select("status").eq("id", params.id).single();
     prevStatus = (prev?.status as string) ?? null;
   }
 
@@ -76,7 +78,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Fire SMS only on the pending -> approved transition (non-blocking)
+  // Legacy SMS hook on the pending -> approved transition (non-blocking).
   let sms_summary: { attempted: number; sent: number; blocked: number; failed: number } | null = null;
   if (payload.status === "approved" && prevStatus !== "approved") {
     try {

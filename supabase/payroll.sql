@@ -104,6 +104,14 @@ language sql stable as $$
     where ts.status in ('approved','posted') and ts.date between p_start and p_end
     group by lpr.manager_employee_id
   ),
+  -- Per-row tip distribution from posted/approved tip sheets (Tier 1 #3).
+  tiprows as (
+    select tsr.employee_id, sum(tsr.tip_amount) as amt
+    from tip_sheet_rows tsr
+    join tip_sheets ts on ts.id = tsr.tip_sheet_id
+    where ts.status in ('approved','posted') and ts.date between p_start and p_end
+    group by tsr.employee_id
+  ),
   base as (
     select
       e.id as employee_id, e.first_name, e.last_name, e.title,
@@ -119,19 +127,21 @@ language sql stable as $$
       coalesce(sh.sched_cnt, 0)::int    as scheduled_count,
       e.regular_rate, e.ot_rate, e.training_rate, e.pto_rate,
       coalesce(mgr.mgr_amt, 0)       as manager_amount,
-      0::numeric                     as tip_rows_amount,
+      round(coalesce(tr.amt, 0), 2)  as tip_rows_amount,
       (select m from mode)           as m
     from employees e
     left join tc  on tc.employee_id  = e.id
     left join sh  on sh.employee_id  = e.id
     left join pto on pto.employee_id = e.id
     left join mgr on mgr.employee_id = e.id
+    left join tiprows tr on tr.employee_id = e.id
     left join departments d on d.id = e.department_id
     left join outlets o     on o.id = e.home_outlet_id
     where tc.employee_id is not null
        or sh.employee_id is not null
        or pto.employee_id is not null
        or mgr.employee_id is not null
+       or tr.employee_id is not null
   ),
   calc as (
     select b.*,

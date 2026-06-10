@@ -15,8 +15,21 @@ type TipSheet = {
   source?: string | null;
   service_charge: number;
   non_cash_tips: number;
-  status: "pending" | "approved";
+  status: string; // pending | ready | posted (legacy: approved)
 };
+
+// A sheet is "locked" once it feeds payroll: posted, or the legacy 'approved'.
+function isLocked(status: string): boolean {
+  return status === "posted" || status === "approved";
+}
+function statusChip(status: string): { cls: string; label: string } {
+  switch (status) {
+    case "posted": return { cls: "chip-green", label: "Posted" };
+    case "approved": return { cls: "chip-green", label: "Approved" };
+    case "ready": return { cls: "chip-amber", label: "Ready to approve" };
+    default: return { cls: "chip-amber", label: "Pending" };
+  }
+}
 
 type Outlet = { id: string; name: string; department_id?: string | null };
 type Department = { id: string; name: string; type?: string };
@@ -193,7 +206,7 @@ export default function TipsPage() {
                 (sum, s) => sum + Number(s.service_charge ?? 0) + Number(s.non_cash_tips ?? 0),
                 0
               );
-              const pendingCount = list.filter((s) => s.status === "pending").length;
+              const pendingCount = list.filter((s) => !isLocked(s.status)).length;
               const dept = outletDept(o.id);
               return (
                 <button
@@ -271,7 +284,7 @@ export default function TipsPage() {
                 (sum, s) => sum + Number(s.service_charge ?? 0) + Number(s.non_cash_tips ?? 0),
                 0
               );
-              const pendingCount = list.filter((s) => s.status === "pending").length;
+              const pendingCount = list.filter((s) => !isLocked(s.status)).length;
               return (
                 <button
                   key={w}
@@ -338,9 +351,7 @@ export default function TipsPage() {
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-semibold">{formatDate(s.sheet_date || s.date)}</h3>
                       {s.shift_type && <span className="chip chip-muted" style={{ fontSize: 10 }}>{s.shift_type}</span>}
-                      {s.status === "approved"
-                        ? <span className="chip chip-green">Approved</span>
-                        : <span className="chip chip-amber">Pending</span>}
+                      {(() => { const c = statusChip(s.status); return <span className={`chip ${c.cls}`}>{c.label}</span>; })()}
                     </div>
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
                       {s.service_name || "Tip sheet"}
