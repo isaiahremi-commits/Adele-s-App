@@ -43,10 +43,16 @@ const WEEKDAYS: { label: string; jsDay: number }[] = [
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function startOfWeek(d: Date) {
+// Map setup.period_start_day -> JS getDay() index (Sun=0 .. Sat=6).
+const DAY_INDEX: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
+
+// Snap d back to the most recent `startIdx` weekday (the configured week start).
+function startOfWeek(d: Date, startIdx: number) {
   const x = new Date(d);
   const day = x.getDay();
-  const diff = (day + 6) % 7;
+  const diff = (day - startIdx + 7) % 7;
   x.setDate(x.getDate() - diff);
   x.setHours(0, 0, 0, 0);
   return x;
@@ -82,7 +88,9 @@ type Toast = { kind: "success" | "error"; text: string } | null;
 
 export default function SchedulingPage() {
   const mounted = useMounted();
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  // Week start weekday from setup.period_start_day (Monday default until loaded).
+  const [weekStartDay, setWeekStartDay] = useState(1);
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), 1));
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -97,7 +105,10 @@ export default function SchedulingPage() {
   const [swapModal, setSwapModal] = useState<{ shift: Shift; mode: "record" | "manage" } | null>(null);
   const [swapNewEmp, setSwapNewEmp] = useState("");
   const [swapNotes, setSwapNotes] = useState("");
+  const [approvedWeek, setApprovedWeek] = useState(false); // Item 9
   const [deptFilter, setDeptFilter] = useState<string>("");
+  const [outletFilter, setOutletFilter] = useState<string>(""); // Item 11
+  const [positionFilter, setPositionFilter] = useState<string>(""); // Item 11
   const [modalOpen, setModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -158,6 +169,33 @@ export default function SchedulingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [weekStart]);
 
+  // Anchor the schedule week on setup.period_start_day (Item 1). Display only —
+  // does not touch lib/payroll pay-period math.
+  useEffect(() => {
+    fetch("/api/setup")
+      .then((r) => r.json())
+      .then((s) => {
+        const idx = DAY_INDEX[(s?.period_start_day ?? "monday").toLowerCase()] ?? 1;
+        setWeekStartDay(idx);
+        setWeekStart(startOfWeek(new Date(), idx));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Item 9: is the viewed week locked (approved)?
+  useEffect(() => {
+    fetch(`/api/approved-weeks?period_start=${toISODate(weekStart)}`)
+      .then((r) => r.json())
+      .then((d) => setApprovedWeek(!!d?.approved))
+      .catch(() => setApprovedWeek(false));
+  }, [weekStart]);
+
+  // Item 8/9: read-only state. Past weeks are fully read-only (incl. swaps);
+  // approved current/future weeks lock shift edits but keep swaps available.
+  const isPastWeek = toISODate(weekStart) < toISODate(startOfWeek(new Date(), weekStartDay));
+  const editLocked = isPastWeek || approvedWeek;
+  const swapLocked = isPastWeek;
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4000);
@@ -165,9 +203,24 @@ export default function SchedulingPage() {
   }, [toast]);
 
   const filteredEmployees = useMemo(() => {
-    if (!deptFilter) return employees;
-    return employees.filter((e) => e.department_id === deptFilter);
-  }, [employees, deptFilter]);
+    return employees.filter((e) =>
+      (!deptFilter || e.department_id === deptFilter) &&
+      (!outletFilter || e.home_outlet_id === outletFilter) &&
+      (!positionFilter || (e.home_position ?? e.position) === positionFilter));
+  }, [employees, deptFilter, outletFilter, positionFilter]);
+
+  // Persist scheduling filters (Items 11). Load on mount, save on change.
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("scheduling_filters") || "{}");
+      if (s.dept) setDeptFilter(s.dept);
+      if (s.outlet) setOutletFilter(s.outlet);
+      if (s.position) setPositionFilter(s.position);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("scheduling_filters", JSON.stringify({ dept: deptFilter, outlet: outletFilter, position: positionFilter }));
+  }, [deptFilter, outletFilter, positionFilter]);
 
   const filteredOutlets = useMemo(() => {
     if (!deptFilter) return outlets;
@@ -388,7 +441,13 @@ export default function SchedulingPage() {
       if (created > 0) parts.push(`${created} created`);
       if (updated > 0) parts.push(`${updated} updated`);
       const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-      setToast({ kind: "success", text: `Week approved. Tip sheets: ${summary}.` });
+      // Item 9: lock the week.
+      await fetch("/api/approved-weeks", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period_start: toISODate(days[0]) }),
+      }).catch(() => {});
+      setApprovedWeek(true);
+      setToast({ kind: "success", text: `Week approved & locked. Tip sheets: ${summary}.` });
     } catch (err) {
       setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
     } finally {
@@ -408,23 +467,26 @@ export default function SchedulingPage() {
         <div>
           <h1 className="text-3xl font-bold">Scheduling</h1>
           <p className="text-sm" style={{ color: "var(--muted)" }}>
-            {mounted ? `Week of ${days[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} to ${days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : " "}
+            {mounted ? `Week of ${days[0].toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} – ${days[6].toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}` : " "}
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           <button className="btn btn-secondary" onClick={() => shiftWeek(-1)}>Prev</button>
-          <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date()))}>Today</button>
+          <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date(), weekStartDay))}>Today</button>
           <button className="btn btn-secondary" onClick={() => shiftWeek(1)}>Next</button>
-          <button className="btn btn-secondary" onClick={() => setCopyModalOpen(true)}>Copy Previous Week</button>
+          {/* Item 8: jump to any week */}
+          <input type="date" className="input" style={{ width: 150 }} value={toISODate(weekStart)}
+            onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(new Date(e.target.value + "T00:00:00"), weekStartDay)); }} />
+          <button className="btn btn-secondary" disabled={editLocked} onClick={() => setCopyModalOpen(true)}>Copy Previous Week</button>
           <button
             className="btn btn-secondary"
             onClick={approveWeek}
-            disabled={approving}
+            disabled={approving || editLocked}
             title="Creates or syncs tip sheets for every outlet and shift this week"
           >
-            {approving ? "Approving..." : "Approve Week"}
+            {approving ? "Approving..." : approvedWeek ? "Approved ✓" : "Approve Week"}
           </button>
-          <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
+          <button className="btn btn-primary" disabled={editLocked} onClick={() => { setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
         </div>
       </header>
 
@@ -458,6 +520,27 @@ export default function SchedulingPage() {
               {d.name}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Item 11: outlet + position filters (AND with department) */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <select className="input" style={{ width: 200 }} value={outletFilter} onChange={(e) => setOutletFilter(e.target.value)}>
+          <option value="">All outlets</option>
+          {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select className="input" style={{ width: 200 }} value={positionFilter} onChange={(e) => setPositionFilter(e.target.value)}>
+          <option value="">All positions</option>
+          {uniquePositions.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+
+      {/* Item 8/9: read-only / locked banner */}
+      {(isPastWeek || approvedWeek) && (
+        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: "rgba(239,159,39,0.12)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
+          {isPastWeek
+            ? "Viewing past schedule — read-only."
+            : "Week approved — schedule locked. Use Swaps to reassign or Timecards for ad-hoc additions."}
         </div>
       )}
 
@@ -499,9 +582,9 @@ export default function SchedulingPage() {
                 <tr key={emp.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td className="p-3 align-top">
                     <div className="font-medium">{emp.name}</div>
+                    {/* Item 10: department only — position varies per day. */}
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
-                      {emp.home_position ?? emp.position ?? ""}
-                      {empDept && <span> - {empDept.name}</span>}
+                      {empDept?.name ?? ""}
                     </div>
                   </td>
                   {days.map((d) => {
@@ -547,12 +630,14 @@ export default function SchedulingPage() {
                                 {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
                                 {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
                                 <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100">
-                                  <button onClick={() => setSwapModal({ shift: s, mode: "record" })} title="Record swap" style={{ color: "var(--muted)" }}>⇄</button>
-                                  <button onClick={() => removeShift(s.id)} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>
+                                  {/* swaps stay available on approved weeks; disabled only for past weeks */}
+                                  {!swapLocked && <button onClick={() => setSwapModal({ shift: s, mode: "record" })} title="Record swap" style={{ color: "var(--muted)" }}>⇄</button>}
+                                  {!editLocked && <button onClick={() => removeShift(s.id)} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>}
                                 </div>
                                 </div>
                               );
                             })}
+                            {!editLocked && (
                             <button
                               disabled={atCap}
                               title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
@@ -568,6 +653,7 @@ export default function SchedulingPage() {
                                 cursor: atCap ? "not-allowed" : "pointer",
                               }}
                             >{atCap ? "Full" : "+"}</button>
+                            )}
                         </div>
                       </td>
                     );

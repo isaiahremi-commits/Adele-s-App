@@ -32,7 +32,7 @@ function LoginForm() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4" style={{ background: "var(--background)" }}>
       <div className="card p-8 w-full" style={{ maxWidth: 380 }}>
-        <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--primary)" }}>Manadele</h1>
+        <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--primary)" }}>manadele</h1>
         <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>Sign in to continue</p>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <label className="text-sm">
