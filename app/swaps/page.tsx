@@ -39,7 +39,7 @@ export default function SwapsPage() {
   }
 
   return (
-    <div className="max-w-[1100px]">
+    <div className="max-w-[1100px] page-shell">
       <h1 className="text-2xl font-bold mb-4">Swaps</h1>
       <div className="inline-flex rounded-lg p-1 mb-4" style={{ background: "var(--surface-2)" }}>
         {(["all", "pending"] as const).map((t) => (

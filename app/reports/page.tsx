@@ -68,7 +68,7 @@ export default function ReportsPage() {
   ];
 
   return (
-    <div className="max-w-[1100px]">
+    <div className="max-w-[1100px] page-shell">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Reports</h1>
         <button className="btn btn-secondary" onClick={exportCSV} disabled={!data || (data.rows?.length ?? 0) === 0}>Export CSV</button>
