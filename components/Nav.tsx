@@ -37,7 +37,11 @@ export default function Nav() {
     const saved = (typeof window !== "undefined" && (localStorage.getItem("theme") as Theme | null)) || "light";
     setTheme(saved);
     applyTheme(saved);
-    if (typeof window !== "undefined") setCollapsed(localStorage.getItem("sidebar_collapsed") === "true");
+    if (typeof window !== "undefined") {
+      const c = localStorage.getItem("sidebar_collapsed") === "true";
+      setCollapsed(c);
+      document.documentElement.dataset.sidebarCollapsed = String(c); // drives content reflow
+    }
 
     fetch("/api/setup")
       .then((r) => r.json())
@@ -57,7 +61,10 @@ export default function Nav() {
 
   function setCollapsedState(v: boolean) {
     setCollapsed(v);
-    if (typeof window !== "undefined") localStorage.setItem("sidebar_collapsed", String(v));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar_collapsed", String(v));
+      document.documentElement.dataset.sidebarCollapsed = String(v);
+    }
   }
 
   if (hidden) return null;

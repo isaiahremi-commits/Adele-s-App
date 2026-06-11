@@ -384,7 +384,7 @@ export default function TimecardsPage() {
   }, [date]);
 
   return (
-    <div className="max-w-[1200px]">
+    <div className="max-w-[1200px] page-shell">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Timecards</h1>

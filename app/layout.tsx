@@ -31,7 +31,7 @@ export default function RootLayout({
       <body className={`${dmSans.className} antialiased`}>
         <div className="flex min-h-screen">
           <Nav />
-          <main className="flex-1 p-8 overflow-x-auto">{children}</main>
+          <main className="flex-1 p-6 overflow-x-auto">{children}</main>
         </div>
       </body>
     </html>

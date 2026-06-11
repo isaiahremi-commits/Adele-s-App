@@ -88,3 +88,9 @@ html, body {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--background); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+
+/* Section 1: page content reflow.
+   Pages keep their max-width when the sidebar is expanded; when the sidebar
+   collapses to the mini-rail, content fills the freed width. */
+.page-shell { width: 100%; }
+html[data-sidebar-collapsed="true"] .page-shell { max-width: none !important; }

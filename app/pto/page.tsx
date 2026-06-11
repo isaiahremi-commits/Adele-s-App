@@ -6,7 +6,7 @@ import Modal from "@/components/Modal";
 const PTO_REASONS = ["Sick", "Jury Duty", "Vacation", "Birthday", "Personal"] as const;
 
 type Employee = { id: string; name: string; title?: string | null };
-type EmpEmbed = { name?: string } | null;
+type EmpEmbed = { name?: string; date_of_hire?: string | null } | null;
 type Request = {
   id: string;
   employee_id: string;
@@ -213,7 +213,7 @@ export default function PTOPage() {
   const reasonChip = (reason: string) => <span className="chip chip-muted">{reason}</span>;
 
   return (
-    <div className="max-w-[1100px]">
+    <div className="max-w-[1100px] page-shell">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">PTO</h1>
@@ -349,12 +349,17 @@ export default function PTOPage() {
             )}
             {balances.map((b) => {
               const neg = Number(b.balance_hours) < 0;
+              const noHire = !b.employees?.date_of_hire; // Section 2: accrual paused
               return (
                 <Fragment key={b.id}>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     <td className="p-3">{b.employees?.name || empName(b.employee_id)}</td>
                     <td className="p-3 text-right font-semibold" style={{ color: neg ? "var(--amber)" : "var(--primary)" }}>
                       {Number(b.balance_hours).toFixed(2)}{neg && " ⚠"}
+                      {noHire && (
+                        <span title="Set hire date on employee profile to resume PTO accrual"
+                          style={{ color: "var(--amber)", marginLeft: 6, cursor: "help" }}>⚠ accrual paused</span>
+                      )}
                     </td>
                     <td className="p-3" style={{ color: "var(--muted)" }}>{b.updated_at ? new Date(b.updated_at).toLocaleString() : "—"}</td>
                     <td className="p-3 text-right">

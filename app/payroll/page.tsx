@@ -195,7 +195,7 @@ export default function PayrollPage() {
   const isCurrent = period.start === todayPeriod.start;
 
   return (
-    <div className="max-w-[1280px]">
+    <div className="max-w-[1280px] page-shell">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Payroll</h1>

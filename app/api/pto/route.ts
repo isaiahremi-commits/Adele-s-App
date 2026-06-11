@@ -28,7 +28,7 @@ export async function GET() {
       .from("pto_requests")
       .select("*, employees!pto_requests_employee_id_fkey(first_name,last_name)")
       .order("requested_at", { ascending: false }),
-    supabase.from("pto_balances").select("*, employees(first_name,last_name)"),
+    supabase.from("pto_balances").select("*, employees(first_name,last_name,date_of_hire)"),
   ]);
   if (reqRes.error) return NextResponse.json({ error: reqRes.error.message }, { status: 500 });
   if (balRes.error) return NextResponse.json({ error: balRes.error.message }, { status: 500 });

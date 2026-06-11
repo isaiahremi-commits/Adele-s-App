@@ -176,7 +176,7 @@ export default function TipSheetEditor() {
       : <span className="chip chip-amber">Pending entries</span>;
 
   return (
-    <div className="max-w-[1100px]">
+    <div className="max-w-[1100px] page-shell">
       <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <button onClick={() => router.push("/tips")} className="text-sm mb-1 inline-block" style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>← Back to tips</button>

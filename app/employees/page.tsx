@@ -13,6 +13,8 @@ type Employee = {
   title?: string | null;
   employee_number?: string | null;
   shirt_size?: string | null;
+  date_of_hire?: string | null;
+  termination_date?: string | null;
   phone?: string;
   email?: string;
   active?: boolean;
@@ -39,6 +41,8 @@ type Form = {
   home_position: string;
   employee_number: string;
   shirt_size: string;
+  date_of_hire: string;
+  termination_date: string;
   phone: string;
   email: string;
   assignments: Assignment[];
@@ -52,6 +56,8 @@ const emptyForm: Form = {
   home_position: "",
   employee_number: "",
   shirt_size: "",
+  date_of_hire: "",
+  termination_date: "",
   phone: "",
   email: "",
   assignments: [],
@@ -78,6 +84,7 @@ export default function EmployeesPage() {
   const [fDept, setFDept] = useState("");
   const [fOutlet, setFOutlet] = useState("");
   const [fPosition, setFPosition] = useState("");
+  const [missingHireOnly, setMissingHireOnly] = useState(false); // Section 2 backfill banner
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, Totals>>({});
   const [assignmentsByEmp, setAssignmentsByEmp] = useState<Record<string, Assignment[]>>({});
@@ -161,6 +168,8 @@ export default function EmployeesPage() {
       home_position: e.home_position ?? "",
       employee_number: e.employee_number ?? "",
       shirt_size: e.shirt_size ?? "",
+      date_of_hire: e.date_of_hire ?? "",
+      termination_date: e.termination_date ?? "",
       phone: e.phone ?? "",
       email: e.email ?? "",
       assignments,
@@ -171,6 +180,15 @@ export default function EmployeesPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // App-layer enforcement (date_of_hire stays nullable in DB).
+    if (!form.date_of_hire) {
+      setError("Hire date is required.");
+      return;
+    }
+    if (form.termination_date && form.termination_date < form.date_of_hire) {
+      setError("Termination date must be on or after the hire date.");
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
@@ -181,6 +199,8 @@ export default function EmployeesPage() {
         home_position: form.home_position || null,
         employee_number: form.employee_number || null,
         shirt_size: form.shirt_size || null,
+        date_of_hire: form.date_of_hire,
+        termination_date: form.termination_date || null,
         phone: form.phone || null,
         email: form.email || null,
       };
@@ -305,6 +325,22 @@ export default function EmployeesPage() {
         <button className="btn btn-primary" onClick={openAdd}>+ Add Employee</button>
       </header>
 
+      {/* Section 2: backfill banner for employees missing a hire date */}
+      {(() => {
+        const missing = rows.filter((e) => !e.date_of_hire).length;
+        if (missing === 0) return null;
+        return (
+          <div className="mb-4 p-3 rounded-md text-sm flex items-center justify-between flex-wrap gap-2"
+            style={{ background: "rgba(239,159,39,0.12)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
+            <span>⚠ {missing} employee{missing === 1 ? "" : "s"} missing hire dates — set them to enable PTO accrual.</span>
+            <button className="text-xs" style={{ color: "var(--amber)", background: "none", border: "1px solid var(--amber)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}
+              onClick={() => setMissingHireOnly((v) => !v)}>
+              {missingHireOnly ? "Show all" : "Show these"}
+            </button>
+          </div>
+        );
+      })()}
+
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input
           type="text"
@@ -355,6 +391,7 @@ export default function EmployeesPage() {
 
       {(() => {
         const filtered = rows.filter((e) => {
+          if (missingHireOnly && e.date_of_hire) return false; // Section 2 banner filter
           // Item 5: department / outlet / position filters (AND).
           if (fDept && e.department_id !== fDept) return false;
           if (fOutlet && e.home_outlet_id !== fOutlet) return false;
@@ -434,6 +471,11 @@ export default function EmployeesPage() {
                       <div className="text-sm mb-3" style={{ color: "var(--muted)" }}>
                         {e.phone && <div>{e.phone}</div>}
                         {e.email && <div>{e.email}</div>}
+                        {/* Section 2: hire / termination */}
+                        <div>Hired: {e.date_of_hire
+                          ? new Date(e.date_of_hire + "T00:00:00").toLocaleDateString()
+                          : <span style={{ color: "var(--amber)" }}>not set — accrual paused</span>}</div>
+                        {e.termination_date && <div style={{ color: "var(--danger)" }}>Terminated: {new Date(e.termination_date + "T00:00:00").toLocaleDateString()}</div>}
                       </div>
 
                       <div className="grid grid-cols-3 gap-2 mb-3">
@@ -553,6 +595,20 @@ export default function EmployeesPage() {
                 value={form.shirt_size} onChange={(e) => setForm({ ...form, shirt_size: e.target.value })} />
             )}
           </label>
+
+          {/* Section 2: hire date (required) + termination date (optional) */}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">
+              Hire Date <span style={{ color: "var(--danger)" }}>*</span>
+              <input type="date" required className="input mt-1"
+                style={{ borderColor: form.date_of_hire ? "var(--border)" : "var(--amber)" }}
+                value={form.date_of_hire} onChange={(e) => setForm({ ...form, date_of_hire: e.target.value })} />
+            </label>
+            <label className="text-sm">Termination Date
+              <input type="date" className="input mt-1" min={form.date_of_hire || undefined}
+                value={form.termination_date} onChange={(e) => setForm({ ...form, termination_date: e.target.value })} />
+            </label>
+          </div>
 
           {editing && (
             <div className="mt-2 p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
