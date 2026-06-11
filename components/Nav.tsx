@@ -114,7 +114,7 @@ export default function Nav() {
             <SignOutButton />
           </div>
           <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Powered by <span style={{ color: "var(--primary)" }}>Manadele</span>
+            Powered by <span style={{ color: "var(--primary)" }}>manadele</span>
           </p>
         </div>
       )}
