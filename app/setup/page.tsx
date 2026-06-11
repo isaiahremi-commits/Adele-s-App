@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { PREDEFINED_ROLES, OTHER_OPTION } from "@/lib/constants";
 
 type Outlet = { id: string; name: string; department_id?: string | null };
 type Service = { id: string; name: string; outlet_id: string };
@@ -34,7 +35,7 @@ export default function SetupPage() {
   const [newDeptType, setNewDeptType] = useState<"front_of_house" | "back_of_house" | "custom">("custom");
   const [deptError, setDeptError] = useState<string | null>(null);
   const [svcForm, setSvcForm] = useState<Record<string, string>>({});
-  const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string }>>({});
+  const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string; other?: boolean }>>({});
   const [outletError, setOutletError] = useState<Record<string, string>>({});
 
   async function load() {
@@ -513,10 +514,24 @@ export default function SetupPage() {
 
                   <div>
                     <div className="text-sm font-medium mb-2" style={{ color: "var(--muted)" }}>Roles (with points)</div>
-                    <div className="flex gap-2 mb-2">
-                      <input className="input" placeholder="Role name"
-                        value={rf.role_name}
-                        onChange={(e) => setRoleForm({ ...roleForm, [o.id]: { ...rf, role_name: e.target.value } })} />
+                    <div className="flex gap-2 mb-2 flex-wrap">
+                      {/* Item 4: predefined role dropdown + Other */}
+                      <select className="input" style={{ maxWidth: 170 }}
+                        value={rf.other ? OTHER_OPTION : rf.role_name}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === OTHER_OPTION) setRoleForm({ ...roleForm, [o.id]: { ...rf, role_name: "", other: true } });
+                          else setRoleForm({ ...roleForm, [o.id]: { ...rf, role_name: v, other: false } });
+                        }}>
+                        <option value="">Select role…</option>
+                        {PREDEFINED_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                        <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
+                      </select>
+                      {rf.other && (
+                        <input className="input" placeholder="Custom role"
+                          value={rf.role_name}
+                          onChange={(e) => setRoleForm({ ...roleForm, [o.id]: { ...rf, role_name: e.target.value } })} />
+                      )}
                       <input className="input" style={{ maxWidth: 80 }} type="number" step="0.1" placeholder="Pts"
                         value={rf.points}
                         onChange={(e) => setRoleForm({ ...roleForm, [o.id]: { ...rf, points: e.target.value } })} />

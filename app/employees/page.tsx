@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import { PREDEFINED_ROLES, SHIRT_SIZES, OTHER_OPTION } from "@/lib/constants";
 
 type Employee = {
   id: string;
@@ -10,6 +11,8 @@ type Employee = {
   department?: string;
   position?: string;
   title?: string | null;
+  employee_number?: string | null;
+  shirt_size?: string | null;
   phone?: string;
   email?: string;
   active?: boolean;
@@ -34,6 +37,8 @@ type Form = {
   department_id: string;
   home_outlet_id: string;
   home_position: string;
+  employee_number: string;
+  shirt_size: string;
   phone: string;
   email: string;
   assignments: Assignment[];
@@ -45,6 +50,8 @@ const emptyForm: Form = {
   department_id: "",
   home_outlet_id: "",
   home_position: "",
+  employee_number: "",
+  shirt_size: "",
   phone: "",
   email: "",
   assignments: [],
@@ -64,6 +71,13 @@ export default function EmployeesPage() {
   const [smsMsg, setSmsMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  // Item 4 "Other" toggles for the position/shirt dropdowns
+  const [homePosOther, setHomePosOther] = useState(false);
+  const [shirtOther, setShirtOther] = useState(false);
+  // Item 5 filters (persisted)
+  const [fDept, setFDept] = useState("");
+  const [fOutlet, setFOutlet] = useState("");
+  const [fPosition, setFPosition] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, Totals>>({});
   const [assignmentsByEmp, setAssignmentsByEmp] = useState<Record<string, Assignment[]>>({});
@@ -102,10 +116,25 @@ export default function EmployeesPage() {
   function openAdd() {
     setEditing(null);
     setForm(emptyForm);
+    setHomePosOther(false);
+    setShirtOther(false);
     setError(null);
     setSmsMsg(null);
     setOpen(true);
   }
+
+  // Persist Item 5 filters.
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("employees_filters") || "{}");
+      if (s.dept) setFDept(s.dept);
+      if (s.outlet) setFOutlet(s.outlet);
+      if (s.position) setFPosition(s.position);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("employees_filters", JSON.stringify({ dept: fDept, outlet: fOutlet, position: fPosition }));
+  }, [fDept, fOutlet, fPosition]);
 
   async function openEdit(e: Employee) {
     setEditing(e);
@@ -122,12 +151,16 @@ export default function EmployeesPage() {
         }));
       }
     } catch {}
+    setHomePosOther(!!e.home_position && !(PREDEFINED_ROLES as readonly string[]).includes(e.home_position));
+    setShirtOther(!!e.shirt_size && !(SHIRT_SIZES as readonly string[]).includes(e.shirt_size));
     setForm({
       first_name: e.first_name ?? "",
       last_name: e.last_name ?? "",
       department_id: e.department_id ?? "",
       home_outlet_id: e.home_outlet_id ?? "",
       home_position: e.home_position ?? "",
+      employee_number: e.employee_number ?? "",
+      shirt_size: e.shirt_size ?? "",
       phone: e.phone ?? "",
       email: e.email ?? "",
       assignments,
@@ -146,6 +179,8 @@ export default function EmployeesPage() {
         department_id: form.department_id || null,
         home_outlet_id: form.home_outlet_id || null,
         home_position: form.home_position || null,
+        employee_number: form.employee_number || null,
+        shirt_size: form.shirt_size || null,
         phone: form.phone || null,
         email: form.email || null,
       };
@@ -279,6 +314,19 @@ export default function EmployeesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {/* Item 5: department / outlet / position filters (persisted, AND) */}
+        <select className="input" style={{ width: 150 }} value={fDept} onChange={(e) => setFDept(e.target.value)}>
+          <option value="">All departments</option>
+          {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <select className="input" style={{ width: 150 }} value={fOutlet} onChange={(e) => setFOutlet(e.target.value)}>
+          <option value="">All outlets</option>
+          {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select className="input" style={{ width: 160 }} value={fPosition} onChange={(e) => setFPosition(e.target.value)}>
+          <option value="">All positions</option>
+          {PREDEFINED_ROLES.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
         <div className="flex gap-1 rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
           <button
             className="text-xs px-3 py-1 rounded-md"
@@ -307,6 +355,10 @@ export default function EmployeesPage() {
 
       {(() => {
         const filtered = rows.filter((e) => {
+          // Item 5: department / outlet / position filters (AND).
+          if (fDept && e.department_id !== fDept) return false;
+          if (fOutlet && e.home_outlet_id !== fOutlet) return false;
+          if (fPosition && (e.home_position ?? e.position) !== fPosition) return false;
           if (!search.trim()) return true;
           const q = search.toLowerCase();
           const dept = departments.find((d) => d.id === e.department_id)?.name ?? e.department ?? "";
@@ -450,25 +502,56 @@ export default function EmployeesPage() {
               </select>
             </label>
             <label className="text-sm">Home Position
+              {/* Item 4: shared predefined role dropdown + Other */}
               <select
                 className="input mt-1"
-                value={form.home_position}
-                onChange={(e) => setForm({ ...form, home_position: e.target.value })}
-                disabled={!form.home_outlet_id}
+                value={homePosOther ? OTHER_OPTION : form.home_position}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === OTHER_OPTION) { setHomePosOther(true); setForm({ ...form, home_position: "" }); }
+                  else { setHomePosOther(false); setForm({ ...form, home_position: v }); }
+                }}
               >
-                <option value="">{form.home_outlet_id ? "Select…" : "Pick outlet first"}</option>
-                {homeRoles.map((r) => (
-                  <option key={r.id} value={r.role_name}>{r.role_name}</option>
-                ))}
+                <option value="">Select…</option>
+                {PREDEFINED_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
               </select>
+              {homePosOther && (
+                <input className="input mt-1" placeholder="Custom position"
+                  value={form.home_position} onChange={(e) => setForm({ ...form, home_position: e.target.value })} />
+              )}
             </label>
           </div>
+
+          {/* Item 6: Employee ID Number (open text) */}
+          <label className="text-sm">Employee ID Number
+            <input className="input mt-1" value={form.employee_number}
+              onChange={(e) => setForm({ ...form, employee_number: e.target.value })} />
+          </label>
 
           <label className="text-sm">Phone
             <input className="input mt-1" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </label>
           <label className="text-sm">Email
             <input type="email" className="input mt-1" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </label>
+
+          {/* Item 7: Shirt Size dropdown + Other */}
+          <label className="text-sm">Shirt Size
+            <select className="input mt-1" value={shirtOther ? OTHER_OPTION : form.shirt_size}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === OTHER_OPTION) { setShirtOther(true); setForm({ ...form, shirt_size: "" }); }
+                else { setShirtOther(false); setForm({ ...form, shirt_size: v }); }
+              }}>
+              <option value="">Select…</option>
+              {SHIRT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+              <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
+            </select>
+            {shirtOther && (
+              <input className="input mt-1" placeholder="Custom size"
+                value={form.shirt_size} onChange={(e) => setForm({ ...form, shirt_size: e.target.value })} />
+            )}
           </label>
 
           {editing && (

@@ -31,13 +31,27 @@ function daysInRange(s: string, e: string): number {
   if (!s || !e) return 0;
   return Math.max(0, Math.round((new Date(e + "T00:00:00").getTime() - new Date(s + "T00:00:00").getTime()) / 86400000) + 1);
 }
+// M/D/YYYY for decided dates (Item 13).
+function mdy(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+}
+function statusLabel(r: { status: string; decided_at: string | null }): { text: string; color: string } {
+  if (r.status === "approved") return { text: `Approved ${mdy(r.decided_at)}`, color: "var(--primary)" };
+  if (r.status === "denied") return { text: `Denied ${mdy(r.decided_at)}`, color: "var(--danger)" };
+  return { text: "Pending Approval", color: "var(--amber)" };
+}
 
 export default function PTOPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [tab, setTab] = useState<"pending" | "approved" | "denied">("pending");
+  const [tab, setTab] = useState<"all" | "pending" | "approved" | "denied">("all"); // Item 14
   const [reasonFilter, setReasonFilter] = useState<string | null>(null);
+  const [employeeFilter, setEmployeeFilter] = useState(""); // Item 15
+  const [dateStart, setDateStart] = useState(""); // Item 15
+  const [dateEnd, setDateEnd] = useState(""); // Item 15
   const [toast, setToast] = useState<Toast>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -75,11 +89,37 @@ export default function PTOPage() {
   const empName = (id: string) => employees.find((e) => e.id === id)?.name ?? "—";
   const balanceOf = (id: string) => Number(balances.find((b) => b.employee_id === id)?.balance_hours ?? 0);
 
-  const byReason = (r: Request) => !reasonFilter || r.reason === reasonFilter;
-  const pending = requests.filter((r) => r.status === "pending" && byReason(r));
-  const approved = requests.filter((r) => r.status === "approved" && byReason(r));
-  const denied = requests.filter((r) => r.status === "denied" && byReason(r));
-  const visible = tab === "pending" ? pending : tab === "approved" ? approved : denied;
+  // Status + reason + employee + date-range filters (all AND).
+  const matches = (r: Request) =>
+    (tab === "all" || r.status === tab) &&
+    (!reasonFilter || r.reason === reasonFilter) &&
+    (!employeeFilter || r.employee_id === employeeFilter) &&
+    (!dateStart || r.end_date >= dateStart) &&
+    (!dateEnd || r.start_date <= dateEnd);
+  const filteredRequests = requests.filter(matches);
+  const pending = filteredRequests.filter((r) => r.status === "pending");
+  const visible = filteredRequests;
+
+  // Employees that have at least one PTO request (Item 15 dropdown).
+  const requestEmployees = useMemo(() => {
+    const ids = Array.from(new Set(requests.map((r) => r.employee_id)));
+    return employees.filter((e) => ids.includes(e.id));
+  }, [requests, employees]);
+
+  // Persist PTO filters.
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("pto_filters") || "{}");
+      if (s.tab) setTab(s.tab);
+      if (s.reason) setReasonFilter(s.reason);
+      if (s.employee) setEmployeeFilter(s.employee);
+      if (s.dateStart) setDateStart(s.dateStart);
+      if (s.dateEnd) setDateEnd(s.dateEnd);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("pto_filters", JSON.stringify({ tab, reason: reasonFilter, employee: employeeFilter, dateStart, dateEnd }));
+  }, [tab, reasonFilter, employeeFilter, dateStart, dateEnd]);
 
   async function post(body: Record<string, unknown>) {
     const res = await fetch("/api/pto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -182,23 +222,37 @@ export default function PTOPage() {
         <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>+ New PTO request</button>
       </div>
 
-      {/* Tabs */}
+      {/* Item 14: status filter group (with its own All) */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="inline-flex rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
-          {([["pending", `Pending (${pending.length})`], ["approved", "Approved"], ["denied", "Denied"]] as const).map(([t, label]) => (
+          {([["all", "All"], ["pending", `Pending (${requests.filter((r) => r.status === "pending").length})`], ["approved", "Approved"], ["denied", "Denied"]] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)} className="text-xs px-3 py-1 rounded-md"
               style={{ background: tab === t ? "var(--surface)" : "transparent", color: tab === t ? "var(--primary)" : "var(--muted)", fontWeight: tab === t ? 600 : 400, border: "none", cursor: "pointer" }}>
               {label}
             </button>
           ))}
         </div>
-        {/* Reason filter chips */}
+        {/* Reason filter chips (independent All) */}
         <div className="flex items-center gap-1 flex-wrap">
           <button onClick={() => setReasonFilter(null)} className="chip" style={{ cursor: "pointer", background: reasonFilter === null ? "var(--primary)" : "var(--surface-2)", color: reasonFilter === null ? "var(--primary-on)" : "var(--muted)" }}>All</button>
           {PTO_REASONS.map((r) => (
             <button key={r} onClick={() => setReasonFilter(reasonFilter === r ? null : r)} className="chip" style={{ cursor: "pointer", background: reasonFilter === r ? "var(--primary)" : "var(--surface-2)", color: reasonFilter === r ? "var(--primary-on)" : "var(--muted)" }}>{r}</button>
           ))}
         </div>
+      </div>
+
+      {/* Item 15: employee + date-range filters */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <select className="input" style={{ width: 200 }} value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}>
+          <option value="">All employees</option>
+          {requestEmployees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <input type="date" className="input" style={{ width: 150 }} value={dateStart} onChange={(e) => setDateStart(e.target.value)} title="Range start" />
+        <span style={{ color: "var(--muted)" }}>→</span>
+        <input type="date" className="input" style={{ width: 150 }} value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} title="Range end" />
+        {(dateStart || dateEnd || employeeFilter) && (
+          <button className="text-xs" style={{ color: "var(--primary)", background: "none", border: "none", cursor: "pointer" }} onClick={() => { setEmployeeFilter(""); setDateStart(""); setDateEnd(""); }}>Clear</button>
+        )}
       </div>
 
       {/* Pending = card-style inbox with live balance impact; others = compact history */}
@@ -244,22 +298,34 @@ export default function PTOPage() {
             <thead><tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
               <th className="text-left p-3">Employee</th><th className="text-left p-3">Dates</th>
               <th className="text-right p-3">Hours</th><th className="text-left p-3">Reason</th>
-              <th className="text-left p-3">Decided</th><th className="text-right p-3">Actions</th>
+              {/* Item 12: Submitted (requested_at); Item 13: Status */}
+              <th className="text-left p-3">Submitted</th><th className="text-left p-3">Status</th><th className="text-right p-3">Actions</th>
             </tr></thead>
             <tbody>
-              {visible.length === 0 && <tr><td colSpan={6} className="p-6 text-center" style={{ color: "var(--muted)" }}>No {tab} requests.</td></tr>}
-              {visible.map((r) => (
+              {visible.length === 0 && <tr><td colSpan={7} className="p-6 text-center" style={{ color: "var(--muted)" }}>No requests match these filters.</td></tr>}
+              {visible.map((r) => {
+                const st = statusLabel(r);
+                return (
                 <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td className="p-3">{r.employees?.name || empName(r.employee_id)}</td>
                   <td className="p-3">{fmt(r.start_date)} – {fmt(r.end_date)}</td>
                   <td className="p-3 text-right">{Number(r.total_hours_requested).toFixed(2)}</td>
                   <td className="p-3">{reasonChip(r.reason)}</td>
-                  <td className="p-3" style={{ color: "var(--muted)" }}>{r.decided_at ? new Date(r.decided_at).toLocaleDateString() : "—"}</td>
+                  <td className="p-3" style={{ color: "var(--muted)" }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : "—"}</td>
+                  <td className="p-3" style={{ color: st.color }}>{st.text}</td>
                   <td className="p-3 text-right">
-                    {r.status === "approved" && <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => unapprove(r)}>Unapprove</button>}
+                    <div className="flex gap-1 justify-end flex-wrap">
+                      {r.status === "pending" && <>
+                        <button className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => approve(r)}>Approve</button>
+                        <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => deny(r)}>Deny</button>
+                        <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => del(r)}>Delete</button>
+                      </>}
+                      {r.status === "approved" && <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} disabled={busy === r.id} onClick={() => unapprove(r)}>Unapprove</button>}
+                    </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
