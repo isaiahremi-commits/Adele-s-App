@@ -1,7 +1,8 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMounted } from "@/lib/useMounted";
 import Modal from "@/components/Modal";
+import { format12h, titleCase } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,6 +172,10 @@ export default function TimecardsPage() {
   const [overrideFor, setOverrideFor] = useState<string | null>(null);
   const [ov, setOv] = useState({ field: "clock_in", value: "", note: "" });
 
+  // Item 18: rows with unsaved edits. A reload preserves these buffers so that
+  // reviewing/saving one row never discards what was typed into another.
+  const dirty = useRef<Set<string>>(new Set());
+
   const load = useCallback(async () => {
     setLoading(true);
     const [rRes, sRes, eRes] = await Promise.all([
@@ -183,18 +188,25 @@ export default function TimecardsPage() {
     setSetup(sRes && !sRes.error ? sRes : null);
     setEmployees(Array.isArray(eRes) ? eRes.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })) : []);
 
-    // seed edit buffers from existing timecards
-    const next: Record<string, Edit> = {};
-    for (const row of rowList) {
-      const tc = row.timecard;
-      next[row.key] = {
-        clock_in: timeFromISO(tc?.clock_in ?? null),
-        clock_out: timeFromISO(tc?.clock_out ?? null),
-        break_minutes: String(tc?.break_minutes ?? 0),
-        training_hours: String(tc?.training_hours ?? 0),
-      };
-    }
-    setEdits(next);
+    // Seed edit buffers from existing timecards, but keep any row the user has
+    // unsaved edits in (Item 18) so a reload doesn't wipe their work.
+    setEdits((prev) => {
+      const next: Record<string, Edit> = {};
+      for (const row of rowList) {
+        if (dirty.current.has(row.key) && prev[row.key]) {
+          next[row.key] = prev[row.key];
+          continue;
+        }
+        const tc = row.timecard;
+        next[row.key] = {
+          clock_in: timeFromISO(tc?.clock_in ?? null),
+          clock_out: timeFromISO(tc?.clock_out ?? null),
+          break_minutes: String(tc?.break_minutes ?? 0),
+          training_hours: String(tc?.training_hours ?? 0),
+        };
+      }
+      return next;
+    });
     setLoading(false);
   }, [date]);
 
@@ -209,6 +221,7 @@ export default function TimecardsPage() {
   }, [toast]);
 
   function setEdit(key: string, patch: Partial<Edit>) {
+    dirty.current.add(key); // Item 18: this row now has unsaved edits.
     setEdits((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
@@ -238,6 +251,7 @@ export default function TimecardsPage() {
       training_hours: Number(e.training_hours) || 0,
       notes: row.timecard?.notes ?? null,
     })) as Timecard;
+    dirty.current.delete(row.key); // saved — buffer now matches DB.
     return saved.id;
   }
 
@@ -438,14 +452,15 @@ export default function TimecardsPage() {
                   <td className="p-3 align-top">
                     <div className="font-medium">{row.employee_name || "—"}</div>
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
-                      {row.position}{row.is_training && <span className="chip chip-amber ml-1" style={{ fontSize: 10 }}>training</span>}
+                      {titleCase(row.position)}{row.is_training && <span className="chip chip-amber ml-1" style={{ fontSize: 10 }}>training</span>}
                     </div>
                   </td>
                   <td className="p-3 align-top">
                     {row.shift_id ? (
                       <div className="text-xs">
                         <div style={{ color: "var(--primary)" }}>
-                          {row.shift_start?.slice(0, 5) ?? "?"}–{row.shift_end?.slice(0, 5) ?? "?"}
+                          {/* Item 12: 12-hour AM/PM display. */}
+                          {format12h(row.shift_start) || "?"}–{format12h(row.shift_end) || "?"}
                         </div>
                         <div style={{ color: "var(--muted)" }}>
                           {row.shift_type}{row.outlet_name ? ` · ${row.outlet_name}` : ""}
@@ -598,8 +613,8 @@ export default function TimecardsPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Field label="Status" value={detail.timecard.status} />
               <Field label="Date" value={detail.timecard.date} />
-              <Field label="Clock in" value={timeFromISO(detail.timecard.clock_in) || "—"} />
-              <Field label="Clock out" value={timeFromISO(detail.timecard.clock_out) || "—"} />
+              <Field label="Clock in" value={format12h(detail.timecard.clock_in) || "—"} />
+              <Field label="Clock out" value={format12h(detail.timecard.clock_out) || "—"} />
               <Field label="Break (min)" value={String(detail.timecard.break_minutes ?? 0)} />
               <Field label="Training hrs" value={String(detail.timecard.training_hours ?? 0)} />
               <Field label="Regular hrs" value={String(detail.timecard.regular_hours ?? "—")} />

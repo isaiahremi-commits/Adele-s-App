@@ -32,6 +32,8 @@ type Row = {
   declared_service_charge: number | null;
   declared_non_cash: number | null;
   tip_amount: number | null;
+  sc_amount: number | null;
+  nc_amount: number | null;
   employees?: EmpEmbed;
 };
 type Outlet = { id: string; name: string; tip_pool_mode?: string | null };
@@ -91,9 +93,11 @@ export default function TipSheetEditor() {
       ? Number(sheet?.non_cash_tips ?? 0)
       : rows.reduce((s, r) => s + Number(r.declared_non_cash ?? 0), 0);
     const distributed = rows.reduce((s, r) => s + Number(r.tip_amount ?? 0), 0);
+    const scDistributed = rows.reduce((s, r) => s + Number(r.sc_amount ?? 0), 0);
+    const ncDistributed = rows.reduce((s, r) => s + Number(r.nc_amount ?? 0), 0);
     const houseTotal = largeParties.reduce((s, l) => s + Number(l.house_amount ?? 0), 0);
     const mgrTotal = largeParties.reduce((s, l) => s + Number(l.manager_amount ?? 0), 0);
-    return { scDeclared, ncDeclared, distributed, houseTotal, mgrTotal };
+    return { scDeclared, ncDeclared, distributed, scDistributed, ncDistributed, houseTotal, mgrTotal };
   }, [mode, sheet, rows, largeParties]);
 
   async function call(url: string, opts: RequestInit, okMsg?: string) {
@@ -216,7 +220,7 @@ export default function TipSheetEditor() {
           <div className="card p-4">
             <label className="text-sm">Service charge ($)
               <input type="number" step="0.01" disabled={locked} className="input mt-1"
-                value={sheet.service_charge ?? 0}
+                value={sheet.service_charge ?? 0} onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => setSheet({ ...sheet, service_charge: Number(e.target.value) })}
                 onBlur={(e) => patchSheet({ service_charge: Number(e.target.value) })} />
             </label>
@@ -224,7 +228,7 @@ export default function TipSheetEditor() {
           <div className="card p-4">
             <label className="text-sm">Non-cash tips ($)
               <input type="number" step="0.01" disabled={locked} className="input mt-1"
-                value={sheet.non_cash_tips ?? 0}
+                value={sheet.non_cash_tips ?? 0} onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => setSheet({ ...sheet, non_cash_tips: Number(e.target.value) })}
                 onBlur={(e) => patchSheet({ non_cash_tips: Number(e.target.value) })} />
             </label>
@@ -287,7 +291,8 @@ export default function TipSheetEditor() {
           <div className="flex gap-2 items-end flex-wrap">
             <label className="text-xs" style={{ color: "var(--muted)" }}>Party revenue ($)
               <input type="number" step="0.01" className="input mt-1" style={{ width: 140 }}
-                value={newLP.revenue} onChange={(e) => setNewLP({ ...newLP, revenue: e.target.value })} />
+                value={newLP.revenue} onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setNewLP({ ...newLP, revenue: e.target.value })} />
             </label>
             <label className="text-xs flex-1" style={{ color: "var(--muted)" }}>Manager
               <select className="input mt-1" value={newLP.manager_employee_id}
@@ -320,12 +325,14 @@ export default function TipSheetEditor() {
                 <th className="text-left p-2">Role</th>
                 {mode === "individual" && <th className="text-right p-2">Decl. SC</th>}
                 {mode === "individual" && <th className="text-right p-2">Decl. NC</th>}
+                <th className="text-right p-2">SC</th>
+                <th className="text-right p-2">NC</th>
                 <th className="text-right p-2">Tip amount</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={5} className="p-6 text-center" style={{ color: "var(--muted)" }}>
+                <tr><td colSpan={mode === "individual" ? 7 : 5} className="p-6 text-center" style={{ color: "var(--muted)" }}>
                   No team rows. Approve the week on Scheduling to populate the team.
                 </td></tr>
               )}
@@ -336,17 +343,23 @@ export default function TipSheetEditor() {
                   {mode === "individual" && (
                     <td className="p-2 text-right">
                       <input type="number" step="0.01" disabled={locked} className="input text-right" style={{ width: 100 }}
-                        defaultValue={r.declared_service_charge ?? 0}
+                        defaultValue={r.declared_service_charge ?? 0} onFocus={(e) => e.currentTarget.select()}
                         onBlur={(e) => patchRow(r.id, { declared_service_charge: Number(e.target.value) })} />
                     </td>
                   )}
                   {mode === "individual" && (
                     <td className="p-2 text-right">
                       <input type="number" step="0.01" disabled={locked} className="input text-right" style={{ width: 100 }}
-                        defaultValue={r.declared_non_cash ?? 0}
+                        defaultValue={r.declared_non_cash ?? 0} onFocus={(e) => e.currentTarget.select()}
                         onBlur={(e) => patchRow(r.id, { declared_non_cash: Number(e.target.value) })} />
                     </td>
                   )}
+                  <td className="p-2 text-right" style={{ color: computed ? "inherit" : "var(--muted)" }}>
+                    {computed ? money(r.sc_amount) : "—"}
+                  </td>
+                  <td className="p-2 text-right" style={{ color: computed ? "inherit" : "var(--muted)" }}>
+                    {computed ? money(r.nc_amount) : "—"}
+                  </td>
                   <td className="p-2 text-right font-semibold" style={{ color: computed ? "var(--primary)" : "var(--muted)" }}>
                     {computed ? money(r.tip_amount) : "—"}
                   </td>
@@ -357,6 +370,8 @@ export default function TipSheetEditor() {
               <tfoot>
                 <tr style={{ color: "var(--muted)" }}>
                   <td className="p-2" colSpan={mode === "individual" ? 4 : 2}>Total distributed</td>
+                  <td className="p-2 text-right font-semibold">{computed ? money(recon.scDistributed) : "—"}</td>
+                  <td className="p-2 text-right font-semibold">{computed ? money(recon.ncDistributed) : "—"}</td>
                   <td className="p-2 text-right font-semibold" style={{ color: "var(--primary)" }}>{money(recon.distributed)}</td>
                 </tr>
               </tfoot>
@@ -369,17 +384,31 @@ export default function TipSheetEditor() {
       {computed && (
         <div className="card p-5">
           <h3 className="font-semibold mb-3">POS reconciliation</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-            <Recon label="Service charge" value={money(recon.scDeclared)} />
-            <Recon label="Non-cash tips" value={money(recon.ncDeclared)} />
-            <Recon label="Distributed" value={money(recon.distributed)} accent="primary" />
-            <Recon label="House (3%)" value={money(recon.houseTotal)} accent="amber" />
-            <Recon label="Manager (2%)" value={money(recon.mgrTotal)} accent="amber" />
+          {/* Item 1: service charge and non-cash reconciled independently, side by side. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-lg p-4" style={{ background: "var(--surface-2)" }}>
+              <div className="text-sm font-semibold mb-2">Service charge (SC)</div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <Recon label="Declared" value={money(recon.scDeclared)} />
+                <Recon label="Distributed" value={money(recon.scDistributed)} accent="primary" />
+                <Recon label="House (3%)" value={money(recon.houseTotal)} accent="amber" />
+                <Recon label="Manager (2%)" value={money(recon.mgrTotal)} accent="amber" />
+              </div>
+              <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
+                Distributed + house + manager = {money(recon.scDistributed + recon.houseTotal + recon.mgrTotal)} vs declared {money(recon.scDeclared)} (within rounding).
+              </p>
+            </div>
+            <div className="rounded-lg p-4" style={{ background: "var(--surface-2)" }}>
+              <div className="text-sm font-semibold mb-2">Non-cash (NC)</div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <Recon label="Declared" value={money(recon.ncDeclared)} />
+                <Recon label="Distributed" value={money(recon.ncDistributed)} accent="primary" />
+              </div>
+              <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
+                Distributed {money(recon.ncDistributed)} vs declared {money(recon.ncDeclared)} (within rounding).
+              </p>
+            </div>
           </div>
-          <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
-            Distributed + house + manager should equal service charge + non-cash tips (within rounding).
-            Declared {money(recon.scDeclared + recon.ncDeclared)} · accounted {money(recon.distributed + recon.houseTotal + recon.mgrTotal)}.
-          </p>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import TimeWindowFilter from "@/components/TimeWindowFilter";
 import type { Window } from "@/lib/timeWindow";
+import { format12h } from "@/lib/format";
 
 type Tab = "lateness" | "callouts" | "disciplinary";
 
@@ -19,9 +20,7 @@ type DiscRow = {
 };
 
 function timeOf(iso: string | null): string {
-  if (!iso) return "—";
-  const t = iso.indexOf("T");
-  return t >= 0 ? iso.slice(t + 1, t + 6) : iso.slice(0, 5);
+  return format12h(iso) || "—"; // Item 12: 12-hour AM/PM display.
 }
 function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
   const esc = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -135,7 +134,7 @@ export default function ReportsPage() {
             {tab === "lateness" && (drawer as LatenessRow).incidents.map((i, idx) => (
               <div key={idx} className="p-2 mb-2 rounded-md text-xs" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
                 <div className="flex justify-between"><span>{i.date}</span><span className={`chip ${i.tier === 2 ? "chip-amber" : "chip-muted"}`}>Tier {i.tier}</span></div>
-                <div style={{ color: "var(--muted)" }}>Scheduled {i.scheduled_start?.slice(0, 5) ?? "—"} · clocked {timeOf(i.clock_in)} · {i.minutes_late} min late</div>
+                <div style={{ color: "var(--muted)" }}>Scheduled {format12h(i.scheduled_start) || "—"} · clocked {timeOf(i.clock_in)} · {i.minutes_late} min late</div>
               </div>
             ))}
             {tab === "callouts" && (drawer as CalloutRow).incidents.map((i, idx) => (

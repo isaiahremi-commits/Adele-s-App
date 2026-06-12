@@ -1,10 +1,10 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import { createClient } from "@/lib/supabase";
 import { useMounted } from "@/lib/useMounted";
-import { buildEarningsCSV, buildHoursCSV } from "@/lib/payrollExport";
+import { buildEarningsCSV, buildHoursCSV, buildDailyHoursCSV, type DailyHours } from "@/lib/payrollExport";
 import {
   cycleLength,
   currentPeriod,
@@ -81,6 +81,9 @@ export default function PayrollPage() {
   // Export support: employee_number map (not in pay_breakdown) + pay frequency.
   const [empNumbers, setEmpNumbers] = useState<Record<string, string>>({});
   const [payCycle, setPayCycle] = useState("biweekly");
+  // Item 16: per-employee per-day hours breakdown (expandable rows + CSV).
+  const [dailyByEmp, setDailyByEmp] = useState<Record<string, DailyHours[]>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [validate, setValidate] = useState<{ kind: "earnings" | "hours"; missingRates: PayRow[]; unposted: number } | null>(null);
 
   // Resolve the configured cycle once, then re-anchor the default period.
@@ -110,6 +113,37 @@ export default function PayrollPage() {
     const res = await fetch(`/api/payroll?start=${period.start}&end=${period.end}&mode=${mode}`).then((r) => r.json());
     setRows(Array.isArray(res) ? res : []);
     setLoading(false);
+
+    // Item 16: per-day actual hours (approved/posted timecards + PTO allocations).
+    try {
+      const supabase = createClient();
+      const [tcRes, ptoRes] = await Promise.all([
+        supabase.from("timecards").select("employee_id,date,regular_hours,ot_hours,training_hours")
+          .gte("date", period.start).lte("date", period.end).in("status", ["approved", "posted"]),
+        supabase.from("pto_allocations").select("employee_id,date,paid_hours")
+          .gte("date", period.start).lte("date", period.end),
+      ]);
+      const byEmp: Record<string, Record<string, DailyHours>> = {};
+      const ensure = (emp: string, date: string): DailyHours => {
+        const e = (byEmp[emp] ??= {});
+        return (e[date] ??= { date, regular_hours: 0, ot_hours: 0, training_hours: 0, pto_hours: 0 });
+      };
+      for (const t of tcRes.data ?? []) {
+        const d = ensure(t.employee_id as string, t.date as string);
+        d.regular_hours += Number(t.regular_hours ?? 0);
+        d.ot_hours += Number(t.ot_hours ?? 0);
+        d.training_hours += Number(t.training_hours ?? 0);
+      }
+      for (const p of ptoRes.data ?? []) {
+        const d = ensure(p.employee_id as string, p.date as string);
+        d.pto_hours += Number(p.paid_hours ?? 0);
+      }
+      const out: Record<string, DailyHours[]> = {};
+      for (const [emp, days] of Object.entries(byEmp)) {
+        out[emp] = Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
+      }
+      setDailyByEmp(out);
+    } catch { setDailyByEmp({}); }
   }, [period, mode]);
 
   useEffect(() => {
@@ -164,10 +198,12 @@ export default function PayrollPage() {
     }
   }
 
-  function doExport(kind: "earnings" | "hours") {
+  function doExport(kind: "earnings" | "hours" | "daily") {
     const ctx = { periodStart: period.start, periodEnd: period.end, empNumbers, payFrequency: payCycle };
-    const csv = kind === "earnings" ? buildEarningsCSV(rows, ctx) : buildHoursCSV(rows, ctx);
-    const fn = `manadele_${kind}_${period.start}_to_${period.end}.csv`;
+    const csv = kind === "earnings" ? buildEarningsCSV(rows, ctx)
+      : kind === "daily" ? buildDailyHoursCSV(rows, dailyByEmp, ctx)
+      : buildHoursCSV(rows, ctx);
+    const fn = `manadele_${kind === "daily" ? "daily_hours" : kind}_${period.start}_to_${period.end}.csv`;
     downloadCSV(fn, csv);
     setToast({ kind: "success", text: `Downloaded ${fn}` });
   }
@@ -226,6 +262,7 @@ export default function PayrollPage() {
           </div>
           <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("earnings")}>Export earnings</button>
           <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("hours")}>Export hours</button>
+          <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => doExport("daily")}>Export daily hours</button>
         </div>
       </div>
 
@@ -258,10 +295,24 @@ export default function PayrollPage() {
             {!loading && rows.map((r) => {
               const isMgr = r.title === "Restaurant Manager";
               const complete = r.scheduled_count > 0 ? r.approved_count >= r.scheduled_count : true;
+              const days = dailyByEmp[r.employee_id] ?? [];
+              const isOpen = expanded.has(r.employee_id);
+              const toggle = () => setExpanded((prev) => {
+                const next = new Set(prev);
+                if (next.has(r.employee_id)) next.delete(r.employee_id); else next.add(r.employee_id);
+                return next;
+              });
               return (
-                <tr key={r.employee_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                <Fragment key={r.employee_id}>
+                <tr style={{ borderBottom: isOpen ? "none" : "1px solid var(--border)" }}>
                   <td className="p-3 align-top">
-                    <div className="font-medium">{r.first_name} {r.last_name}</div>
+                    <button onClick={toggle} disabled={days.length === 0}
+                      className="font-medium text-left"
+                      style={{ background: "none", border: "none", padding: 0, cursor: days.length ? "pointer" : "default", color: "inherit" }}
+                      title={days.length ? "Show daily hours" : "No daily hours"}>
+                      {days.length > 0 && <span style={{ color: "var(--muted)" }}>{isOpen ? "▾ " : "▸ "}</span>}
+                      {r.first_name} {r.last_name}
+                    </button>
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
                       {[r.job_position, r.outlet_name].filter(Boolean).join(" · ") || "—"}
                     </div>
@@ -298,6 +349,35 @@ export default function PayrollPage() {
                     </span>
                   </td>
                 </tr>
+                {isOpen && days.length > 0 && (
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td colSpan={9} className="px-3 pb-3" style={{ background: "var(--surface-2)" }}>
+                      <table className="text-xs" style={{ minWidth: 420 }}>
+                        <thead>
+                          <tr style={{ color: "var(--muted)" }}>
+                            <th className="text-left py-1 pr-6 font-medium">Date</th>
+                            <th className="text-right py-1 px-3 font-medium">Reg</th>
+                            <th className="text-right py-1 px-3 font-medium">OT</th>
+                            <th className="text-right py-1 px-3 font-medium">Train</th>
+                            <th className="text-right py-1 px-3 font-medium">PTO</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {days.map((d) => (
+                            <tr key={d.date}>
+                              <td className="text-left py-0.5 pr-6">{d.date}</td>
+                              <td className="text-right py-0.5 px-3">{d.regular_hours.toFixed(2)}</td>
+                              <td className="text-right py-0.5 px-3">{d.ot_hours.toFixed(2)}</td>
+                              <td className="text-right py-0.5 px-3">{d.training_hours.toFixed(2)}</td>
+                              <td className="text-right py-0.5 px-3">{d.pto_hours.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
