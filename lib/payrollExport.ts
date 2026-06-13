@@ -78,3 +78,21 @@ export function buildHoursCSV(rows: ExportRow[], ctx: Ctx): string {
   ]);
   return toCSV(HOURS_HEADERS, csvRows);
 }
+
+// Item 16: per-employee per-day hours breakdown.
+export type DailyHours = { date: string; regular_hours: number; ot_hours: number; training_hours: number; pto_hours: number };
+export const DAILY_HOURS_HEADERS = ["employee_number", "last_name", "first_name", "date",
+  "regular_hours", "ot_hours", "training_hours", "pto_hours"];
+
+export function buildDailyHoursCSV(rows: ExportRow[], dailyByEmp: Record<string, DailyHours[]>, ctx: Ctx): string {
+  const csvRows: string[][] = [];
+  for (const r of sortForExport(rows)) {
+    for (const d of dailyByEmp[r.employee_id] ?? []) {
+      csvRows.push([
+        ctx.empNumbers[r.employee_id] ?? "", r.last_name ?? "", r.first_name ?? "",
+        d.date, hours2(d.regular_hours), hours2(d.ot_hours), hours2(d.training_hours), hours2(d.pto_hours),
+      ]);
+    }
+  }
+  return toCSV(DAILY_HOURS_HEADERS, csvRows);
+}

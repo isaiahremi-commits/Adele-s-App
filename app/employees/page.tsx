@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { PREDEFINED_ROLES, SHIRT_SIZES, OTHER_OPTION } from "@/lib/constants";
+import { titleCase } from "@/lib/format";
 
 type Employee = {
   id: string;
@@ -15,6 +16,9 @@ type Employee = {
   shirt_size?: string | null;
   date_of_hire?: string | null;
   termination_date?: string | null;
+  regular_rate?: number | string | null;
+  ot_rate?: number | string | null;
+  pto_rate?: number | string | null;
   phone?: string;
   email?: string;
   active?: boolean;
@@ -43,6 +47,9 @@ type Form = {
   shirt_size: string;
   date_of_hire: string;
   termination_date: string;
+  regular_rate: string;
+  ot_rate: string;
+  pto_rate: string;
   phone: string;
   email: string;
   assignments: Assignment[];
@@ -58,6 +65,9 @@ const emptyForm: Form = {
   shirt_size: "",
   date_of_hire: "",
   termination_date: "",
+  regular_rate: "",
+  ot_rate: "",
+  pto_rate: "",
   phone: "",
   email: "",
   assignments: [],
@@ -73,8 +83,6 @@ export default function EmployeesPage() {
   const [form, setForm] = useState<Form>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [smsBusy, setSmsBusy] = useState(false);
-  const [smsMsg, setSmsMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   // Item 4 "Other" toggles for the position/shirt dropdowns
@@ -126,7 +134,6 @@ export default function EmployeesPage() {
     setHomePosOther(false);
     setShirtOther(false);
     setError(null);
-    setSmsMsg(null);
     setOpen(true);
   }
 
@@ -146,7 +153,6 @@ export default function EmployeesPage() {
   async function openEdit(e: Employee) {
     setEditing(e);
     setError(null);
-    setSmsMsg(null);
     // Fetch existing additional-outlet assignments.
     let assignments: Assignment[] = [];
     try {
@@ -170,6 +176,9 @@ export default function EmployeesPage() {
       shirt_size: e.shirt_size ?? "",
       date_of_hire: e.date_of_hire ?? "",
       termination_date: e.termination_date ?? "",
+      regular_rate: e.regular_rate != null ? String(e.regular_rate) : "",
+      ot_rate: e.ot_rate != null ? String(e.ot_rate) : "",
+      pto_rate: e.pto_rate != null ? String(e.pto_rate) : "",
       phone: e.phone ?? "",
       email: e.email ?? "",
       assignments,
@@ -201,6 +210,9 @@ export default function EmployeesPage() {
         shirt_size: form.shirt_size || null,
         date_of_hire: form.date_of_hire,
         termination_date: form.termination_date || null,
+        regular_rate: form.regular_rate === "" ? null : Number(form.regular_rate),
+        ot_rate: form.ot_rate === "" ? null : Number(form.ot_rate),
+        pto_rate: form.pto_rate === "" ? null : Number(form.pto_rate),
         phone: form.phone || null,
         email: form.email || null,
       };
@@ -237,55 +249,6 @@ export default function EmployeesPage() {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function sendOptInInvite() {
-    if (!editing) return;
-    setSmsBusy(true);
-    setSmsMsg(null);
-    try {
-      const res = await fetch("/api/sms/opt-in", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employee_id: editing.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSmsMsg({ kind: "err", text: data.error || "Could not send invite" });
-        return;
-      }
-      setSmsMsg({ kind: "ok", text: "Invite sent. They need to reply YES." });
-      setEditing({ ...editing, sms_opt_in_pending: true });
-    } catch (err) {
-      setSmsMsg({ kind: "err", text: err instanceof Error ? err.message : "Network error" });
-    } finally {
-      setSmsBusy(false);
-    }
-  }
-
-  async function revokeOptIn() {
-    if (!editing) return;
-    if (!confirm("Revoke SMS consent for this employee? They will stop receiving texts immediately.")) return;
-    setSmsBusy(true);
-    setSmsMsg(null);
-    try {
-      const res = await fetch(`/api/employees/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sms_opt_in: false, sms_opt_in_pending: false, sms_opted_in_at: null }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSmsMsg({ kind: "err", text: data.error || "Could not revoke" });
-        return;
-      }
-      setSmsMsg({ kind: "ok", text: "SMS consent revoked." });
-      setEditing({ ...editing, sms_opt_in: false, sms_opt_in_pending: false, sms_opted_in_at: null });
-    } catch (err) {
-      setSmsMsg({ kind: "err", text: err instanceof Error ? err.message : "Network error" });
-    } finally {
-      setSmsBusy(false);
     }
   }
 
@@ -361,7 +324,7 @@ export default function EmployeesPage() {
         </select>
         <select className="input" style={{ width: 160 }} value={fPosition} onChange={(e) => setFPosition(e.target.value)}>
           <option value="">All positions</option>
-          {PREDEFINED_ROLES.map((p) => <option key={p} value={p}>{p}</option>)}
+          {PREDEFINED_ROLES.map((p) => <option key={p} value={p}>{titleCase(p)}</option>)}
         </select>
         <div className="flex gap-1 rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
           <button
@@ -440,7 +403,7 @@ export default function EmployeesPage() {
                         <h3 className="font-semibold truncate">{e.name}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
-                            const pos = e.home_position || e.position;
+                            const pos = titleCase(e.home_position || e.position);
                             if (pos) return dept ? `${pos} · ${dept}` : pos;
                             if (dept) return dept;
                             return e.title || "—"; // managers have a title but no staff position/dept
@@ -464,7 +427,7 @@ export default function EmployeesPage() {
                         <div className="text-xs mb-2" style={{ color: "var(--muted)" }}>
                           Also works at: {extraAssignments.map((a, i) => {
                             const oName = outlets.find((o) => o.id === a.outlet_id)?.name ?? "?";
-                            return <span key={i} style={{ color: "var(--foreground)" }}>{oName}{a.position_name && ` (${a.position_name})`}{i < extraAssignments.length - 1 ? ", " : ""}</span>;
+                            return <span key={i} style={{ color: "var(--foreground)" }}>{oName}{a.position_name && ` (${titleCase(a.position_name)})`}{i < extraAssignments.length - 1 ? ", " : ""}</span>;
                           })}
                         </div>
                       )}
@@ -555,7 +518,7 @@ export default function EmployeesPage() {
                 }}
               >
                 <option value="">Select…</option>
-                {PREDEFINED_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {PREDEFINED_ROLES.map((r) => <option key={r} value={r}>{titleCase(r)}</option>)}
                 <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
               </select>
               {homePosOther && (
@@ -610,51 +573,22 @@ export default function EmployeesPage() {
             </label>
           </div>
 
-          {editing && (
-            <div className="mt-2 p-3 rounded-md" style={{ background: "var(--surface-2)" }}>
-              <div className="text-sm font-medium mb-2">SMS Notifications</div>
-              {editing.sms_opt_in ? (
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <span className="chip chip-green" style={{ fontSize: 11 }}>Opted in</span>
-                    {editing.sms_opted_in_at && (
-                      <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
-                        on {new Date(editing.sms_opted_in_at).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                  <button type="button" className="btn btn-secondary text-xs" onClick={revokeOptIn} disabled={smsBusy} style={{ color: "var(--danger)" }}>
-                    {smsBusy ? "Working..." : "Revoke consent"}
-                  </button>
-                </div>
-              ) : editing.sms_opt_in_pending ? (
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <span className="chip chip-amber" style={{ fontSize: 11 }}>Pending — waiting for YES reply</span>
-                  </div>
-                  <button type="button" className="btn btn-secondary text-xs" onClick={sendOptInInvite} disabled={smsBusy || !editing.phone}>
-                    {smsBusy ? "Sending..." : "Resend invite"}
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-xs mb-2" style={{ color: "var(--muted)" }}>
-                    {editing.phone
-                      ? "Send a one-time text asking them to reply YES to receive schedule and tip notifications."
-                      : "Add a phone number above to enable SMS opt-in."}
-                  </p>
-                  <button type="button" className="btn btn-secondary text-xs" onClick={sendOptInInvite} disabled={smsBusy || !editing.phone}>
-                    {smsBusy ? "Sending..." : "Send opt-in invite via SMS"}
-                  </button>
-                </div>
-              )}
-              {smsMsg && (
-                <div className="text-xs mt-2" style={{ color: smsMsg.kind === "ok" ? "var(--primary)" : "var(--danger)" }}>
-                  {smsMsg.text}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Item 13: pay rates (manual; OT not auto-1.5×) */}
+          <div className="grid grid-cols-3 gap-3">
+            <label className="text-sm">Hourly rate ($)
+              <input type="number" step="0.01" min="0" className="input mt-1" value={form.regular_rate}
+                onChange={(e) => setForm({ ...form, regular_rate: e.target.value })} />
+            </label>
+            <label className="text-sm">OT rate ($)
+              <input type="number" step="0.01" min="0" className="input mt-1" value={form.ot_rate}
+                onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} />
+            </label>
+            <label className="text-sm">PTO rate ($)
+              <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
+                onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
+            </label>
+          </div>
+          {/* Item 14: SMS Notifications section removed from the employee form. */}
 
           <div className="mt-2">
             <div className="flex items-center justify-between mb-2">
@@ -687,7 +621,7 @@ export default function EmployeesPage() {
                     >
                       <option value="">Position…</option>
                       {aRoles.map((r) => (
-                        <option key={r.id} value={r.role_name}>{r.role_name}</option>
+                        <option key={r.id} value={r.role_name}>{titleCase(r.role_name)}</option>
                       ))}
                     </select>
                     <button

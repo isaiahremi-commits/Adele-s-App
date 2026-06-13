@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import { useMounted } from "@/lib/useMounted";
+import { format12h, titleCase } from "@/lib/format";
 
 type Employee = {
   id: string;
@@ -26,6 +27,7 @@ type Shift = {
   department?: string;
   position?: string;
   outlet_id?: string;
+  notes?: string | null;
 };
 
 const WEEKDAYS: { label: string; jsDay: number }[] = [
@@ -70,6 +72,7 @@ type Form = {
   start_time: string;
   end_time: string;
   position: string;
+  notes: string;
   apply_days: number[];
 };
 
@@ -81,8 +84,25 @@ const emptyForm: Form = {
   start_time: "09:00",
   end_time: "17:00",
   position: "",
+  notes: "",
   apply_days: [],
 };
+
+type Assignment = { outlet_id: string; position_name: string };
+
+// Minutes since midnight from "HH:MM"; null when absent.
+function timeToMin(t?: string | null): number | null {
+  if (!t) return null;
+  const [h, m] = t.slice(0, 5).split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+// Two [start,end) windows overlap (overnight end<=start rolls to next day).
+function rangesOverlap(aS: number, aE: number, bS: number, bE: number): boolean {
+  const ae = aE <= aS ? aE + 1440 : aE;
+  const be = bE <= bS ? bE + 1440 : bE;
+  return aS < be && bS < ae;
+}
 
 type Toast = { kind: "success" | "error"; text: string } | null;
 
@@ -110,6 +130,8 @@ export default function SchedulingPage() {
   const [outletFilter, setOutletFilter] = useState<string>(""); // Item 11
   const [positionFilter, setPositionFilter] = useState<string>(""); // Item 11
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingShiftId, setEditingShiftId] = useState<string | null>(null); // Item 10
+  const [empOutlets, setEmpOutlets] = useState<Record<string, Assignment[]>>({}); // Item 9
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -135,7 +157,7 @@ export default function SchedulingPage() {
   async function load() {
     const start = toISODate(days[0]);
     const end = toISODate(days[6]);
-    const [eRes, sRes, oRes, svcRes, rRes, dRes, lRes] = await Promise.all([
+    const [eRes, sRes, oRes, svcRes, rRes, dRes, lRes, aRes] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch(`/api/shifts?start=${start}&end=${end}`).then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
@@ -143,7 +165,18 @@ export default function SchedulingPage() {
       fetch("/api/outlet-roles").then((r) => r.json()),
       fetch("/api/departments").then((r) => r.json()),
       fetch(`/api/timecards/lateness?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
+      fetch("/api/employee-outlets").then((r) => r.json()).catch(() => []),
     ]);
+    // Item 9: per-employee configured (outlet, position) assignments.
+    const byEmp: Record<string, Assignment[]> = {};
+    if (Array.isArray(aRes)) {
+      for (const row of aRes) {
+        const eid = row.employee_id as string;
+        if (!eid) continue;
+        (byEmp[eid] ??= []).push({ outlet_id: row.outlet_id, position_name: row.position_name ?? "" });
+      }
+    }
+    setEmpOutlets(byEmp);
     // Tier 2 reads (batched for the visible week), tolerant of missing endpoints.
     const [ptoRes, swapRes] = await Promise.all([
       fetch(`/api/scheduling/pto-overlay?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
@@ -222,16 +255,50 @@ export default function SchedulingPage() {
     localStorage.setItem("scheduling_filters", JSON.stringify({ dept: deptFilter, outlet: outletFilter, position: positionFilter }));
   }, [deptFilter, outletFilter, positionFilter]);
 
-  const filteredOutlets = useMemo(() => {
-    if (!deptFilter) return outlets;
-    return outlets.filter((o) => o.department_id === deptFilter);
-  }, [outlets, deptFilter]);
-
+  // Item 7: when an outlet is selected, the position filter only lists that
+  // outlet's roles; "All outlets" lists every role.
   const uniquePositions = useMemo(() => {
     const set = new Set<string>();
-    for (const r of roles) if (r.role_name) set.add(r.role_name);
+    for (const r of roles) {
+      if (!r.role_name) continue;
+      if (outletFilter && r.outlet_id !== outletFilter) continue;
+      set.add(r.role_name);
+    }
     return Array.from(set).sort();
-  }, [roles]);
+  }, [roles, outletFilter]);
+
+  // Drop a stale position filter when the chosen outlet no longer offers it.
+  useEffect(() => {
+    if (positionFilter && !uniquePositions.includes(positionFilter)) setPositionFilter("");
+  }, [uniquePositions, positionFilter]);
+
+  // Item 9: outlets/positions an employee is configured for (home + employee_outlets).
+  function configuredOutlets(empId: string): Outlet[] {
+    const emp = employees.find((e) => e.id === empId);
+    const ids = new Set<string>();
+    if (emp?.home_outlet_id) ids.add(emp.home_outlet_id);
+    for (const a of empOutlets[empId] ?? []) if (a.outlet_id) ids.add(a.outlet_id);
+    return outlets.filter((o) => ids.has(o.id));
+  }
+  function configuredPositions(empId: string, outletId: string): string[] {
+    const emp = employees.find((e) => e.id === empId);
+    const names = new Set<string>();
+    if (emp?.home_position && emp?.home_outlet_id === outletId) names.add(emp.home_position);
+    for (const a of empOutlets[empId] ?? []) if (a.outlet_id === outletId && a.position_name) names.add(a.position_name);
+    return Array.from(names).sort();
+  }
+
+  // Item 6: total scheduled hours for an employee across the visible week.
+  function weekHoursFor(empId: string): number {
+    let total = 0;
+    for (const s of shifts) {
+      if (s.employee_id !== empId) continue;
+      const a = timeToMin(s.start_time), b = timeToMin(s.end_time);
+      if (a == null || b == null) continue;
+      total += ((b <= a ? b + 1440 : b) - a) / 60;
+    }
+    return total;
+  }
 
   function shiftsFor(empId: string, date: Date) {
     const iso = toISODate(date);
@@ -285,7 +352,26 @@ export default function SchedulingPage() {
   }
 
   const outletShiftTypes = form.outlet_id ? services.filter((s) => s.outlet_id === form.outlet_id) : [];
-  const outletRoles = form.outlet_id ? roles.filter((r) => r.outlet_id === form.outlet_id) : [];
+  // Item 9: add-shift Outlet + Position dropdowns are restricted to what the
+  // employee is configured for. When editing (Item 10) keep the current value
+  // selectable even if the employee's config has since changed.
+  const formOutlets = useMemo(() => {
+    if (!form.employee_id) return [] as Outlet[];
+    const list = configuredOutlets(form.employee_id);
+    if (form.outlet_id && !list.some((o) => o.id === form.outlet_id)) {
+      const cur = outlets.find((o) => o.id === form.outlet_id);
+      if (cur) return [...list, cur];
+    }
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.employee_id, form.outlet_id, employees, empOutlets, outlets]);
+  const formPositions = useMemo(() => {
+    if (!form.employee_id || !form.outlet_id) return [] as string[];
+    const list = configuredPositions(form.employee_id, form.outlet_id);
+    if (form.position && !list.includes(form.position)) return [...list, form.position];
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.employee_id, form.outlet_id, form.position, employees, empOutlets]);
 
   function toggleApplyDay(jsDay: number) {
     setForm((f) => ({
@@ -342,12 +428,66 @@ export default function SchedulingPage() {
     }
   }
 
+  // Item 8: find an existing overlapping shift for this employee/day (hard block,
+  // no override). Excludes the shift currently being edited.
+  function overlapConflict(empId: string, iso: string, excludeId: string | null): Shift | null {
+    const ns = timeToMin(form.start_time), ne = timeToMin(form.end_time);
+    if (ns == null || ne == null) return null;
+    for (const s of shifts) {
+      if (s.id === excludeId) continue;
+      if (s.employee_id !== empId || s.shift_date !== iso) continue;
+      const es = timeToMin(s.start_time), ee = timeToMin(s.end_time);
+      if (es == null || ee == null) continue;
+      if (rangesOverlap(ns, ne, es, ee)) return s;
+    }
+    return null;
+  }
+
   async function addShift(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
 
     if (!form.employee_id || !form.shift_date) {
       setFormError("Employee and date are required.");
+      return;
+    }
+
+    const empName = employees.find((x) => x.id === form.employee_id)?.name ?? "This employee";
+
+    // Item 10: editing an existing shift — single-day PATCH in place.
+    if (editingShiftId) {
+      const conflict = overlapConflict(form.employee_id, form.shift_date, editingShiftId);
+      if (conflict) {
+        setFormError(`${empName} already has a shift from ${format12h(conflict.start_time)}–${format12h(conflict.end_time)} that day. Edit it instead or pick a non-overlapping time.`);
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const res = await fetch(`/api/shifts/${editingShiftId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            employee_id: form.employee_id,
+            shift_date: form.shift_date,
+            start_time: form.start_time || null,
+            end_time: form.end_time || null,
+            shift_type: form.shift_type || null,
+            position: form.position || null,
+            outlet_id: form.outlet_id || null,
+            notes: form.notes || null,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { setFormError(data.error || `Save failed (${res.status})`); return; }
+        setModalOpen(false);
+        setEditingShiftId(null);
+        setForm(emptyForm);
+        load();
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : "Network error");
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -365,6 +505,12 @@ export default function SchedulingPage() {
         setFormError(`Employee already has ${MAX_SHIFTS_PER_DAY} shifts on ${iso}.`);
         return;
       }
+      // Item 8: hard block overlapping shifts.
+      const conflict = overlapConflict(form.employee_id, iso, null);
+      if (conflict) {
+        setFormError(`${empName} already has a shift from ${format12h(conflict.start_time)}–${format12h(conflict.end_time)} that day. Edit it instead or pick a non-overlapping time.`);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -376,6 +522,7 @@ export default function SchedulingPage() {
         shift_type: form.shift_type || null,
         position: form.position || null,
         outlet_id: form.outlet_id || null,
+        notes: form.notes || null,
       };
 
       const results = await Promise.all(
@@ -400,6 +547,24 @@ export default function SchedulingPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Item 10: open the editor for an existing shift, pre-populated + editable.
+  function openEditShift(s: Shift) {
+    setEditingShiftId(s.id);
+    setFormError(null);
+    setForm({
+      employee_id: s.employee_id,
+      shift_date: s.shift_date,
+      outlet_id: s.outlet_id ?? "",
+      shift_type: s.shift_type ?? "",
+      start_time: s.start_time?.slice(0, 5) ?? "09:00",
+      end_time: s.end_time?.slice(0, 5) ?? "17:00",
+      position: s.position ?? "",
+      notes: s.notes ?? "",
+      apply_days: [],
+    });
+    setModalOpen(true);
   }
 
   async function removeShift(id: string) {
@@ -486,7 +651,7 @@ export default function SchedulingPage() {
           >
             {approving ? "Approving..." : approvedWeek ? "Approved ✓" : "Approve Week"}
           </button>
-          <button className="btn btn-primary" disabled={editLocked} onClick={() => { setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
+          <button className="btn btn-primary" disabled={editLocked} onClick={() => { setEditingShiftId(null); setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
         </div>
       </header>
 
@@ -531,7 +696,7 @@ export default function SchedulingPage() {
         </select>
         <select className="input" style={{ width: 200 }} value={positionFilter} onChange={(e) => setPositionFilter(e.target.value)}>
           <option value="">All positions</option>
-          {uniquePositions.map((p) => <option key={p} value={p}>{p}</option>)}
+          {uniquePositions.map((p) => <option key={p} value={p}>{titleCase(p)}</option>)}
         </select>
       </div>
 
@@ -560,10 +725,13 @@ export default function SchedulingPage() {
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
+            {/* Item 5: dates header stays visible while scrolling. */}
             <tr style={{ borderBottom: "1px solid var(--border)" }}>
-              <th className="text-left p-3 font-medium" style={{ color: "var(--muted)", minWidth: 200 }}>Employee</th>
+              <th className="text-left p-3 font-medium"
+                style={{ color: "var(--muted)", minWidth: 200, position: "sticky", top: 0, zIndex: 6, background: "var(--surface)" }}>Employee</th>
               {days.map((d) => (
-                <th key={d.toISOString()} className="text-left p-3 font-medium" style={{ color: "var(--muted)", minWidth: 140 }}>
+                <th key={d.toISOString()} className="text-left p-3 font-medium"
+                  style={{ color: "var(--muted)", minWidth: 140, position: "sticky", top: 0, zIndex: 5, background: "var(--surface)" }}>
                   <div>{DOW[d.getDay()]}</div>
                   <div className="text-xs" style={{ color: "var(--muted)" }}>{MON[d.getMonth()]} {d.getDate()}</div>
                 </th>
@@ -578,6 +746,7 @@ export default function SchedulingPage() {
             )}
             {filteredEmployees.map((emp) => {
               const empDept = departments.find((d) => d.id === emp.department_id);
+              const wk = weekHoursFor(emp.id);
               return (
                 <tr key={emp.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td className="p-3 align-top">
@@ -585,6 +754,10 @@ export default function SchedulingPage() {
                     {/* Item 10: department only — position varies per day. */}
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
                       {empDept?.name ?? ""}
+                    </div>
+                    {/* Item 6: total scheduled hours this visible week. */}
+                    <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                      {wk.toFixed(wk % 1 === 0 ? 0 : 1)}h scheduled
                     </div>
                   </td>
                   {days.map((d) => {
@@ -604,7 +777,11 @@ export default function SchedulingPage() {
                             const outletName = outlets.find((o) => o.id === s.outlet_id)?.name;
                             const sw = swapFor(s.id);
                             return (
-                              <div key={s.id} className="p-2 rounded-md text-xs group relative" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                              // Item 10: click anywhere on the shift to edit it (when not locked).
+                              <div key={s.id} className="p-2 rounded-md text-xs group relative"
+                                style={{ background: "var(--surface-2)", border: "1px solid var(--border)", cursor: editLocked ? "default" : "pointer" }}
+                                title={editLocked ? undefined : "Click to edit shift"}
+                                onClick={() => { if (!editLocked) openEditShift(s); }}>
                                 <div className="flex items-center gap-1 mb-0.5">
                                   {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
                                   {lateness[s.id] && (
@@ -616,23 +793,25 @@ export default function SchedulingPage() {
                                   {sw.pending && (
                                     <span title={`Pending: ${sw.pending.original_name} → ${sw.pending.new_name}`}
                                       style={{ color: "var(--amber)", fontSize: 11, lineHeight: 1, cursor: "pointer" }}
-                                      onClick={() => setSwapModal({ shift: s, mode: "manage" })}>⇄</span>
+                                      onClick={(e) => { e.stopPropagation(); setSwapModal({ shift: s, mode: "manage" }); }}>⇄</span>
                                   )}
                                   {!sw.pending && sw.completed.length > 0 && (
                                     <span title={`Originally: ${sw.completed[0].original_name} · Current: ${sw.completed[sw.completed.length - 1].new_name} (swapped ${sw.completed[sw.completed.length - 1].created_at.slice(0, 10)})`}
                                       style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1, cursor: "pointer" }}
-                                      onClick={() => setSwapModal({ shift: s, mode: "manage" })}>↺</span>
+                                      onClick={(e) => { e.stopPropagation(); setSwapModal({ shift: s, mode: "manage" }); }}>↺</span>
                                   )}
                                 </div>
                                 <div className="font-medium" style={{ color: "var(--primary)" }}>
-                                  {s.start_time?.slice(0, 5) ?? "?"}-{s.end_time?.slice(0, 5) ?? "?"}
+                                  {/* Item 12: 12-hour AM/PM display. */}
+                                  {format12h(s.start_time) || "?"}–{format12h(s.end_time) || "?"}
                                 </div>
-                                {s.position && <div style={{ color: "var(--muted)" }}>{s.position}</div>}
+                                {/* Item 15: capitalized position label (stored value stays lowercase). */}
+                                {s.position && <div style={{ color: "var(--muted)" }}>{titleCase(s.position)}</div>}
                                 {outletName && <div style={{ color: "var(--muted)" }}>{outletName}</div>}
                                 <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100">
                                   {/* swaps stay available on approved weeks; disabled only for past weeks */}
-                                  {!swapLocked && <button onClick={() => setSwapModal({ shift: s, mode: "record" })} title="Record swap" style={{ color: "var(--muted)" }}>⇄</button>}
-                                  {!editLocked && <button onClick={() => removeShift(s.id)} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>}
+                                  {!swapLocked && <button onClick={(e) => { e.stopPropagation(); setSwapModal({ shift: s, mode: "record" }); }} title="Record swap" style={{ color: "var(--muted)" }}>⇄</button>}
+                                  {!editLocked && <button onClick={(e) => { e.stopPropagation(); removeShift(s.id); }} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>}
                                 </div>
                                 </div>
                               );
@@ -642,6 +821,7 @@ export default function SchedulingPage() {
                               disabled={atCap}
                               title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
                               onClick={() => {
+                                setEditingShiftId(null);
                                 setForm({ ...emptyForm, employee_id: emp.id, shift_date: toISODate(d) });
                                 setFormError(null);
                                 setModalOpen(true);
@@ -665,14 +845,15 @@ export default function SchedulingPage() {
         </table>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Shift">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditingShiftId(null); }} title={editingShiftId ? "Edit Shift" : "Add Shift"}>
+        {/* Item 11: field order Employee → Date → Outlet → Shift Type → Position → Start → End. */}
         <form onSubmit={addShift} className="flex flex-col gap-3">
           <label className="text-sm">Employee
             <select
               className="input mt-1"
               required
               value={form.employee_id}
-              onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
+              onChange={(e) => setForm({ ...form, employee_id: e.target.value, outlet_id: "", shift_type: "", position: "" })}
             >
               <option value="">Select...</option>
               {filteredEmployees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
@@ -689,14 +870,16 @@ export default function SchedulingPage() {
             />
           </label>
 
+          {/* Item 9: only outlets this employee is configured for (hard block). */}
           <label className="text-sm">Outlet
             <select
               className="input mt-1"
               value={form.outlet_id}
+              disabled={!form.employee_id}
               onChange={(e) => setForm({ ...form, outlet_id: e.target.value, shift_type: "", position: "" })}
             >
-              <option value="">Select...</option>
-              {filteredOutlets.map((o) => (
+              <option value="">{form.employee_id ? (formOutlets.length ? "Select..." : "No configured outlets") : "Pick employee first"}</option>
+              {formOutlets.map((o) => (
                 <option key={o.id} value={o.id}>{o.name}</option>
               ))}
             </select>
@@ -716,6 +899,22 @@ export default function SchedulingPage() {
             </select>
           </label>
 
+          {/* Item 9: only positions this employee is configured for at the outlet.
+              Item 15: capitalized labels, lowercase stored value. */}
+          <label className="text-sm">Position
+            <select
+              className="input mt-1"
+              value={form.position}
+              onChange={(e) => setForm({ ...form, position: e.target.value })}
+              disabled={!form.outlet_id}
+            >
+              <option value="">{form.outlet_id ? (formPositions.length ? "Select..." : "No configured positions") : "Pick outlet first"}</option>
+              {formPositions.map((p) => (
+                <option key={p} value={p}>{titleCase(p)}</option>
+              ))}
+            </select>
+          </label>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">Start
               <input type="time" className="input mt-1" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
@@ -725,20 +924,11 @@ export default function SchedulingPage() {
             </label>
           </div>
 
-          <label className="text-sm">Position
-            <select
-              className="input mt-1"
-              value={form.position}
-              onChange={(e) => setForm({ ...form, position: e.target.value })}
-              disabled={!form.outlet_id}
-            >
-              <option value="">{form.outlet_id ? "Select..." : "Pick outlet first"}</option>
-              {outletRoles.map((r) => (
-                <option key={r.id} value={r.role_name}>{r.role_name}</option>
-              ))}
-            </select>
+          <label className="text-sm">Notes
+            <input className="input mt-1" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional" />
           </label>
 
+          {!editingShiftId && (
           <div className="text-sm">
             <div className="mb-1">Apply to multiple days (this week)</div>
             <div className="flex flex-wrap gap-3">
@@ -765,6 +955,7 @@ export default function SchedulingPage() {
               })}
             </div>
           </div>
+          )}
 
           {formError && (
             <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
@@ -772,8 +963,8 @@ export default function SchedulingPage() {
             </div>
           )}
           <div className="flex justify-end gap-2 mt-2">
-            <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)} disabled={submitting}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Add Shift"}</button>
+            <button type="button" className="btn btn-secondary" onClick={() => { setModalOpen(false); setEditingShiftId(null); }} disabled={submitting}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving..." : editingShiftId ? "Save Shift" : "Add Shift"}</button>
           </div>
         </form>
       </Modal>
@@ -851,7 +1042,7 @@ export default function SchedulingPage() {
                     return (
                       <label key={p} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
                         <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, positions: toggle(copyForm.positions, p), employee_ids: [] })} style={{ display: "none" }} />
-                        {p}
+                        {titleCase(p)}
                       </label>
                     );
                   })}
