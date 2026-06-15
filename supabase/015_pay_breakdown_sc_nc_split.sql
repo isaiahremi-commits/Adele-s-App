@@ -9,7 +9,13 @@
 -- Manager commission (2% large-party) stays its own column — not a tip.
 --
 -- Only the tiprows CTE and the output column list differ from migration 014.
+--
+-- The return signature changes (adds sc_tips / nc_tips), so the existing
+-- function is dropped first — Postgres CREATE OR REPLACE can't alter a
+-- function's return type (error 42P13).
 -- =========================================================================
+
+drop function if exists pay_breakdown(date, date, text);
 
 create or replace function pay_breakdown(
   p_start date,
