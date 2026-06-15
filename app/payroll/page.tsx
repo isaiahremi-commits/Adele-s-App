@@ -42,6 +42,7 @@ type PayRow = {
   gross_pay: string | number | null;
   has_missing_rate: boolean;
   warnings: string[];
+  pay_type: string | null;
 };
 
 type Mode = "actual" | "prediction";
@@ -213,9 +214,10 @@ export default function PayrollPage() {
     setToast({ kind: "success", text: `Downloaded ${fn}` });
   }
 
-  // Advisory pre-export gate: NULL regular_rate + approved-but-unposted timecards.
+  // Advisory pre-export gate: rows missing a needed pay component (a salaried
+  // employee with a set salary is NOT missing one) + approved-but-unposted.
   async function requestExport(kind: "earnings" | "hours") {
-    const missingRates = rows.filter((r) => r.regular_rate === null || r.regular_rate === undefined);
+    const missingRates = rows.filter((r) => r.has_missing_rate);
     let unposted = 0;
     try {
       const supabase = createClient();
@@ -300,6 +302,7 @@ export default function PayrollPage() {
             )}
             {!loading && rows.map((r) => {
               const isMgr = r.title === "Restaurant Manager";
+              const salaried = r.pay_type === "salary";
               const complete = r.scheduled_count > 0 ? r.approved_count >= r.scheduled_count : true;
               const days = dailyByEmp[r.employee_id] ?? [];
               const isOpen = expanded.has(r.employee_id);
@@ -318,6 +321,7 @@ export default function PayrollPage() {
                       title={days.length ? "Show daily hours" : "No daily hours"}>
                       {days.length > 0 && <span style={{ color: "var(--muted)" }}>{isOpen ? "▾ " : "▸ "}</span>}
                       {r.first_name} {r.last_name}
+                      {salaried && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Salaried</span>}
                     </button>
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
                       {[r.job_position, r.outlet_name].filter(Boolean).join(" · ") || "—"}
@@ -332,15 +336,21 @@ export default function PayrollPage() {
                   </td>
                   <td className="p-3 align-top text-right">
                     <div>{hrs(r.ot_hours)}</div>
-                    <div style={{ color: r.ot_pay === null ? "var(--amber)" : "inherit" }}>{money(r.ot_pay)}</div>
+                    {salaried
+                      ? <div style={{ color: "var(--muted)" }}>— <span style={{ fontSize: 10 }}>(salaried)</span></div>
+                      : <div style={{ color: r.ot_pay === null ? "var(--amber)" : "inherit" }}>{money(r.ot_pay)}</div>}
                   </td>
                   <td className="p-3 align-top text-right">
                     <div>{hrs(r.training_hours)}</div>
-                    <div style={{ color: r.training_pay === null ? "var(--amber)" : "inherit" }}>{money(r.training_pay)}</div>
+                    {salaried
+                      ? <div style={{ color: "var(--muted)" }}>—</div>
+                      : <div style={{ color: r.training_pay === null ? "var(--amber)" : "inherit" }}>{money(r.training_pay)}</div>}
                   </td>
                   <td className="p-3 align-top text-right">
                     <div>{hrs(r.pto_hours)}</div>
-                    <div style={{ color: r.pto_pay === null ? "var(--amber)" : "inherit" }}>{money(r.pto_pay)}</div>
+                    {salaried
+                      ? <div style={{ color: "var(--muted)" }}>—</div>
+                      : <div style={{ color: r.pto_pay === null ? "var(--amber)" : "inherit" }}>{money(r.pto_pay)}</div>}
                   </td>
                   <td className="p-3 align-top text-right">{money(r.sc_tips)}</td>
                   <td className="p-3 align-top text-right">{money(r.nc_tips)}</td>

@@ -19,6 +19,8 @@ type Employee = {
   regular_rate?: number | string | null;
   ot_rate?: number | string | null;
   pto_rate?: number | string | null;
+  pay_type?: string | null;
+  annual_salary?: number | string | null;
   phone?: string;
   email?: string;
   active?: boolean;
@@ -47,6 +49,8 @@ type Form = {
   shirt_size: string;
   date_of_hire: string;
   termination_date: string;
+  pay_type: "hourly" | "salary";
+  annual_salary: string;
   regular_rate: string;
   ot_rate: string;
   pto_rate: string;
@@ -65,6 +69,8 @@ const emptyForm: Form = {
   shirt_size: "",
   date_of_hire: "",
   termination_date: "",
+  pay_type: "hourly",
+  annual_salary: "",
   regular_rate: "",
   ot_rate: "",
   pto_rate: "",
@@ -176,6 +182,8 @@ export default function EmployeesPage() {
       shirt_size: e.shirt_size ?? "",
       date_of_hire: e.date_of_hire ?? "",
       termination_date: e.termination_date ?? "",
+      pay_type: e.pay_type === "salary" ? "salary" : "hourly",
+      annual_salary: e.annual_salary != null ? String(e.annual_salary) : "",
       regular_rate: e.regular_rate != null ? String(e.regular_rate) : "",
       ot_rate: e.ot_rate != null ? String(e.ot_rate) : "",
       pto_rate: e.pto_rate != null ? String(e.pto_rate) : "",
@@ -198,6 +206,11 @@ export default function EmployeesPage() {
       setError("Termination date must be on or after the hire date.");
       return;
     }
+    // App-layer rule (no DB CHECK): salaried employees need an annual salary.
+    if (form.pay_type === "salary" && (form.annual_salary === "" || Number(form.annual_salary) <= 0)) {
+      setError("Annual salary is required and must be greater than 0 for salaried employees.");
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
@@ -210,6 +223,9 @@ export default function EmployeesPage() {
         shirt_size: form.shirt_size || null,
         date_of_hire: form.date_of_hire,
         termination_date: form.termination_date || null,
+        pay_type: form.pay_type,
+        annual_salary: form.annual_salary === "" ? null : Number(form.annual_salary),
+        // Preserve existing rate values on toggle — never auto-null them.
         regular_rate: form.regular_rate === "" ? null : Number(form.regular_rate),
         ot_rate: form.ot_rate === "" ? null : Number(form.ot_rate),
         pto_rate: form.pto_rate === "" ? null : Number(form.pto_rate),
@@ -400,7 +416,7 @@ export default function EmployeesPage() {
                         {e.name?.[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{e.name}</h3>
+                        <h3 className="font-semibold truncate">{e.name}{e.pay_type === "salary" && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Salaried</span>}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
                             const pos = titleCase(e.home_position || e.position);
@@ -573,21 +589,59 @@ export default function EmployeesPage() {
             </label>
           </div>
 
-          {/* Item 13: pay rates (manual; OT not auto-1.5×) */}
-          <div className="grid grid-cols-3 gap-3">
-            <label className="text-sm">Hourly rate ($)
-              <input type="number" step="0.01" min="0" className="input mt-1" value={form.regular_rate}
-                onChange={(e) => setForm({ ...form, regular_rate: e.target.value })} />
-            </label>
-            <label className="text-sm">OT rate ($)
-              <input type="number" step="0.01" min="0" className="input mt-1" value={form.ot_rate}
-                onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} />
-            </label>
-            <label className="text-sm">PTO rate ($)
-              <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
-                onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
-            </label>
+          {/* Salary support: pay type toggle. Toggling never nulls existing
+              rate values — they stay in the form/DB, just hidden. */}
+          <div>
+            <div className="text-sm font-medium mb-1">Pay Type</div>
+            <div className="inline-flex rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
+              {(["hourly", "salary"] as const).map((pt) => (
+                <button key={pt} type="button" onClick={() => setForm({ ...form, pay_type: pt })}
+                  className="text-xs px-4 py-1 rounded-md"
+                  style={{
+                    background: form.pay_type === pt ? "var(--surface)" : "transparent",
+                    color: form.pay_type === pt ? "var(--primary)" : "var(--muted)",
+                    fontWeight: form.pay_type === pt ? 600 : 400, border: "none", cursor: "pointer",
+                  }}>
+                  {pt === "hourly" ? "Hourly" : "Salary"}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {form.pay_type === "hourly" ? (
+            /* Item 13: pay rates (manual; OT not auto-1.5×) */
+            <div className="grid grid-cols-3 gap-3">
+              <label className="text-sm">Hourly rate ($)
+                <input type="number" step="0.01" min="0" className="input mt-1" value={form.regular_rate}
+                  onChange={(e) => setForm({ ...form, regular_rate: e.target.value })} />
+              </label>
+              <label className="text-sm">OT rate ($)
+                <input type="number" step="0.01" min="0" className="input mt-1" value={form.ot_rate}
+                  onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} />
+              </label>
+              <label className="text-sm">PTO rate ($)
+                <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
+                  onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
+              </label>
+            </div>
+          ) : (
+            /* Salaried: annual salary + PTO rate. Hourly/OT rate not applicable. */
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm">Annual salary ($)
+                <input type="number" step="0.01" min="0" className="input mt-1"
+                  style={{ borderColor: form.annual_salary ? "var(--border)" : "var(--amber)" }}
+                  value={form.annual_salary}
+                  onChange={(e) => setForm({ ...form, annual_salary: e.target.value })} />
+              </label>
+              <label className="text-sm">PTO rate ($)
+                <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
+                  onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
+              </label>
+              <p className="text-xs col-span-2" style={{ color: "var(--muted)" }}>
+                Hourly &amp; OT rate don’t apply to salaried employees. Existing values are preserved.
+              </p>
+            </div>
+          )}
           {/* Item 14: SMS Notifications section removed from the employee form. */}
 
           <div className="mt-2">
