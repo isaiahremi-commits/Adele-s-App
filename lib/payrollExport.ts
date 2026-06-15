@@ -18,6 +18,8 @@ export type ExportRow = {
   training_pay: string | number | null;
   pto_pay: string | number | null;
   tip_pay: string | number | null;
+  sc_tips: string | number | null;
+  nc_tips: string | number | null;
   manager_amount: string | number | null;
   gross_pay: string | number | null;
 };
@@ -51,7 +53,7 @@ type Ctx = { periodStart: string; periodEnd: string; empNumbers: Record<string, 
 
 export const EARNINGS_HEADERS = ["employee_number", "last_name", "first_name", "department", "position", "outlet",
   "pay_period_start", "pay_period_end", "regular_hours", "regular_pay", "ot_hours", "ot_pay",
-  "training_hours", "training_pay", "pto_hours", "pto_pay", "tip_pay", "manager_commission_pay", "gross_pay"];
+  "training_hours", "training_pay", "pto_hours", "pto_pay", "sc_tip_pay", "nc_tip_pay", "manager_commission_pay", "gross_pay"];
 
 export const HOURS_HEADERS = ["employee_number", "last_name", "first_name", "pay_period_start", "pay_period_end",
   "pay_frequency", "regular_hours", "ot_hours", "pto_hours", "training_hours"];
@@ -65,7 +67,7 @@ export function buildEarningsCSV(rows: ExportRow[], ctx: Ctx): string {
     hours2(r.ot_hours), amt(r.ot_pay),
     hours2(r.training_hours), amt(r.training_pay),
     hours2(r.pto_hours), amt(r.pto_pay),
-    amt(r.tip_pay), amt(r.manager_amount), amt(r.gross_pay),
+    amt(r.sc_tips), amt(r.nc_tips), amt(r.manager_amount), amt(r.gross_pay),
   ]);
   return toCSV(EARNINGS_HEADERS, csvRows);
 }

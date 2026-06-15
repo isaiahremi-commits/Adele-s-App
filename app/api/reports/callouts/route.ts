@@ -6,7 +6,8 @@ import { calloutReport } from "@/lib/reports";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const start = searchParams.get("start"), end = searchParams.get("end");
+  const dept = searchParams.get("dept"), outlet = searchParams.get("outlet");
   if (!start || !end) return NextResponse.json({ error: "start and end are required" }, { status: 400 });
   const supabase = createClient();
-  return NextResponse.json(await calloutReport(supabase, start, end));
+  return NextResponse.json(await calloutReport(supabase, start, end, dept, outlet));
 }

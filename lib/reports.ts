@@ -36,6 +36,30 @@ async function employeeNameMap(supabase: DB): Promise<Record<string, string>> {
   return map;
 }
 
+// Day-3 item 3: the set of employee_ids permitted by the department/outlet
+// filters (AND logic). Returns null when neither filter is set (no filtering).
+// Outlet matches the employee's home_outlet_id OR any employee_outlets row.
+export async function allowedEmployeeIds(
+  supabase: DB,
+  deptId?: string | null,
+  outletId?: string | null,
+): Promise<Set<string> | null> {
+  if (!deptId && !outletId) return null;
+  const { data: emps } = await supabase.from("employees").select("id, department_id, home_outlet_id");
+  let allowed = new Set((emps ?? []).map((e) => e.id as string));
+  if (deptId) {
+    allowed = new Set((emps ?? []).filter((e) => e.department_id === deptId).map((e) => e.id as string));
+  }
+  if (outletId) {
+    const { data: eo } = await supabase.from("employee_outlets").select("employee_id").eq("outlet_id", outletId);
+    const outletEmps = new Set<string>();
+    for (const e of emps ?? []) if (e.home_outlet_id === outletId) outletEmps.add(e.id as string);
+    for (const r of eo ?? []) outletEmps.add(r.employee_id as string);
+    allowed = new Set(Array.from(allowed).filter((id) => outletEmps.has(id)));
+  }
+  return allowed;
+}
+
 export type LatenessIncident = {
   date: string; scheduled_start: string | null; clock_in: string | null; minutes_late: number; tier: number;
 };
@@ -44,10 +68,11 @@ export type LatenessRow = {
   avg_minutes: number; latest_date: string | null; incidents: LatenessIncident[];
 };
 
-export async function latenessReport(supabase: DB, start: string, end: string) {
-  const [{ data: setup }, names] = await Promise.all([
+export async function latenessReport(supabase: DB, start: string, end: string, deptId?: string | null, outletId?: string | null) {
+  const [{ data: setup }, names, allowed] = await Promise.all([
     supabase.from("setup").select("lateness_tier1_minutes, lateness_tier2_minutes").limit(1).maybeSingle(),
     employeeNameMap(supabase),
+    allowedEmployeeIds(supabase, deptId, outletId),
   ]);
   const t1 = setup?.lateness_tier1_minutes ?? 12;
   const t2 = setup?.lateness_tier2_minutes ?? 30;
@@ -73,12 +98,14 @@ export async function latenessReport(supabase: DB, start: string, end: string) {
     row.incidents.push({ date: r.date as string, scheduled_start: sh?.start_time ?? null, clock_in: tc?.clock_in ?? null, minutes_late: minutes, tier });
     if (!row.latest_date || (r.date as string) > row.latest_date) row.latest_date = r.date as string;
   }
-  const rows = Array.from(byEmp.values()).map((r) => {
-    const total = r.incidents.reduce((s, i) => s + i.minutes_late, 0);
-    r.avg_minutes = r.incidents.length ? Math.round((total / r.incidents.length) * 10) / 10 : 0;
-    r.incidents.sort((a, b) => a.date.localeCompare(b.date));
-    return r;
-  });
+  const rows = Array.from(byEmp.values())
+    .filter((r) => !allowed || allowed.has(r.employee_id))
+    .map((r) => {
+      const total = r.incidents.reduce((s, i) => s + i.minutes_late, 0);
+      r.avg_minutes = r.incidents.length ? Math.round((total / r.incidents.length) * 10) / 10 : 0;
+      r.incidents.sort((a, b) => a.date.localeCompare(b.date));
+      return r;
+    });
   rows.sort((a, b) => b.tier1 + b.tier2 - (a.tier1 + a.tier2));
   return { thresholds: { tier1_minutes: t1, tier2_minutes: t2 }, rows };
 }
@@ -89,10 +116,11 @@ export type CalloutRow = {
   threshold_flag: boolean; incidents: CalloutIncident[];
 };
 
-export async function calloutReport(supabase: DB, start: string, end: string) {
-  const [{ data: setup }, names] = await Promise.all([
+export async function calloutReport(supabase: DB, start: string, end: string, deptId?: string | null, outletId?: string | null) {
+  const [{ data: setup }, names, allowed] = await Promise.all([
     supabase.from("setup").select("callout_threshold_count, callout_threshold_window_days").limit(1).maybeSingle(),
     employeeNameMap(supabase),
+    allowedEmployeeIds(supabase, deptId, outletId),
   ]);
   const thresholdCount = setup?.callout_threshold_count ?? 3;
   const windowDays = setup?.callout_threshold_window_days ?? 30;
@@ -121,14 +149,17 @@ export async function calloutReport(supabase: DB, start: string, end: string) {
     row.incidents.push({ date: r.date as string, shift_type: sh?.shift_type ?? null, reason: (r.reason as string) ?? null, entered_by: r.entered_by ? (names[r.entered_by as string] ?? null) : null });
     if (!row.latest_date || (r.date as string) > row.latest_date) row.latest_date = r.date as string;
   }
-  const rows = Array.from(byEmp.values());
+  const rows = Array.from(byEmp.values()).filter((r) => !allowed || allowed.has(r.employee_id));
   rows.forEach((r) => r.incidents.sort((a, b) => a.date.localeCompare(b.date)));
   rows.sort((a, b) => b.count - a.count);
   return { thresholds: { count: thresholdCount, window_days: windowDays }, rows };
 }
 
-export async function disciplinaryReport(supabase: DB, start: string, end: string) {
-  const [lat, co] = await Promise.all([latenessReport(supabase, start, end), calloutReport(supabase, start, end)]);
+export async function disciplinaryReport(supabase: DB, start: string, end: string, deptId?: string | null, outletId?: string | null) {
+  const [lat, co] = await Promise.all([
+    latenessReport(supabase, start, end, deptId, outletId),
+    calloutReport(supabase, start, end, deptId, outletId),
+  ]);
   const latMap = new Map(lat.rows.map((r) => [r.employee_id, r]));
   const coMap = new Map(co.rows.map((r) => [r.employee_id, r]));
   const ids = new Set<string>([...Array.from(latMap.keys()), ...Array.from(coMap.keys())]);

@@ -37,6 +37,8 @@ type PayRow = {
   pto_pay: string | number | null;
   manager_amount: string | number;
   tip_pay: string | number | null;
+  sc_tips: string | number | null;
+  nc_tips: string | number | null;
   gross_pay: string | number | null;
   has_missing_rate: boolean;
   warnings: string[];
@@ -159,18 +161,21 @@ export default function PayrollPage() {
   const anyIncomplete = rows.some((r) => r.has_missing_rate);
 
   // Cents-safe rollups by outlet and department.
+  // Item 2: surface SC and NC tip subtotals alongside gross for reconciliation.
   const rollups = useMemo(() => {
     const sum = (key: "outlet_name" | "department") => {
-      const m = new Map<string, { gross: number; incomplete: boolean }>();
+      const m = new Map<string, { gross: number; sc: number; nc: number; incomplete: boolean }>();
       for (const r of rows) {
         const k = (r[key] as string) || "Unassigned";
-        const cur = m.get(k) ?? { gross: 0, incomplete: false };
+        const cur = m.get(k) ?? { gross: 0, sc: 0, nc: 0, incomplete: false };
         cur.gross += cents(r.gross_pay);
+        cur.sc += cents(r.sc_tips);
+        cur.nc += cents(r.nc_tips);
         if (r.has_missing_rate) cur.incomplete = true;
         m.set(k, cur);
       }
       return Array.from(m.entries())
-        .map(([name, v]) => ({ name, gross: v.gross / 100, incomplete: v.incomplete }))
+        .map(([name, v]) => ({ name, gross: v.gross / 100, sc: v.sc / 100, nc: v.nc / 100, incomplete: v.incomplete }))
         .sort((a, b) => b.gross - a.gross);
     };
     return { byOutlet: sum("outlet_name"), byDept: sum("department") };
@@ -281,16 +286,17 @@ export default function PayrollPage() {
               <th className="text-right p-3 font-medium">OT h / pay</th>
               <th className="text-right p-3 font-medium">Train h / pay</th>
               <th className="text-right p-3 font-medium">PTO h / pay</th>
-              <th className="text-right p-3 font-medium">Tip pay</th>
+              <th className="text-right p-3 font-medium">SC tips</th>
+              <th className="text-right p-3 font-medium">NC tips</th>
               <th className="text-right p-3 font-medium">Mgr comm</th>
               <th className="text-right p-3 font-medium">Gross</th>
               <th className="text-center p-3 font-medium">TC</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={9} className="p-6 text-center" style={{ color: "var(--muted)" }}>Loading…</td></tr>}
+            {loading && <tr><td colSpan={10} className="p-6 text-center" style={{ color: "var(--muted)" }}>Loading…</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={9} className="p-6 text-center" style={{ color: "var(--muted)" }}>No payroll activity in this period.</td></tr>
+              <tr><td colSpan={10} className="p-6 text-center" style={{ color: "var(--muted)" }}>No payroll activity in this period.</td></tr>
             )}
             {!loading && rows.map((r) => {
               const isMgr = r.title === "Restaurant Manager";
@@ -336,7 +342,8 @@ export default function PayrollPage() {
                     <div>{hrs(r.pto_hours)}</div>
                     <div style={{ color: r.pto_pay === null ? "var(--amber)" : "inherit" }}>{money(r.pto_pay)}</div>
                   </td>
-                  <td className="p-3 align-top text-right">{money(r.tip_pay)}</td>
+                  <td className="p-3 align-top text-right">{money(r.sc_tips)}</td>
+                  <td className="p-3 align-top text-right">{money(r.nc_tips)}</td>
                   <td className="p-3 align-top text-right">
                     {isMgr && cents(r.manager_amount) > 0 ? money(r.manager_amount) : <span style={{ color: "var(--muted)" }}>—</span>}
                   </td>
@@ -351,7 +358,7 @@ export default function PayrollPage() {
                 </tr>
                 {isOpen && days.length > 0 && (
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td colSpan={9} className="px-3 pb-3" style={{ background: "var(--surface-2)" }}>
+                    <td colSpan={10} className="px-3 pb-3" style={{ background: "var(--surface-2)" }}>
                       <table className="text-xs" style={{ minWidth: 420 }}>
                         <thead>
                           <tr style={{ color: "var(--muted)" }}>
@@ -384,7 +391,7 @@ export default function PayrollPage() {
           {!loading && rows.length > 0 && (
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--border)" }}>
-                <td className="p-3 font-semibold" colSpan={7}>Period total{anyIncomplete ? " (excludes rows missing rates)" : ""}</td>
+                <td className="p-3 font-semibold" colSpan={8}>Period total{anyIncomplete ? " (excludes rows missing rates)" : ""}</td>
                 <td className="p-3 text-right font-bold" style={{ color: "var(--primary)" }}>{money(periodTotal)}</td>
                 <td></td>
               </tr>
@@ -397,9 +404,12 @@ export default function PayrollPage() {
         <div className="card p-5">
           <h3 className="font-semibold mb-3">By outlet</h3>
           {rollups.byOutlet.map((o) => (
-            <div key={o.name} className="flex justify-between py-1 text-sm">
+            <div key={o.name} className="flex justify-between items-baseline py-1 text-sm">
               <span>{o.name}{o.incomplete && <span style={{ color: "var(--amber)" }}> ⚠</span>}</span>
-              <span className="font-medium" style={{ color: "var(--primary)" }}>{money(o.gross)}</span>
+              <span className="text-right">
+                <span className="font-medium" style={{ color: "var(--primary)" }}>{money(o.gross)}</span>
+                <span className="block text-xs" style={{ color: "var(--muted)" }}>SC {money(o.sc)} · NC {money(o.nc)}</span>
+              </span>
             </div>
           ))}
           {rollups.byOutlet.length === 0 && <p className="text-sm" style={{ color: "var(--muted)" }}>—</p>}
@@ -407,9 +417,12 @@ export default function PayrollPage() {
         <div className="card p-5">
           <h3 className="font-semibold mb-3">By department</h3>
           {rollups.byDept.map((d) => (
-            <div key={d.name} className="flex justify-between py-1 text-sm">
+            <div key={d.name} className="flex justify-between items-baseline py-1 text-sm">
               <span>{d.name}{d.incomplete && <span style={{ color: "var(--amber)" }}> ⚠</span>}</span>
-              <span className="font-medium" style={{ color: "var(--primary)" }}>{money(d.gross)}</span>
+              <span className="text-right">
+                <span className="font-medium" style={{ color: "var(--primary)" }}>{money(d.gross)}</span>
+                <span className="block text-xs" style={{ color: "var(--muted)" }}>SC {money(d.sc)} · NC {money(d.nc)}</span>
+              </span>
             </div>
           ))}
           {rollups.byDept.length === 0 && <p className="text-sm" style={{ color: "var(--muted)" }}>—</p>}
