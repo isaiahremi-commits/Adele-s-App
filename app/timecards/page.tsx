@@ -409,6 +409,8 @@ export default function TimecardsPage() {
             className="btn btn-secondary"
             onClick={() => setDate(toISODate(new Date(new Date(date + "T00:00:00").getTime() - 86400000)))}
           >‹ Prev</button>
+          {/* Item 1: jump back to today (mirrors /scheduling). */}
+          <button className="btn btn-secondary" onClick={() => setDate(toISODate(new Date()))}>Today</button>
           <input type="date" className="input" style={{ width: 170 }} value={date} onChange={(e) => setDate(e.target.value)} />
           <button
             className="btn btn-secondary"

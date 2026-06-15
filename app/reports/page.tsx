@@ -32,20 +32,47 @@ function downloadCSV(filename: string, headers: string[], rows: (string | number
   URL.revokeObjectURL(url);
 }
 
+type NamedRow = { id: string; name: string };
+
 export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>("lateness");
   const [win, setWin] = useState<Window | null>(null);
   const [data, setData] = useState<{ thresholds?: Record<string, number>; rows: (LatenessRow | CalloutRow | DiscRow)[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawer, setDrawer] = useState<LatenessRow | CalloutRow | DiscRow | null>(null);
+  // Item 3: department + outlet filters (per-tab, persisted, AND with the window).
+  const [departments, setDepartments] = useState<NamedRow[]>([]);
+  const [outlets, setOutlets] = useState<NamedRow[]>([]);
+  const [dept, setDept] = useState("");
+  const [outlet, setOutlet] = useState("");
 
-  const load = useCallback(async (t: Tab, w: Window) => {
+  useEffect(() => {
+    fetch("/api/departments").then((r) => r.json()).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch("/api/outlets").then((r) => r.json()).then((o) => setOutlets(Array.isArray(o) ? o : [])).catch(() => {});
+  }, []);
+
+  // Load this tab's saved dept/outlet whenever the tab changes.
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(`reports_${tab}_filters`) || "{}");
+      setDept(s.dept || ""); setOutlet(s.outlet || "");
+    } catch { setDept(""); setOutlet(""); }
+  }, [tab]);
+
+  function persistFilters(next: { dept: string; outlet: string }) {
+    localStorage.setItem(`reports_${tab}_filters`, JSON.stringify(next));
+  }
+
+  const load = useCallback(async (t: Tab, w: Window, d: string, o: string) => {
     setLoading(true); setDrawer(null);
-    const res = await fetch(`/api/reports/${t}?start=${w.start}&end=${w.end}`).then((r) => r.json()).catch(() => ({ rows: [] }));
+    const q = new URLSearchParams({ start: w.start, end: w.end });
+    if (d) q.set("dept", d);
+    if (o) q.set("outlet", o);
+    const res = await fetch(`/api/reports/${t}?${q.toString()}`).then((r) => r.json()).catch(() => ({ rows: [] }));
     setData(res); setLoading(false);
   }, []);
 
-  useEffect(() => { if (win) load(tab, win); }, [tab, win, load]);
+  useEffect(() => { if (win) load(tab, win, dept, outlet); }, [tab, win, dept, outlet, load]);
 
   function exportCSV() {
     if (!win || !data) return;
@@ -84,6 +111,20 @@ export default function ReportsPage() {
 
       {/* one filter per tab, remounts on tab change to load that tab's saved kind */}
       <TimeWindowFilter key={tab} storageKey={`reports_${tab}_window`} onChange={setWin} />
+
+      {/* Item 3: department + outlet filters (AND with the time window). */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <select className="input" style={{ width: 200 }} value={dept}
+          onChange={(e) => { setDept(e.target.value); persistFilters({ dept: e.target.value, outlet }); }}>
+          <option value="">All departments</option>
+          {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <select className="input" style={{ width: 200 }} value={outlet}
+          onChange={(e) => { setOutlet(e.target.value); persistFilters({ dept, outlet: e.target.value }); }}>
+          <option value="">All outlets</option>
+          {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      </div>
 
       <div className="card overflow-x-auto">
         {loading ? <div className="p-6 text-center" style={{ color: "var(--muted)" }}>Loading…</div> : (
