@@ -170,7 +170,12 @@ export default function EmployeesPage() {
         }));
       }
     } catch {}
-    setHomePosOther(!!e.home_position && !(PREDEFINED_ROLES as readonly string[]).includes(e.home_position));
+    // Known = a predefined role OR a configured role of this employee's home outlet.
+    const knownHomePos = new Set<string>([
+      ...PREDEFINED_ROLES.map((r) => r.toLowerCase()),
+      ...(e.home_outlet_id ? rolesForOutlet(e.home_outlet_id).map((r) => r.role_name.toLowerCase()) : []),
+    ]);
+    setHomePosOther(!!e.home_position && !knownHomePos.has(e.home_position.toLowerCase()));
     setShirtOther(!!e.shirt_size && !(SHIRT_SIZES as readonly string[]).includes(e.shirt_size));
     setForm({
       first_name: e.first_name ?? "",
@@ -293,6 +298,12 @@ export default function EmployeesPage() {
   }
 
   const homeRoles = form.home_outlet_id ? rolesForOutlet(form.home_outlet_id) : [];
+  // Item 7: Home Position options come from the selected outlet's outlet_roles
+  // (re-derived whenever home_outlet_id changes). Fall back to the predefined
+  // list only when no outlet is chosen or the outlet has no roles configured.
+  const homePosOptions: string[] = (form.home_outlet_id && homeRoles.length > 0)
+    ? Array.from(new Map(homeRoles.map((r) => [r.role_name.toLowerCase(), r.role_name])).values())
+    : [...PREDEFINED_ROLES];
 
   return (
     <div>
@@ -523,7 +534,7 @@ export default function EmployeesPage() {
               </select>
             </label>
             <label className="text-sm">Home Position
-              {/* Item 4: shared predefined role dropdown + Other */}
+              {/* Item 7: options scoped to the home outlet's configured roles. */}
               <select
                 className="input mt-1"
                 value={homePosOther ? OTHER_OPTION : form.home_position}
@@ -533,8 +544,8 @@ export default function EmployeesPage() {
                   else { setHomePosOther(false); setForm({ ...form, home_position: v }); }
                 }}
               >
-                <option value="">Select…</option>
-                {PREDEFINED_ROLES.map((r) => <option key={r} value={r}>{titleCase(r)}</option>)}
+                <option value="">{form.home_outlet_id ? "Select…" : "Pick home outlet first"}</option>
+                {homePosOptions.map((r) => <option key={r} value={r}>{titleCase(r)}</option>)}
                 <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
               </select>
               {homePosOther && (

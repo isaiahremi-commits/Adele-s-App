@@ -36,8 +36,8 @@ function hoursBetween(start: string | null, end: string | null): number {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as { week_start?: string; week_end?: string };
-  const { week_start, week_end } = body;
+  const body = (await req.json()) as { week_start?: string; week_end?: string; outlet_id?: string };
+  const { week_start, week_end, outlet_id } = body;
 
   if (!week_start || !week_end) {
     return NextResponse.json(
@@ -48,13 +48,17 @@ export async function POST(req: Request) {
 
   const supabase = createClient();
 
-  const { data: shifts, error: shiftsErr } = await supabase
+  // Day-4 item 2: scope the tip-sheet sync to one outlet when approving a
+  // single outlet's week; omit to sync every outlet (All outlets).
+  let shiftsQuery = supabase
     .from("shifts")
     .select("id, employee_id, date, shift_type, outlet_id, position, start_time, end_time")
     .gte("date", week_start)
     .lte("date", week_end)
     .not("outlet_id", "is", null)
     .not("shift_type", "is", null);
+  if (outlet_id) shiftsQuery = shiftsQuery.eq("outlet_id", outlet_id);
+  const { data: shifts, error: shiftsErr } = await shiftsQuery;
 
   if (shiftsErr) {
     return NextResponse.json({ error: shiftsErr.message }, { status: 500 });

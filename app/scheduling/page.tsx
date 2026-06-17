@@ -125,7 +125,7 @@ export default function SchedulingPage() {
   const [swapModal, setSwapModal] = useState<{ shift: Shift; mode: "record" | "manage" } | null>(null);
   const [swapNewEmp, setSwapNewEmp] = useState("");
   const [swapNotes, setSwapNotes] = useState("");
-  const [approvedWeek, setApprovedWeek] = useState(false); // Item 9
+  const [approvedOutlets, setApprovedOutlets] = useState<string[]>([]); // Day-4 item 2: per-outlet approval
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [outletFilter, setOutletFilter] = useState<string>(""); // Item 11
   const [positionFilter, setPositionFilter] = useState<string>(""); // Item 11
@@ -215,19 +215,31 @@ export default function SchedulingPage() {
       .catch(() => {});
   }, []);
 
-  // Item 9: is the viewed week locked (approved)?
+  // Day-4 item 2: which outlets are approved (locked) for the viewed week.
   useEffect(() => {
     fetch(`/api/approved-weeks?period_start=${toISODate(weekStart)}`)
       .then((r) => r.json())
-      .then((d) => setApprovedWeek(!!d?.approved))
-      .catch(() => setApprovedWeek(false));
+      .then((d) => setApprovedOutlets(Array.isArray(d?.approved_outlets) ? d.approved_outlets : []))
+      .catch(() => setApprovedOutlets([]));
   }, [weekStart]);
 
-  // Item 8/9: read-only state. Past weeks are fully read-only (incl. swaps);
-  // approved current/future weeks lock shift edits but keep swaps available.
+  // Past weeks are fully read-only (incl. swaps). For current/future weeks,
+  // editing locks per outlet: a shift locks when its outlet's week is approved.
   const isPastWeek = toISODate(weekStart) < toISODate(startOfWeek(new Date(), weekStartDay));
-  const editLocked = isPastWeek || approvedWeek;
+  const approvedSet = useMemo(() => new Set(approvedOutlets), [approvedOutlets]);
+  // Scope of the Approve/Unapprove button + global add actions: the filtered
+  // outlet if one is selected, otherwise every outlet.
+  const scopeOutletIds = useMemo(
+    () => (outletFilter ? [outletFilter] : outlets.map((o) => o.id)),
+    [outletFilter, outlets],
+  );
+  const scopeApproved = scopeOutletIds.length > 0 && scopeOutletIds.every((id) => approvedSet.has(id));
+  const addLocked = isPastWeek || scopeApproved;
   const swapLocked = isPastWeek;
+  // A specific shift is editable unless its outlet's week is approved.
+  function shiftLocked(s: Shift) {
+    return isPastWeek || (!!s.outlet_id && approvedSet.has(s.outlet_id));
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -236,11 +248,26 @@ export default function SchedulingPage() {
   }, [toast]);
 
   const filteredEmployees = useMemo(() => {
-    return employees.filter((e) =>
-      (!deptFilter || e.department_id === deptFilter) &&
-      (!outletFilter || e.home_outlet_id === outletFilter) &&
-      (!positionFilter || (e.home_position ?? e.position) === positionFilter));
-  }, [employees, deptFilter, outletFilter, positionFilter]);
+    // Item 5: when a position is selected, list employees who WORK a shift in
+    // that position this week (at the selected outlet, if any) — not by
+    // home_position. Case-insensitive to match item 8's casing fix. Their other
+    // shifts still render in the grid (the shift cells aren't filtered).
+    const posLc = positionFilter.toLowerCase();
+    const worksPosition = positionFilter
+      ? new Set(
+          shifts
+            .filter((s) => (s.position ?? "").toLowerCase() === posLc && (!outletFilter || s.outlet_id === outletFilter))
+            .map((s) => s.employee_id),
+        )
+      : null;
+    return employees.filter((e) => {
+      if (deptFilter && e.department_id !== deptFilter) return false;
+      if (positionFilter) return worksPosition!.has(e.id);
+      // No position filter: outlet filters by the employee's home outlet.
+      if (outletFilter && e.home_outlet_id !== outletFilter) return false;
+      return true;
+    });
+  }, [employees, shifts, deptFilter, outletFilter, positionFilter]);
 
   // Persist scheduling filters (Items 11). Load on mount, save on change.
   useEffect(() => {
@@ -553,11 +580,17 @@ export default function SchedulingPage() {
   function openEditShift(s: Shift) {
     setEditingShiftId(s.id);
     setFormError(null);
+    // shift_type is stored lowercase, but the dropdown options use the service
+    // name's original case. Resolve back to the exact option value so the
+    // select pre-populates instead of showing blank (Day-4 item 3).
+    const svcName = services.find(
+      (x) => x.outlet_id === s.outlet_id && (x.name ?? "").toLowerCase() === (s.shift_type ?? "").toLowerCase()
+    )?.name;
     setForm({
       employee_id: s.employee_id,
       shift_date: s.shift_date,
       outlet_id: s.outlet_id ?? "",
-      shift_type: s.shift_type ?? "",
+      shift_type: svcName ?? s.shift_type ?? "",
       start_time: s.start_time?.slice(0, 5) ?? "09:00",
       end_time: s.end_time?.slice(0, 5) ?? "17:00",
       position: s.position ?? "",
@@ -572,18 +605,51 @@ export default function SchedulingPage() {
     load();
   }
 
-  async function approveWeek() {
+  // Day-4 items 1B + 2: approve or unapprove the visible week for the current
+  // scope (the filtered outlet, or all outlets when "All outlets" is selected).
+  async function toggleApproval() {
     if (approving) return;
+    const scope = scopeOutletIds;
+    if (scope.length === 0) {
+      setToast({ kind: "error", text: "No outlets to approve." });
+      return;
+    }
+    const periodStart = toISODate(days[0]);
+    const scopeLabel = outletFilter
+      ? (outlets.find((o) => o.id === outletFilter)?.name ?? "this outlet")
+      : "all outlets";
 
-    const weekShifts = shifts.filter((s) => s.outlet_id && s.shift_type);
-    if (weekShifts.length === 0) {
-      setToast({ kind: "error", text: "No shifts with outlet and shift type this week. Nothing to approve." });
+    // Unapprove path (item 1B): just delete the approved_weeks rows → editable.
+    if (scopeApproved) {
+      if (!confirm(`Unapprove the schedule for ${scopeLabel}? It becomes editable again; you can re-approve anytime.`)) return;
+      setApproving(true);
+      try {
+        const res = await fetch("/api/approved-weeks", {
+          method: "DELETE", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ period_start: periodStart, outlet_ids: scope }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setToast({ kind: "error", text: d.error || "Unapprove failed" });
+          return;
+        }
+        setApprovedOutlets((prev) => prev.filter((id) => !scope.includes(id)));
+        setToast({ kind: "success", text: `Schedule unlocked for ${scopeLabel}.` });
+      } catch (err) {
+        setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
+      } finally {
+        setApproving(false);
+      }
       return;
     }
 
-    const msg = "Approve this weeks schedule? This will create or sync tip sheets for every outlet and shift. Safe to re-run if you edit shifts.";
-    const ok = confirm(msg);
-    if (!ok) return;
+    // Approve path.
+    const scopeShifts = shifts.filter((s) => s.outlet_id && s.shift_type && (!outletFilter || s.outlet_id === outletFilter));
+    if (scopeShifts.length === 0) {
+      setToast({ kind: "error", text: `No shifts with outlet and shift type for ${scopeLabel}. Nothing to approve.` });
+      return;
+    }
+    if (!confirm(`Approve this week's schedule for ${scopeLabel}? This creates or syncs tip sheets and locks the approved outlet(s). Safe to re-run.`)) return;
 
     setApproving(true);
     try {
@@ -591,8 +657,9 @@ export default function SchedulingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          week_start: toISODate(days[0]),
+          week_start: periodStart,
           week_end: toISODate(days[6]),
+          outlet_id: outletFilter || undefined,
         }),
       });
       const data = await res.json();
@@ -606,13 +673,17 @@ export default function SchedulingPage() {
       if (created > 0) parts.push(`${created} created`);
       if (updated > 0) parts.push(`${updated} updated`);
       const summary = parts.length > 0 ? parts.join(", ") : "no changes";
-      // Item 9: lock the week.
-      await fetch("/api/approved-weeks", {
+      const ap = await fetch("/api/approved-weeks", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period_start: toISODate(days[0]) }),
-      }).catch(() => {});
-      setApprovedWeek(true);
-      setToast({ kind: "success", text: `Week approved & locked. Tip sheets: ${summary}.` });
+        body: JSON.stringify({ period_start: periodStart, outlet_ids: scope }),
+      });
+      if (!ap.ok) {
+        const d = await ap.json().catch(() => ({}));
+        setToast({ kind: "error", text: d.error || "Could not lock the week" });
+        return;
+      }
+      setApprovedOutlets((prev) => Array.from(new Set([...prev, ...scope])));
+      setToast({ kind: "success", text: `Approved & locked ${scopeLabel}. Tip sheets: ${summary}.` });
     } catch (err) {
       setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
     } finally {
@@ -642,16 +713,16 @@ export default function SchedulingPage() {
           {/* Item 8: jump to any week */}
           <input type="date" className="input" style={{ width: 150 }} value={toISODate(weekStart)}
             onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(new Date(e.target.value + "T00:00:00"), weekStartDay)); }} />
-          <button className="btn btn-secondary" disabled={editLocked} onClick={() => setCopyModalOpen(true)}>Copy Previous Week</button>
+          <button className="btn btn-secondary" disabled={addLocked} onClick={() => setCopyModalOpen(true)}>Copy Previous Week</button>
           <button
             className="btn btn-secondary"
-            onClick={approveWeek}
-            disabled={approving || editLocked}
-            title="Creates or syncs tip sheets for every outlet and shift this week"
+            onClick={toggleApproval}
+            disabled={approving || isPastWeek}
+            title={outletFilter ? "Approve/unapprove the selected outlet for this week" : "Approve/unapprove every outlet for this week"}
           >
-            {approving ? "Approving..." : approvedWeek ? "Approved ✓" : "Approve Week"}
+            {approving ? "Working..." : scopeApproved ? "Unapprove Week" : "Approve Week"}
           </button>
-          <button className="btn btn-primary" disabled={editLocked} onClick={() => { setEditingShiftId(null); setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
+          <button className="btn btn-primary" disabled={addLocked} onClick={() => { setEditingShiftId(null); setForm(emptyForm); setFormError(null); setModalOpen(true); }}>+ Add Shift</button>
         </div>
       </header>
 
@@ -700,12 +771,22 @@ export default function SchedulingPage() {
         </select>
       </div>
 
-      {/* Item 8/9: read-only / locked banner */}
-      {(isPastWeek || approvedWeek) && (
+      {/* Day-4 item 2: read-only / per-outlet approval banner */}
+      {(isPastWeek || approvedOutlets.length > 0) && (
         <div className="mb-4 p-3 rounded-md text-sm" style={{ background: "rgba(239,159,39,0.12)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
-          {isPastWeek
-            ? "Viewing past schedule — read-only."
-            : "Week approved — schedule locked. Use Swaps to reassign or Timecards for ad-hoc additions."}
+          {isPastWeek ? (
+            "Viewing past schedule — read-only."
+          ) : (
+            <>
+              {outlets.map((o, i) => (
+                <span key={o.id}>
+                  {i > 0 && " · "}
+                  {o.name} {approvedSet.has(o.id) ? "approved ✓" : "pending"}
+                </span>
+              ))}
+              {" — approved outlets are locked; use Unapprove Week to edit."}
+            </>
+          )}
         </div>
       )}
 
@@ -779,9 +860,9 @@ export default function SchedulingPage() {
                             return (
                               // Item 10: click anywhere on the shift to edit it (when not locked).
                               <div key={s.id} className="p-2 rounded-md text-xs group relative"
-                                style={{ background: "var(--surface-2)", border: "1px solid var(--border)", cursor: editLocked ? "default" : "pointer" }}
-                                title={editLocked ? undefined : "Click to edit shift"}
-                                onClick={() => { if (!editLocked) openEditShift(s); }}>
+                                style={{ background: "var(--surface-2)", border: "1px solid var(--border)", cursor: shiftLocked(s) ? "default" : "pointer" }}
+                                title={shiftLocked(s) ? undefined : "Click to edit shift"}
+                                onClick={() => { if (!shiftLocked(s)) openEditShift(s); }}>
                                 <div className="flex items-center gap-1 mb-0.5">
                                   {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
                                   {lateness[s.id] && (
@@ -811,12 +892,12 @@ export default function SchedulingPage() {
                                 <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100">
                                   {/* swaps stay available on approved weeks; disabled only for past weeks */}
                                   {!swapLocked && <button onClick={(e) => { e.stopPropagation(); setSwapModal({ shift: s, mode: "record" }); }} title="Record swap" style={{ color: "var(--muted)" }}>⇄</button>}
-                                  {!editLocked && <button onClick={(e) => { e.stopPropagation(); removeShift(s.id); }} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>}
+                                  {!shiftLocked(s) && <button onClick={(e) => { e.stopPropagation(); removeShift(s.id); }} title="Remove shift" style={{ color: "var(--danger)" }}>x</button>}
                                 </div>
                                 </div>
                               );
                             })}
-                            {!editLocked && (
+                            {!addLocked && (
                             <button
                               disabled={atCap}
                               title={atCap ? `Max ${MAX_SHIFTS_PER_DAY} shifts per day` : "Add shift"}
