@@ -359,7 +359,7 @@ export default function TimecardsPage() {
         break_minutes: Number(adhoc.break_minutes) || 0,
         notes: adhoc.notes,
       });
-      setToast({ kind: "success", text: "Ad-hoc timecard created" });
+      setToast({ kind: "success", text: "Timecard created" });
       setAdhocOpen(false);
       setAdhoc({ employee_id: "", clock_in: "", clock_out: "", break_minutes: "0", notes: "" });
       await load();
@@ -416,7 +416,7 @@ export default function TimecardsPage() {
             className="btn btn-secondary"
             onClick={() => setDate(toISODate(new Date(new Date(date + "T00:00:00").getTime() + 86400000)))}
           >Next ›</button>
-          <button className="btn btn-primary" onClick={() => setAdhocOpen(true)}>+ Ad-hoc timecard</button>
+          <button className="btn btn-primary" onClick={() => setAdhocOpen(true)}>+ Add Timecard</button>
         </div>
       </div>
 
@@ -440,7 +440,7 @@ export default function TimecardsPage() {
             )}
             {!loading && rows.length === 0 && (
               <tr><td colSpan={8} className="p-6 text-center" style={{ color: "var(--muted)" }}>
-                No scheduled shifts for this date. Use “+ Ad-hoc timecard” to add one.
+                No scheduled shifts for this date. Use “+ Add Timecard” to add one.
               </td></tr>
             )}
             {!loading && rows.map((row) => {
@@ -543,8 +543,8 @@ export default function TimecardsPage() {
         </table>
       </div>
 
-      {/* Ad-hoc modal */}
-      <Modal open={adhocOpen} onClose={() => setAdhocOpen(false)} title="Ad-hoc timecard">
+      {/* Add-timecard modal (ad-hoc flow) */}
+      <Modal open={adhocOpen} onClose={() => setAdhocOpen(false)} title="Add Timecard">
         <div className="flex flex-col gap-3">
           <label className="text-sm">
             <span style={{ color: "var(--muted)" }}>Employee</span>
