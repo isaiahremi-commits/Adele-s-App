@@ -341,15 +341,15 @@ export default function EmployeesPage() {
           onChange={(e) => setSearch(e.target.value)}
         />
         {/* Item 5: department / outlet / position filters (persisted, AND) */}
-        <select className="input" style={{ width: 150 }} value={fDept} onChange={(e) => setFDept(e.target.value)}>
+        <select className="input" style={{ width: 200 }} value={fDept} onChange={(e) => setFDept(e.target.value)}>
           <option value="">All departments</option>
           {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <select className="input" style={{ width: 150 }} value={fOutlet} onChange={(e) => setFOutlet(e.target.value)}>
+        <select className="input" style={{ width: 200 }} value={fOutlet} onChange={(e) => setFOutlet(e.target.value)}>
           <option value="">All outlets</option>
           {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
-        <select className="input" style={{ width: 160 }} value={fPosition} onChange={(e) => setFPosition(e.target.value)}>
+        <select className="input" style={{ width: 200 }} value={fPosition} onChange={(e) => setFPosition(e.target.value)}>
           <option value="">All positions</option>
           {PREDEFINED_ROLES.map((p) => <option key={p} value={p}>{titleCase(p)}</option>)}
         </select>
