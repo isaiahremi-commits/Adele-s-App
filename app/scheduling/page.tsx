@@ -208,7 +208,10 @@ export default function SchedulingPage() {
     fetch("/api/setup")
       .then((r) => r.json())
       .then((s) => {
-        const idx = DAY_INDEX[(s?.period_start_day ?? "monday").toLowerCase()] ?? 1;
+        // Trim + lowercase so a stored "Saturday" / " saturday" still resolves
+        // (otherwise the lookup misses and silently falls back to Monday).
+        const key = String(s?.period_start_day ?? "monday").trim().toLowerCase();
+        const idx = DAY_INDEX[key] ?? 1;
         setWeekStartDay(idx);
         setWeekStart(startOfWeek(new Date(), idx));
       })
@@ -248,10 +251,14 @@ export default function SchedulingPage() {
   }, [toast]);
 
   const filteredEmployees = useMemo(() => {
-    // Item 5: when a position is selected, list employees who WORK a shift in
-    // that position this week (at the selected outlet, if any) — not by
-    // home_position. Case-insensitive to match item 8's casing fix. Their other
-    // shifts still render in the grid (the shift cells aren't filtered).
+    // The grid shows ALL employees by default (empty cells + the "+" button),
+    // even with no shifts this week. Filters narrow that list on top.
+    //
+    // Position filter (day-4 item 5): match employees who WORK a shift in that
+    // position this week (at the selected outlet, if any) OR whose home_position
+    // is that position. The home_position branch restores the pre-day-4
+    // behavior so an active filter on an empty schedule still lists the relevant
+    // staff instead of showing nobody. Case-insensitive throughout (item 8).
     const posLc = positionFilter.toLowerCase();
     const worksPosition = positionFilter
       ? new Set(
@@ -262,7 +269,10 @@ export default function SchedulingPage() {
       : null;
     return employees.filter((e) => {
       if (deptFilter && e.department_id !== deptFilter) return false;
-      if (positionFilter) return worksPosition!.has(e.id);
+      if (positionFilter) {
+        const homeMatch = (e.home_position ?? e.position ?? "").toLowerCase() === posLc;
+        return worksPosition!.has(e.id) || homeMatch;
+      }
       // No position filter: outlet filters by the employee's home outlet.
       if (outletFilter && e.home_outlet_id !== outletFilter) return false;
       return true;
@@ -822,7 +832,11 @@ export default function SchedulingPage() {
           <tbody>
             {filteredEmployees.length === 0 && (
               <tr><td colSpan={8} className="p-6 text-center" style={{ color: "var(--muted)" }}>
-                {deptFilter ? "No employees in this department." : "No employees yet. Add some on the Employees page."}
+                {employees.length === 0
+                  ? "No employees yet. Add some on the Employees page."
+                  : (deptFilter || outletFilter || positionFilter)
+                    ? "No employees match the current filters. Clear them to see everyone."
+                    : "No employees yet. Add some on the Employees page."}
               </td></tr>
             )}
             {filteredEmployees.map((emp) => {
