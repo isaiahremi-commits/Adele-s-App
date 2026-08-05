@@ -328,6 +328,71 @@ section gracefully until then.)
   mobile + root `tsc --noEmit` clean; `expo export` bundles clean (iOS,
   Android, web); `next build` clean (web preview unaffected).
 
+### PR #8 — Employee callouts + coverage flow (2026-08-05)
+
+**MIGRATION 010 PENDING — Isaiah to apply via Supabase dashboard before
+mobile Callout/Coverage flow will work end-to-end.** (The five RPCs 404
+until applied; the Schedule tab hides its Call out button and both new
+sections gracefully until then.)
+
+- `supabase/010_callouts_coverage.sql`: callout_history gains `notes` +
+  `status` ('open'/'covered'/'unresolved'; legacy manager-entered rows stay
+  NULL — calling them anything would misrepresent history). Employee
+  callouts land in the SAME table managers already use, so /reports counts,
+  the Pay standing card, and ts_compute's called-out tip exclusion all pick
+  them up with zero wiring; `entered_by` = the employee for self-service
+  rows. New `coverage_requests` table (one per callout: status
+  open/volunteer_pending/approved/denied/canceled, volunteer,
+  manager_decision_at/by, tenant-scoped + RLS + 005-shape manager policy).
+  Policies: `own_rows_select` (my callout's request or one I volunteered
+  for) + `eligible_open_select` (OPEN requests where I'm same-department as
+  the caller-out, a member of the shift's outlet by ANY Phase 1 signal —
+  home_outlet_id, employee_outlets, or any shift there — with no
+  conflicting shift, not my own, not in the past) — both via a SECURITY
+  DEFINER `employee_eligible_for_coverage()` helper shared with the offer
+  RPC so visibility and take-ability can never drift. RPCs:
+  `callout_submit` (own upcoming shift only, reason locked to
+  Sick/Emergency/Personal/Other, notes ≤ 200, duplicate-guarded; creates
+  callout + open coverage_request), `coverage_available_for_me` (details
+  incl. requester name; reason/notes deliberately NOT exposed to
+  volunteers), `coverage_offer` / `coverage_withdraw` (row-locked FOR
+  UPDATE so two volunteers can't race), `my_callouts_and_coverage`.
+- **Design choices flagged:** swap_history rejected as the coverage vehicle
+  (it records an agreed bilateral swap, not an open broadcast);
+  employee-submitted callouts count toward discipline immediately (that IS
+  the business rule; managers void by deleting the row, PR #10 surfaces
+  it); conflict check treats NULL shift times as all-day and ignores
+  overnight wrap (matches the scheduler's same-day wall-clock writes).
+- **005 re-run caveat:** coverage_requests carries tenant_id but isn't in
+  005's `_tenant_tables` list — a future 005 re-run trips assertion 3
+  until 'coverage_requests' is added there (the assertion exists precisely
+  to force that conversation).
+- Mobile: shift cards for today/future get an amber "Call out" link (past
+  shifts keep their tip row); after submitting, the card shows "Called out
+  — awaiting coverage / [name] offered to cover / covered".
+  `CalloutModal`: shift context header, locked reason chips, optional
+  notes (200-char counter), inline two-step confirmation ("counts as a
+  callout on your record"), success toast. Schedule tab gains two
+  collapsed-by-default sections above Teammates: "Open coverage
+  opportunities (N)" (date/times/position/outlet/"Requested by [Name]",
+  inline-confirm Volunteer → toast → refresh; own pending offers pinned on
+  top with "waiting on manager" + inline-confirm Withdraw) and "My
+  callouts" (status per row: Open/Covered/Unresolved/Canceled + volunteer
+  progress). Coverage data refreshes on screen focus; all of it degrades
+  gracefully pre-010. `mobile/lib/coverage.ts` wraps the five RPCs.
+- `shared/db.types.ts`: hand-added coverage_requests table entry,
+  callout_history notes/status columns, and the six 010 Function entries
+  (same pending-migration caveat as 007/008/009 hand-adds).
+- Verified: 010 executed end-to-end in PGlite (real 005 + 007 + 017 + 008
+  applied first, 010 applied twice, 39 functional checks: submit + every
+  rejection branch, full eligibility matrix — dept text AND dept-id arms,
+  home-outlet AND employee_outlets membership, conflict, wrong outlet, own
+  callout — RLS visibility for all seven personas incl. manager and
+  unlinked, direct-UPDATE write-block, offer/second-volunteer/withdraw
+  races, my_callouts arms incl. a legacy NULL-status manager entry);
+  mobile + root `tsc --noEmit` clean; `expo export` bundles clean (iOS,
+  Android, web); `next build` clean (web preview unaffected).
+
 ### Upcoming
 
 - Lock down Phase 1 manager RPCs with is_restaurant_manager() guards

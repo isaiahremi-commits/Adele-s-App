@@ -12,6 +12,7 @@ import { addDays, addWeeks, endOfISOWeek, format, startOfISOWeek } from "date-fn
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { showToast } from "../components/Toast";
 import { useAuth } from "../contexts/AuthContext";
 import type { ScheduleStackParamList } from "../lib/navigation";
 import {
@@ -25,10 +26,19 @@ import {
 } from "../lib/schedule";
 import { colors } from "../lib/theme";
 import {
+  type CoverageOpportunity,
+  type MyCalloutOrOffer,
+  getCoverageAvailable,
+  getMyCalloutsAndCoverage,
+  offerCoverage,
+  withdrawCoverage,
+} from "../lib/coverage";
+import {
   type TipStatus,
   getTipStatusForShifts,
   shiftTipKey,
 } from "../lib/tips";
+import CalloutModal from "./CalloutModal";
 
 // Employee schedule: own shifts for this/next ISO week (Mon–Sun, local time)
 // as day cards, plus a collapsible same-department/same-outlet teammates
@@ -87,6 +97,13 @@ export default function ScheduleScreen() {
   const [tipStatuses, setTipStatuses] = useState<Map<string, TipStatus> | null>(
     null
   );
+  // null = coverage unavailable (RPCs missing pre-010, or a fetch error) —
+  // the callout button and both sections hide, nothing else breaks.
+  const [coverage, setCoverage] = useState<{
+    available: CoverageOpportunity[];
+    mine: MyCalloutOrOffer[];
+  } | null>(null);
+  const [calloutShift, setCalloutShift] = useState<ScheduleShift | null>(null);
   const requestSeq = useRef(0);
 
   const weekStart = useMemo(() => {
@@ -169,11 +186,36 @@ export default function ScheduleScreen() {
     }
   }, []);
 
+  // Callout/coverage data (PR #8) — same graceful-degrade contract as tips.
+  const loadCoverage = useCallback(async () => {
+    try {
+      const [available, mine] = await Promise.all([
+        getCoverageAvailable(),
+        getMyCalloutsAndCoverage(),
+      ]);
+      setCoverage({ available, mine });
+    } catch {
+      setCoverage(null);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      if (state.kind === "ready") loadTipStatuses(state.shifts);
-    }, [state, loadTipStatuses])
+      if (state.kind === "ready") {
+        loadTipStatuses(state.shifts);
+        loadCoverage();
+      }
+    }, [state, loadTipStatuses, loadCoverage])
   );
+
+  // My callouts by shift id — hides the "Call out" button once submitted.
+  const calloutsByShift = useMemo(() => {
+    const m = new Map<string, MyCalloutOrOffer>();
+    for (const c of coverage?.mine ?? []) {
+      if (c.kind === "callout" && c.shift_id) m.set(c.shift_id, c);
+    }
+    return m;
+  }, [coverage]);
 
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
@@ -286,12 +328,35 @@ export default function ScheduleScreen() {
                                   })
                               : undefined
                           }
+                          myCallout={calloutsByShift.get(shift.id)}
+                          onCallOut={
+                            !past && coverage !== null
+                              ? () => setCalloutShift(shift)
+                              : undefined
+                          }
                         />
                       );
                     })}
                   </View>
                 );
               })
+            )}
+
+            {coverage !== null && (
+              <>
+                <CoverageSection
+                  available={coverage.available}
+                  pendingOffers={coverage.mine.filter(
+                    (m) =>
+                      m.kind === "coverage_offer" &&
+                      m.coverage_status === "volunteer_pending"
+                  )}
+                  onChanged={loadCoverage}
+                />
+                <MyCalloutsSection callouts={coverage.mine.filter(
+                  (m) => m.kind === "callout"
+                )} />
+              </>
             )}
 
             <TeammatesSection
@@ -303,6 +368,16 @@ export default function ScheduleScreen() {
           </>
         )}
       </ScrollView>
+
+      <CalloutModal
+        visible={calloutShift !== null}
+        shift={calloutShift}
+        onClose={() => setCalloutShift(null)}
+        onSubmitted={() => {
+          setCalloutShift(null);
+          loadCoverage();
+        }}
+      />
     </View>
   );
 }
@@ -311,10 +386,14 @@ function ShiftBlock({
   shift,
   tipStatus,
   onDeclareTips,
+  myCallout,
+  onCallOut,
 }: {
   shift: ScheduleShift;
   tipStatus?: TipStatus;
   onDeclareTips?: () => void;
+  myCallout?: MyCalloutOrOffer;
+  onCallOut?: () => void;
 }) {
   return (
     <View style={styles.shiftBlock}>
@@ -336,6 +415,21 @@ function ShiftBlock({
       {tipStatus && (
         <TipActionRow status={tipStatus} onPress={onDeclareTips} />
       )}
+      {myCallout ? (
+        <Text style={styles.calledOutNote}>
+          Called out
+          {myCallout.coverage_status === "volunteer_pending" &&
+          myCallout.volunteer_name
+            ? ` — ${myCallout.volunteer_name} offered to cover`
+            : myCallout.coverage_status === "approved"
+              ? " — covered"
+              : " — awaiting coverage"}
+        </Text>
+      ) : onCallOut ? (
+        <Pressable onPress={onCallOut}>
+          <Text style={styles.callOutLink}>Call out</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -379,6 +473,209 @@ function TipActionRow({
     <Pressable onPress={onPress}>
       <Text style={styles.tipDeclaredLink}>Tips declared ✓ · Edit</Text>
     </Pressable>
+  );
+}
+
+function CoverageSection({
+  available,
+  pendingOffers,
+  onChanged,
+}: {
+  available: CoverageOpportunity[];
+  pendingOffers: MyCalloutOrOffer[];
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // Inline two-tap confirm (Alert.alert is a no-op on react-native-web).
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (available.length === 0 && pendingOffers.length === 0) return null;
+
+  async function act(id: string, fn: (id: string) => Promise<void>) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await fn(id);
+      showToast(
+        fn === offerCoverage
+          ? "You volunteered to cover — waiting on your manager."
+          : "Coverage offer withdrawn."
+      );
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+      onChanged(); // list may be stale (someone else volunteered first)
+    } finally {
+      setBusyId(null);
+      setConfirmId(null);
+    }
+  }
+
+  const fmtWhen = (m: {
+    shift_date: string | null;
+    start_time: string | null;
+    end_time: string | null;
+  }) =>
+    [
+      m.shift_date
+        ? format(new Date(`${m.shift_date}T00:00:00`), "EEE, MMM d")
+        : "—",
+      `${formatShiftTime(m.start_time)}–${formatShiftTime(m.end_time)}`,
+    ].join(" · ");
+
+  return (
+    <View style={styles.card}>
+      <Pressable style={styles.teammatesHeader} onPress={() => setOpen((v) => !v)}>
+        <Text style={styles.dayHeader}>
+          Open coverage opportunities ({available.length})
+        </Text>
+        <Ionicons
+          name={open ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open && (
+        <>
+          {error && <Text style={styles.coverageError}>{error}</Text>}
+
+          {pendingOffers.map((m) => (
+            <View key={m.request_id} style={styles.coverageRow}>
+              <Text style={styles.coverageTitle}>
+                {fmtWhen(m)}
+                {m.shift_position ? ` · ${m.shift_position}` : ""}
+              </Text>
+              <Text style={styles.coverageMeta}>
+                {m.outlet_name ? `${m.outlet_name} · ` : ""}
+                Covering for {m.requested_by ?? "a teammate"} — waiting on
+                manager
+              </Text>
+              {confirmId === m.request_id ? (
+                <View style={styles.coverageActions}>
+                  <Text style={styles.coverageConfirmText}>
+                    Withdraw your offer?
+                  </Text>
+                  <Pressable
+                    disabled={busyId !== null}
+                    onPress={() => m.request_id && act(m.request_id, withdrawCoverage)}
+                  >
+                    <Text style={styles.coverageActionStrong}>
+                      {busyId === m.request_id ? "Withdrawing..." : "Yes, withdraw"}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setConfirmId(null)}>
+                    <Text style={styles.coverageActionMuted}>Keep it</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable onPress={() => setConfirmId(m.request_id)}>
+                  <Text style={styles.coverageActionMuted}>Withdraw</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+
+          {available.map((c) => (
+            <View key={c.request_id} style={styles.coverageRow}>
+              <Text style={styles.coverageTitle}>
+                {fmtWhen(c)}
+                {c.shift_position ? ` · ${c.shift_position}` : ""}
+              </Text>
+              <Text style={styles.coverageMeta}>
+                {c.outlet_name ? `${c.outlet_name} · ` : ""}Requested by{" "}
+                {c.requested_by}
+              </Text>
+              {confirmId === c.request_id ? (
+                <View style={styles.coverageActions}>
+                  <Text style={styles.coverageConfirmText}>
+                    Offer to cover this shift?
+                  </Text>
+                  <Pressable
+                    disabled={busyId !== null}
+                    onPress={() => act(c.request_id, offerCoverage)}
+                  >
+                    <Text style={styles.coverageActionStrong}>
+                      {busyId === c.request_id ? "Sending..." : "Yes, volunteer"}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setConfirmId(null)}>
+                    <Text style={styles.coverageActionMuted}>Cancel</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={styles.volunteerButton}
+                  onPress={() => setConfirmId(c.request_id)}
+                >
+                  <Text style={styles.volunteerButtonText}>
+                    Volunteer to cover
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+
+          {available.length === 0 && (
+            <Text style={styles.coverageMeta}>
+              Nothing open right now — your pending offer is listed above.
+            </Text>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+const CALLOUT_STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  covered: "Covered",
+  unresolved: "Unresolved",
+};
+
+function MyCalloutsSection({ callouts }: { callouts: MyCalloutOrOffer[] }) {
+  const [open, setOpen] = useState(false);
+  if (callouts.length === 0) return null;
+  return (
+    <View style={styles.card}>
+      <Pressable style={styles.teammatesHeader} onPress={() => setOpen((v) => !v)}>
+        <Text style={styles.dayHeader}>My callouts ({callouts.length})</Text>
+        <Ionicons
+          name={open ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open &&
+        callouts.map((c) => {
+          // coverage status refines the raw callout status for display
+          const label =
+            c.coverage_status === "canceled"
+              ? "Canceled"
+              : c.coverage_status === "approved"
+                ? "Covered"
+                : (c.callout_status && CALLOUT_STATUS_LABEL[c.callout_status]) ??
+                  "—";
+          return (
+            <View key={c.callout_id} style={styles.coverageRow}>
+              <Text style={styles.coverageTitle}>
+                {c.shift_date
+                  ? format(new Date(`${c.shift_date}T00:00:00`), "EEE, MMM d")
+                  : "—"}
+                {c.shift_position ? ` · ${c.shift_position}` : ""}
+                {c.reason ? ` · ${c.reason}` : ""}
+              </Text>
+              <Text style={styles.coverageMeta}>
+                {label}
+                {c.coverage_status === "volunteer_pending" && c.volunteer_name
+                  ? ` · ${c.volunteer_name} offered to cover — waiting on manager`
+                  : ""}
+              </Text>
+            </View>
+          );
+        })}
+    </View>
   );
 }
 
@@ -608,6 +905,77 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: colors.primaryDim,
+  },
+  callOutLink: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.amber,
+  },
+  calledOutNote: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.amber,
+  },
+  coverageRow: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 10,
+  },
+  coverageTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.foreground,
+  },
+  coverageMeta: {
+    marginTop: 2,
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
+  },
+  coverageActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 14,
+    marginTop: 8,
+  },
+  coverageConfirmText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.foreground,
+  },
+  coverageActionStrong: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.primaryDim,
+  },
+  coverageActionMuted: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  coverageError: {
+    marginTop: 10,
+    fontSize: 13,
+    color: "#dc2626",
+    lineHeight: 18,
+  },
+  volunteerButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  volunteerButtonText: {
+    color: colors.primaryOn,
+    fontSize: 13,
+    fontWeight: "600",
   },
   emptyTitle: {
     fontSize: 16,
