@@ -108,10 +108,24 @@ signing in lands on the "No tenant assigned" screen by design.
 - Deps: `expo-device` + `expo-crypto` added; `react-native-web` + `react-dom`
   are now real `mobile/package.json` dependencies (web preview previously
   relied on an unsaved install that `npm install` pruned).
-- Verified: both migrations + their rollback blocks parse clean under
-  libpg_query (real Postgres grammar); mobile `tsc --noEmit` clean;
-  `expo export` bundles clean (iOS, Android, web); root web-app `tsc` has the
-  same 7 pre-existing errors as `main` (nothing new from this PR).
+- 005 is REV 2: rev 1 failed at apply time — the `is_restaurant_manager()`
+  rewrite referenced `employees.tenant_id` before the ADD COLUMN ran
+  (Postgres validates `LANGUAGE sql` bodies at CREATE time). Rev 2 phases
+  strictly (columns → assertions → function/policies), drives every
+  per-table statement from one canonical `_tenant_tables` list so the column
+  and policy lists can't diverge, and adds three fail-fast assertion blocks
+  (column present before policies; policy tenant-scoped after; no stray
+  tenant_id on unlisted tables).
+- Verified: both migrations **executed end-to-end in real Postgres**
+  (PGlite/WASM with a mocked Supabase env — auth schema, roles, 004b
+  posture, seed rows): applied twice each (idempotent), 21 functional checks
+  pass incl. backfill, DEFAULT auto-stamping, cross-tenant/missing-claim
+  fail-closed RLS, third-device kick + heartbeat semantics, and RPC caller
+  guard; negative test proves assertion 3 aborts with full transaction
+  rollback. Also parse-clean under libpg_query (incl. rollback blocks);
+  mobile `tsc --noEmit` clean; `expo export` bundles clean (iOS, Android,
+  web); root web-app `tsc` has the same 7 pre-existing errors as `main`
+  (nothing new from this PR).
 
 ### Upcoming
 
