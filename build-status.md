@@ -127,8 +127,51 @@ signing in lands on the "No tenant assigned" screen by design.
   web); root web-app `tsc` has the same 7 pre-existing errors as `main`
   (nothing new from this PR).
 
+### PR #4 — Employee shell + schedule view (2026-08-05)
+
+- Bottom tab shell (`@react-navigation/bottom-tabs` + Ionicons): Schedule
+  (calendar-outline, default) + Settings (settings-outline). Auth gates
+  unchanged; the fully-cleared branch now renders `MainTabs` instead of a
+  single Home screen. `HomeScreen` renamed → `SettingsScreen` (git mv):
+  email + sign out + T&C footnote, now titled "Account".
+- `mobile/screens/ScheduleScreen.tsx`: This Week / Next Week segmented tabs
+  (ISO weeks, Mon–Sun, local tz via date-fns `startOfISOWeek`/`endOfISOWeek`);
+  day cards with stacked shift blocks (position, outlet, HH:mm–HH:mm,
+  shift_type pill, notes); empty days skipped; friendly empty-week state;
+  shimmer skeleton (3 cards) while loading; error state with retry;
+  pull-to-refresh with a "Refreshing..." note; collapsible "Teammates this
+  week (n)" section grouping same-department shifts at my outlets by person.
+  Auth user without an employees row → "Your account isn't linked to an
+  employee record yet — contact your manager."
+- `mobile/lib/schedule.ts`: `getCurrentEmployee` / `getShiftsForWeek` /
+  `getTeammatesForWeek`. No client-side tenant filters anywhere — RLS owns
+  tenant scoping.
+- **Schema drift vs the PR spec (both handled):** shifts store `date` (date)
+  + `start_time`/`end_time` (time, wall-clock strings) — NOT timestamptz —
+  so week filtering runs on `date` and display needs no tz conversion; and
+  there is no shifts→outlet_roles FK (`outlet_roles.role_name` doesn't exist
+  either — it's `position_name`), so position comes from the `shifts.position`
+  text column, outlet name via the `shifts_outlet_id_fkey` embed.
+- **KNOWN RLS GAP (blocks real employee accounts):** every policy is still
+  manager-only (`is_restaurant_manager()` from 004b/005). A non-manager
+  employee sees zero rows — they'd land on "isn't linked to an employee
+  record" even when linked. Fine for pilot testing as adelechapp@gmail.com
+  (Restaurant Manager), but before real employees onboard, a migration must
+  add employee-grade read policies (own employees row, own shifts, plus
+  same-department/same-outlet teammate reads + outlets). Flagged for PR #5+.
+- Root `tsconfig.json` now excludes `mobile/` (it has its own tsconfig +
+  React 19): root `tsc --noEmit` is now fully clean — this also fixed the 3
+  long-standing phantom `FormData.get` errors in the SMS webhook, which came
+  from React Native's global FormData type shadowing the DOM one.
+- Verified: mobile `tsc --noEmit` clean; root web-app `tsc --noEmit` clean
+  (better than the 7-error baseline on `main`); `expo export` bundles clean
+  (iOS, Android, web); all three PostgREST query shapes (embeds + filter
+  paths) return 200 against the live API.
+
 ### Upcoming
 
+- Employee-grade RLS read policies (required before real employee logins).
 - Server-side invite flow that stamps `tenant_id` at user creation.
 - app_metadata migration for T&C/password flags (security hardening).
 - Device inventory UI (users seeing/naming their own devices).
+- Shift detail modal, PTO / Tips / Pay tabs, NFC clock-in (PR #6).

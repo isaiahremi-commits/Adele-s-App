@@ -1,5 +1,7 @@
 import { NavigationContainer } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -7,19 +9,59 @@ import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
 import { colors } from "./lib/theme";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
-import HomeScreen from "./screens/HomeScreen";
 import LoginScreen from "./screens/LoginScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
+import ScheduleScreen from "./screens/ScheduleScreen";
+import SettingsScreen from "./screens/SettingsScreen";
 
 export type RootStackParamList = {
   Login: undefined;
   NoTenant: undefined;
   ChangePassword: undefined;
   TosAcceptance: undefined;
-  Home: undefined;
+  Main: undefined;
+};
+
+export type MainTabParamList = {
+  Schedule: undefined;
+  Settings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+// The signed-in shell: bottom tabs. More tabs (PTO, Tips, Pay) land in later
+// PRs.
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
+        headerTitleStyle: { color: colors.foreground },
+      }}
+    >
+      <Tab.Screen
+        name="Schedule"
+        component={ScheduleScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings-outline" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
 
 function RootNavigator() {
   const { session, loading, mustChangePassword, needsTosAcceptance, tenantId } =
@@ -69,9 +111,9 @@ function RootNavigator() {
         />
       ) : (
         <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: "manadele" }}
+          name="Main"
+          component={MainTabs}
+          options={{ headerShown: false }}
         />
       )}
     </Stack.Navigator>

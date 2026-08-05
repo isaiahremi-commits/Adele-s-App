@@ -3,8 +3,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { colors } from "../lib/theme";
 
-// Placeholder Home — real employee/manager screens land in later PRs.
-export default function HomeScreen() {
+// Settings tab: account info + sign out + T&C receipt. Grows real settings
+// (notifications, device list, …) in later PRs.
+export default function SettingsScreen() {
   const { user, signOut } = useAuth();
 
   const tosVersion = user?.user_metadata?.tos_accepted_version;
@@ -21,7 +22,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.card}>
-        <Text style={styles.title}>You're signed in</Text>
+        <Text style={styles.title}>Account</Text>
         <Text style={styles.email}>{user?.email}</Text>
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonDim]}
