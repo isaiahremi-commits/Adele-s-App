@@ -35,7 +35,36 @@ SMS — see the repo root and `supabase/` migrations for the full history.
   20/20, Supabase auth endpoint reachable with the mobile env config.
 - Local-only — nothing deployed.
 
+### PR #2 — Force password change + T&C acceptance (2026-08-05)
+
+- Two auth gates between Login and Home, driven by Supabase
+  `user_metadata` flags (no new DB tables). Routing order in `mobile/App.tsx`:
+  no session → Login; `must_change_password === true` → ChangePassword;
+  `tos_accepted_version !== TOS_CURRENT_VERSION` → T&C acceptance; else Home.
+- `mobile/screens/ChangePasswordScreen.tsx` — new + confirm password (min 8
+  chars, must match); one `updateUser` call sets the password and clears
+  `must_change_password`. `mobile/components/TosAcceptanceModal.tsx` —
+  full-screen non-dismissible T&C gate rendered as its own navigator screen;
+  Accept records `tos_accepted_version` + `tos_accepted_at`. Both screens
+  advance automatically via the `USER_UPDATED` auth event — no manual
+  navigation.
+- `shared/tos.ts` — `TOS_CURRENT_VERSION` ('v1') + placeholder terms text;
+  bumping the version re-prompts every user. Real copy from Adèle lands later.
+- `mobile/contexts/AuthContext.tsx` now exposes `mustChangePassword` and
+  `needsTosAcceptance`. Home shows a "Terms accepted v1 on <date>" footnote to
+  prove the flags round-trip.
+- `mobile/metro.config.js` added: `shared/` is now in Metro's `watchFolders` —
+  needed for runtime imports from `shared/` (PR #1's `db.types` import worked
+  without it only because type-only imports never reach Metro).
+- To flag a user for password change: Supabase dashboard → Auth → Users →
+  Raw user meta data → add `{"must_change_password": true}`.
+- Known limitation (accepted for pilot): `user_metadata` is client-writable,
+  so these gates are UX, not security. A future PR moves the flags to
+  `app_metadata` via a server-side function for legal defensibility.
+- Verified: `tsc --noEmit` clean, `expo export` bundles clean (iOS, Android,
+  web).
+
 ### Upcoming
 
-- PR #2 — force-password-change flow + T&C acceptance.
 - PR #3 — 2-device session limit + multi-tenant `tenant_id` enforcement.
+- app_metadata migration for T&C/password flags (security hardening).

@@ -7,6 +7,17 @@ import { colors } from "../lib/theme";
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
 
+  const tosVersion = user?.user_metadata?.tos_accepted_version;
+  const tosAcceptedAt = user?.user_metadata?.tos_accepted_at;
+  const tosDate =
+    typeof tosAcceptedAt === "string"
+      ? new Date(tosAcceptedAt).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : null;
+
   return (
     <View style={styles.screen}>
       <View style={styles.card}>
@@ -18,6 +29,11 @@ export default function HomeScreen() {
         >
           <Text style={styles.buttonText}>Sign out</Text>
         </Pressable>
+        {tosVersion && tosDate && (
+          <Text style={styles.footnote}>
+            Terms accepted {tosVersion} on {tosDate}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -66,5 +82,10 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     fontSize: 15,
     fontWeight: "500",
+  },
+  footnote: {
+    marginTop: 16,
+    fontSize: 12,
+    color: colors.muted,
   },
 });
