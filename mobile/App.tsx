@@ -12,6 +12,7 @@ import type { PtoStackParamList } from "./lib/navigation";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import LoginScreen from "./screens/LoginScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
+import PayScreen from "./screens/PayScreen";
 import PtoDetailScreen from "./screens/PtoDetailScreen";
 import PtoScreen from "./screens/PtoScreen";
 import ScheduleScreen from "./screens/ScheduleScreen";
@@ -28,6 +29,7 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Schedule: undefined;
   Pto: undefined;
+  Pay: undefined;
   Settings: undefined;
 };
 
@@ -53,8 +55,8 @@ function PtoStack() {
   );
 }
 
-// The signed-in shell: bottom tabs. More tabs (PTO, Tips, Pay) land in later
-// PRs.
+// The signed-in shell: bottom tabs. Tips (and any later tabs) land in
+// future PRs.
 function MainTabs() {
   return (
     <Tab.Navigator
@@ -81,6 +83,15 @@ function MainTabs() {
           headerShown: false, // the PTO stack renders its own headers
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="checkmark-circle-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Pay"
+        component={PayScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cash-outline" size={size} color={color} />
           ),
         }}
       />
