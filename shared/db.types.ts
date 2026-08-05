@@ -10,6 +10,12 @@
 // table/column below returned 200 on a live select probe on 2026-08-05).
 // Relationship metadata is left empty until the CLI regenerates the file —
 // typed nested-join inference is not needed by the mobile app yet.
+//
+// PR #3 (2026-08-05): `tenant_id`, the `tenants` + `device_sessions` tables
+// and the `current_tenant_id` / `enforce_device_limit` RPCs were HAND-ADDED
+// ahead of migrations 005_multi_tenant.sql + 006_device_sessions.sql, which
+// are pending manual application — regenerating before they're applied would
+// silently drop all of it. Re-run gen:types only after both migrations land.
 
 export type Json =
   | string
@@ -24,18 +30,21 @@ export type Database = {
     Tables: {
       approved_weeks: {
         Row: {
+          tenant_id: string;
           period_start_date: string;
           approved_at: string | null;
           approved_by: string | null;
           outlet_id: string | null;
         };
         Insert: {
+          tenant_id?: string;
           period_start_date: string;
           approved_at?: string | null;
           approved_by?: string | null;
           outlet_id?: string | null;
         };
         Update: {
+          tenant_id?: string;
           period_start_date?: string;
           approved_at?: string | null;
           approved_by?: string | null;
@@ -45,6 +54,7 @@ export type Database = {
       };
       callout_history: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string | null;
           shift_id: string | null;
@@ -54,6 +64,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           shift_id?: string | null;
@@ -63,6 +74,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           shift_id?: string | null;
@@ -94,6 +106,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      device_sessions: {
+        Row: {
+          id: string;
+          user_id: string;
+          session_id: string;
+          device_label: string | null;
+          last_seen_at: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          session_id: string;
+          device_label?: string | null;
+          last_seen_at?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          session_id?: string;
+          device_label?: string | null;
+          last_seen_at?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [];
+      };
       employee_outlets: {
         Row: {
           id: string;
@@ -117,6 +156,7 @@ export type Database = {
       };
       employees: {
         Row: {
+          tenant_id: string;
           id: string;
           first_name: string | null;
           last_name: string | null;
@@ -145,6 +185,7 @@ export type Database = {
           auth_user_id: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           first_name?: string | null;
           last_name?: string | null;
@@ -173,6 +214,7 @@ export type Database = {
           auth_user_id?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           first_name?: string | null;
           last_name?: string | null;
@@ -204,6 +246,7 @@ export type Database = {
       };
       large_party_revenues: {
         Row: {
+          tenant_id: string;
           id: string;
           tip_sheet_id: string | null;
           revenue: number | null;
@@ -214,6 +257,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           tip_sheet_id?: string | null;
           revenue?: number | null;
@@ -224,6 +268,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           tip_sheet_id?: string | null;
           revenue?: number | null;
@@ -237,6 +282,7 @@ export type Database = {
       };
       lateness_history: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string | null;
           timecard_id: string | null;
@@ -245,6 +291,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           timecard_id?: string | null;
@@ -253,6 +300,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           timecard_id?: string | null;
@@ -264,6 +312,7 @@ export type Database = {
       };
       outlet_roles: {
         Row: {
+          tenant_id: string;
           id: string;
           outlet_id: string | null;
           position_name: string;
@@ -272,6 +321,7 @@ export type Database = {
           tip_out_revenue_source: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           outlet_id?: string | null;
           position_name: string;
@@ -280,6 +330,7 @@ export type Database = {
           tip_out_revenue_source?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           outlet_id?: string | null;
           position_name?: string;
@@ -309,6 +360,7 @@ export type Database = {
       };
       outlets: {
         Row: {
+          tenant_id: string;
           id: string;
           name: string;
           department_id: string | null;
@@ -316,6 +368,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           name: string;
           department_id?: string | null;
@@ -323,6 +376,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           name?: string;
           department_id?: string | null;
@@ -363,6 +417,7 @@ export type Database = {
       };
       pto_allocations: {
         Row: {
+          tenant_id: string;
           id: string;
           pto_request_id: string | null;
           employee_id: string | null;
@@ -374,6 +429,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           pto_request_id?: string | null;
           employee_id?: string | null;
@@ -385,6 +441,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           pto_request_id?: string | null;
           employee_id?: string | null;
@@ -399,6 +456,7 @@ export type Database = {
       };
       pto_balance_transactions: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string | null;
           delta_hours: number;
@@ -408,6 +466,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           delta_hours: number;
@@ -417,6 +476,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           delta_hours?: number;
@@ -429,18 +489,21 @@ export type Database = {
       };
       pto_balances: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string;
           balance_hours: number | null;
           updated_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id: string;
           balance_hours?: number | null;
           updated_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string;
           balance_hours?: number | null;
@@ -450,6 +513,7 @@ export type Database = {
       };
       pto_requests: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string | null;
           start_date: string;
@@ -463,6 +527,7 @@ export type Database = {
           decided_by: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           start_date: string;
@@ -476,6 +541,7 @@ export type Database = {
           decided_by?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           start_date?: string;
@@ -513,6 +579,7 @@ export type Database = {
       };
       setup: {
         Row: {
+          tenant_id: string;
           id: string;
           company_name: string | null;
           pay_cycle: string;
@@ -525,6 +592,7 @@ export type Database = {
           callout_threshold_window_days: number | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           company_name?: string | null;
           pay_cycle?: string;
@@ -537,6 +605,7 @@ export type Database = {
           callout_threshold_window_days?: number | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           company_name?: string | null;
           pay_cycle?: string;
@@ -552,6 +621,7 @@ export type Database = {
       };
       shifts: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string | null;
           date: string;
@@ -567,6 +637,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           date: string;
@@ -582,6 +653,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           date?: string;
@@ -666,6 +738,7 @@ export type Database = {
       };
       swap_history: {
         Row: {
+          tenant_id: string;
           id: string;
           shift_id: string | null;
           original_employee_id: string | null;
@@ -676,6 +749,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           shift_id?: string | null;
           original_employee_id?: string | null;
@@ -686,6 +760,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           shift_id?: string | null;
           original_employee_id?: string | null;
@@ -697,8 +772,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      tenants: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          created_at: string | null;
+        };
+        Insert: {
+          id: string;
+          name: string;
+          slug: string;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          slug?: string;
+          created_at?: string | null;
+        };
+        Relationships: [];
+      };
       timecard_events: {
         Row: {
+          tenant_id: string;
           id: string;
           timecard_id: string | null;
           event_type: string | null;
@@ -709,6 +806,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           timecard_id?: string | null;
           event_type?: string | null;
@@ -719,6 +817,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           timecard_id?: string | null;
           event_type?: string | null;
@@ -732,6 +831,7 @@ export type Database = {
       };
       timecards: {
         Row: {
+          tenant_id: string;
           id: string;
           employee_id: string | null;
           shift_id: string | null;
@@ -752,6 +852,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           shift_id?: string | null;
@@ -772,6 +873,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           employee_id?: string | null;
           shift_id?: string | null;
@@ -834,18 +936,21 @@ export type Database = {
       };
       tip_pools: {
         Row: {
+          tenant_id: string;
           id: string;
           outlet_id: string | null;
           name: string | null;
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           outlet_id?: string | null;
           name?: string | null;
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           outlet_id?: string | null;
           name?: string | null;
@@ -855,6 +960,7 @@ export type Database = {
       };
       tip_sheet_rows: {
         Row: {
+          tenant_id: string;
           id: string;
           tip_sheet_id: string | null;
           employee_id: string | null;
@@ -867,6 +973,7 @@ export type Database = {
           nc_amount: number | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           tip_sheet_id?: string | null;
           employee_id?: string | null;
@@ -879,6 +986,7 @@ export type Database = {
           nc_amount?: number | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           tip_sheet_id?: string | null;
           employee_id?: string | null;
@@ -894,6 +1002,7 @@ export type Database = {
       };
       tip_sheets: {
         Row: {
+          tenant_id: string;
           id: string;
           service_name: string | null;
           department: string | null;
@@ -908,6 +1017,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
+          tenant_id?: string;
           id?: string;
           service_name?: string | null;
           department?: string | null;
@@ -922,6 +1032,7 @@ export type Database = {
           created_at?: string | null;
         };
         Update: {
+          tenant_id?: string;
           id?: string;
           service_name?: string | null;
           department?: string | null;
@@ -942,6 +1053,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      current_tenant_id: {
+        Args: Record<PropertyKey, never>;
+        Returns: string | null;
+      };
+      enforce_device_limit: {
+        Args: {
+          p_user_id: string;
+          p_session_id: string;
+          p_device_label: string | null;
+        };
+        Returns: string[];
+      };
       is_restaurant_manager: {
         Args: Record<PropertyKey, never>;
         Returns: boolean;

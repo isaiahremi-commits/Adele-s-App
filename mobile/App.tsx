@@ -3,14 +3,17 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
 import { colors } from "./lib/theme";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import HomeScreen from "./screens/HomeScreen";
 import LoginScreen from "./screens/LoginScreen";
+import NoTenantScreen from "./screens/NoTenantScreen";
 
 export type RootStackParamList = {
   Login: undefined;
+  NoTenant: undefined;
   ChangePassword: undefined;
   TosAcceptance: undefined;
   Home: undefined;
@@ -19,7 +22,7 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function RootNavigator() {
-  const { session, loading, mustChangePassword, needsTosAcceptance } =
+  const { session, loading, mustChangePassword, needsTosAcceptance, tenantId } =
     useAuth();
 
   // Restoring the persisted session on boot — hold on a spinner so we never
@@ -41,6 +44,15 @@ function RootNavigator() {
         <Stack.Screen
           name="Login"
           component={LoginScreen}
+          options={{ headerShown: false }}
+        />
+      ) : !tenantId ? (
+        // Misprovisioned account (no user_metadata.tenant_id) — RLS returns
+        // zero rows for it, so nothing downstream would work. Dead-ends here
+        // with a sign-out; shouldn't happen once invites stamp the tenant.
+        <Stack.Screen
+          name="NoTenant"
+          component={NoTenantScreen}
           options={{ headerShown: false }}
         />
       ) : mustChangePassword ? (
@@ -71,6 +83,7 @@ export default function App() {
     <AuthProvider>
       <NavigationContainer>
         <RootNavigator />
+        <ToastHost />
         <StatusBar style="auto" />
       </NavigationContainer>
     </AuthProvider>
