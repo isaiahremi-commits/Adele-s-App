@@ -34,6 +34,7 @@ import {
 } from "../lib/pay";
 import { getCurrentEmployee } from "../lib/schedule";
 import { colors } from "../lib/theme";
+import { type TipHistoryEntry, getMyTipHistory } from "../lib/tips";
 
 // Pay tab: current-period estimate, a Current/Previous/Older period picker
 // (same boundaries as the web /payroll page — shared/payroll.ts), the
@@ -85,6 +86,9 @@ type LoadState =
       timecards: Timecard[];
       lateness: LatenessSummary;
       callouts: CalloutSummary;
+      // null = tip history unavailable (009 RPC not applied yet) — the
+      // section hides rather than failing the whole tab.
+      tipHistory: TipHistoryEntry[] | null;
     };
 
 export default function PayScreen() {
@@ -92,6 +96,7 @@ export default function PayScreen() {
   const [periodsBack, setPeriodsBack] = useState(0);
   const [olderOpen, setOlderOpen] = useState(false);
   const [timecardsOpen, setTimecardsOpen] = useState(false);
+  const [tipsOpen, setTipsOpen] = useState(false);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const requestSeq = useRef(0);
@@ -126,6 +131,7 @@ export default function PayScreen() {
           currentPrediction,
           lateness,
           callouts,
+          tipHistory,
           currentActualFetched,
         ] = await Promise.all([
           getMyPayBreakdown(selected.start, selected.end),
@@ -133,6 +139,8 @@ export default function PayScreen() {
           getMyPayBreakdown(current.start, current.end, "prediction"),
           getMyLatenessSummary(since, employeeId),
           getMyCalloutSummary(since, employeeId),
+          // graceful pre-009: a missing RPC hides the section, nothing more
+          getMyTipHistory(selected.start, selected.end).catch(() => null),
           // when viewing the current period, the selected fetch IS the
           // current-actual — skip the duplicate round trip
           periodsBack === 0
@@ -151,6 +159,7 @@ export default function PayScreen() {
             timecards,
             lateness,
             callouts,
+            tipHistory,
           });
         }
       } catch (e) {
@@ -230,6 +239,14 @@ export default function PayScreen() {
               breakdown={state.breakdown}
               periodLabel={formatPeriod(state.selected)}
             />
+            {state.tipHistory !== null && (
+              <TipHistoryCard
+                entries={state.tipHistory}
+                periodLabel={formatPeriod(state.selected)}
+                open={tipsOpen}
+                onToggle={() => setTipsOpen((v) => !v)}
+              />
+            )}
             <TimecardsCard
               timecards={state.timecards}
               periodLabel={formatPeriod(state.selected)}
@@ -519,6 +536,71 @@ function TimecardsCard({
                 <View style={styles.timecardRight}>
                   <Text style={styles.timecardHours}>{fmtHours(hours)}</Text>
                   <StatusPill status={tc.status} />
+                </View>
+              </View>
+            );
+          })
+        ))}
+    </View>
+  );
+}
+
+function TipHistoryCard({
+  entries,
+  periodLabel,
+  open,
+  onToggle,
+}: {
+  entries: TipHistoryEntry[];
+  periodLabel: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <View style={styles.card}>
+      <Pressable style={styles.collapseHeader} onPress={onToggle}>
+        <View>
+          <Text style={styles.sectionTitle}>Tip history ({entries.length})</Text>
+          <Text style={styles.sectionSubtitle}>{periodLabel}</Text>
+        </View>
+        <Ionicons
+          name={open ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open &&
+        (entries.length === 0 ? (
+          <Text style={[styles.emptyBody, styles.collapseBody]}>
+            No tip declarations in this period.
+          </Text>
+        ) : (
+          entries.map((e) => {
+            // posted → the finalized payout; otherwise what was declared
+            const total =
+              e.tip_amount ??
+              (e.declared_service_charge ?? 0) + (e.declared_non_cash ?? 0);
+            return (
+              <View key={`${e.shift_date}|${e.outlet_id}`} style={styles.timecardRow}>
+                <View style={styles.timecardLeft}>
+                  <Text style={styles.timecardDate}>
+                    {format(
+                      new Date(`${e.shift_date.slice(0, 10)}T00:00:00`),
+                      "EEE, MMM d"
+                    )}
+                    {e.outlet_name ? ` · ${e.outlet_name}` : ""}
+                  </Text>
+                  <Text style={styles.timecardTimes}>
+                    SC {fmtUSD(e.declared_service_charge ?? 0)} · NC{" "}
+                    {fmtUSD(e.declared_non_cash ?? 0)}
+                    {e.declared_large_party
+                      ? ` · Party ${fmtUSD(e.declared_large_party)}`
+                      : ""}
+                  </Text>
+                </View>
+                <View style={styles.timecardRight}>
+                  <Text style={styles.timecardHours}>{fmtUSD(total)}</Text>
+                  {e.sheet_status && <StatusPill status={e.sheet_status} />}
                 </View>
               </View>
             );

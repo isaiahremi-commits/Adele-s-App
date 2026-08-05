@@ -1526,8 +1526,15 @@ export type Database = {
       // applied will silently drop these four entries; re-add or regen after.
       // HAND-ADDED likewise for pending migration 008_employee_pay_disciplinary.sql
       // (employee_pay_settings, pay_breakdown_for_me) — same caveat.
+      // HAND-ADDED likewise for pending migration 009_employee_tips.sql
+      // (tip_declaration_submit, tip_declaration_for_me, tip_history_for_me,
+      // employee_can_see_tip_sheet) — same caveat.
       current_employee_id: { Args: never; Returns: string }
       current_tenant_id: { Args: never; Returns: string }
+      employee_can_see_tip_sheet: {
+        Args: { p_outlet_id: string; p_sheet_id: string }
+        Returns: boolean
+      }
       employee_pay_settings: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1724,6 +1731,42 @@ export type Database = {
       tc_set_status: {
         Args: { p_timecard_id: string; p_to: string }
         Returns: Json
+      }
+      tip_declaration_for_me: {
+        Args: { p_outlet_id: string; p_shift_date: string }
+        Returns: {
+          declared_large_party: number
+          declared_non_cash: number
+          declared_service_charge: number
+          row_id: string
+          sheet_exists: boolean
+          sheet_open: boolean
+          sheet_status: string
+          tip_amount: number
+        }[]
+      }
+      tip_declaration_submit: {
+        Args: {
+          p_large_party_revenue?: number
+          p_non_cash: number
+          p_outlet_id: string
+          p_service_charges: number
+          p_shift_date: string
+        }
+        Returns: string
+      }
+      tip_history_for_me: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          declared_large_party: number
+          declared_non_cash: number
+          declared_service_charge: number
+          outlet_id: string
+          outlet_name: string
+          sheet_status: string
+          shift_date: string
+          tip_amount: number
+        }[]
       }
       ts_add_large_party: {
         Args: {

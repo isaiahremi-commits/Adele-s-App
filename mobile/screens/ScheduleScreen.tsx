@@ -10,7 +10,10 @@ import {
 } from "react-native";
 import { addDays, addWeeks, endOfISOWeek, format, startOfISOWeek } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../contexts/AuthContext";
+import type { ScheduleStackParamList } from "../lib/navigation";
 import {
   type CurrentEmployee,
   type ScheduleShift,
@@ -21,13 +24,42 @@ import {
   getTeammatesForWeek,
 } from "../lib/schedule";
 import { colors } from "../lib/theme";
+import {
+  type TipStatus,
+  getTipStatusForShifts,
+  shiftTipKey,
+} from "../lib/tips";
 
 // Employee schedule: own shifts for this/next ISO week (Mon–Sun, local time)
 // as day cards, plus a collapsible same-department/same-outlet teammates
 // section. Data flow: employees row for the auth user → own shifts → teammate
 // shifts at my outlets. RLS scopes everything by tenant server-side.
+// Past shifts additionally carry a tip-declaration action row (PR #7), fed by
+// tip_declaration_for_me batched per unique (outlet, day).
 
 type WeekTab = "this" | "next";
+
+/** A shift already worked: earlier day, or today with its end time passed. */
+function isPastShift(
+  s: ScheduleShift,
+  todayKey: string,
+  nowTime: string
+): boolean {
+  if (!s.date) return false;
+  if (s.date < todayKey) return true;
+  if (s.date > todayKey) return false;
+  return !!s.end_time && s.end_time <= nowTime;
+}
+
+function fmtUSD(n: number): string {
+  return (
+    "$" +
+    n.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
+}
 
 type LoadState =
   | { kind: "loading" }
@@ -42,10 +74,19 @@ type LoadState =
 
 export default function ScheduleScreen() {
   const { user } = useAuth();
+  const navigation =
+    useNavigation<
+      NativeStackNavigationProp<ScheduleStackParamList, "ScheduleList">
+    >();
   const [week, setWeek] = useState<WeekTab>("this");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [teammatesOpen, setTeammatesOpen] = useState(false);
+  // null = statuses unavailable (RPC missing pre-009, or a fetch error) —
+  // the schedule itself still renders, just without tip action rows.
+  const [tipStatuses, setTipStatuses] = useState<Map<string, TipStatus> | null>(
+    null
+  );
   const requestSeq = useRef(0);
 
   const weekStart = useMemo(() => {
@@ -101,11 +142,47 @@ export default function ScheduleScreen() {
     load("initial");
   }, [load]);
 
+  // Tip statuses for past shifts, one RPC per unique (outlet, day). Runs on
+  // ready/week-change and again whenever the screen regains focus, so coming
+  // back from TipDeclarationScreen shows the fresh badge. Failures (e.g. the
+  // 009 RPCs not applied yet) just hide the tip rows — never the schedule.
+  const loadTipStatuses = useCallback(async (shifts: ScheduleShift[]) => {
+    const now = new Date();
+    const todayKey = format(now, "yyyy-MM-dd");
+    const nowTime = format(now, "HH:mm:ss");
+    const pairs = shifts
+      .filter(
+        (s): s is ScheduleShift & { date: string; outlet_id: string } =>
+          s.date !== null &&
+          s.outlet_id !== null &&
+          isPastShift(s, todayKey, nowTime)
+      )
+      .map((s) => ({ outletId: s.outlet_id, date: s.date }));
+    if (pairs.length === 0) {
+      setTipStatuses(new Map());
+      return;
+    }
+    try {
+      setTipStatuses(await getTipStatusForShifts(pairs));
+    } catch {
+      setTipStatuses(null);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (state.kind === "ready") loadTipStatuses(state.shifts);
+    }, [state, loadTipStatuses])
+  );
+
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart]
   );
   const weekLabel = week === "this" ? "this week" : "next week";
+  const now = new Date();
+  const todayKey = format(now, "yyyy-MM-dd");
+  const nowTime = format(now, "HH:mm:ss");
 
   return (
     <View style={styles.screen}>
@@ -185,9 +262,33 @@ export default function ScheduleScreen() {
                     <Text style={styles.dayHeader}>
                       {format(day, "EEEE, MMM d")}
                     </Text>
-                    {dayShifts.map((shift) => (
-                      <ShiftBlock key={shift.id} shift={shift} />
-                    ))}
+                    {dayShifts.map((shift) => {
+                      const past = isPastShift(shift, todayKey, nowTime);
+                      const tipStatus =
+                        past && tipStatuses && shift.outlet_id && shift.date
+                          ? tipStatuses.get(
+                              shiftTipKey(shift.outlet_id, shift.date)
+                            )
+                          : undefined;
+                      return (
+                        <ShiftBlock
+                          key={shift.id}
+                          shift={shift}
+                          tipStatus={tipStatus}
+                          onDeclareTips={
+                            shift.outlet_id && shift.date
+                              ? () =>
+                                  navigation.navigate("TipDeclaration", {
+                                    outletId: shift.outlet_id!,
+                                    outletName: shift.outlets?.name ?? null,
+                                    shiftDate: shift.date!,
+                                    position: shift.position,
+                                  })
+                              : undefined
+                          }
+                        />
+                      );
+                    })}
                   </View>
                 );
               })
@@ -206,7 +307,15 @@ export default function ScheduleScreen() {
   );
 }
 
-function ShiftBlock({ shift }: { shift: ScheduleShift }) {
+function ShiftBlock({
+  shift,
+  tipStatus,
+  onDeclareTips,
+}: {
+  shift: ScheduleShift;
+  tipStatus?: TipStatus;
+  onDeclareTips?: () => void;
+}) {
   return (
     <View style={styles.shiftBlock}>
       <View style={styles.shiftHeaderRow}>
@@ -224,7 +333,52 @@ function ShiftBlock({ shift }: { shift: ScheduleShift }) {
         {formatShiftTime(shift.start_time)} – {formatShiftTime(shift.end_time)}
       </Text>
       {shift.notes ? <Text style={styles.shiftNotes}>{shift.notes}</Text> : null}
+      {tipStatus && (
+        <TipActionRow status={tipStatus} onPress={onDeclareTips} />
+      )}
     </View>
+  );
+}
+
+function TipActionRow({
+  status,
+  onPress,
+}: {
+  status: TipStatus;
+  onPress?: () => void;
+}) {
+  if (!status.sheetExists) {
+    return <Text style={styles.tipDim}>Tip sheet not yet open</Text>;
+  }
+  if (status.sheetStatus === "posted") {
+    return (
+      <Text style={styles.tipFinal}>
+        Tips finalized
+        {status.tipAmount !== null ? `: ${fmtUSD(status.tipAmount)}` : ""}
+      </Text>
+    );
+  }
+  if (!status.sheetOpen) {
+    // 'ready' — computed, awaiting manager post; nothing to edit anymore.
+    return (
+      <Text style={styles.tipDim}>
+        {status.rowId
+          ? "Tips declared ✓ — pending manager review"
+          : "Tip sheet closed for review"}
+      </Text>
+    );
+  }
+  if (!status.rowId) {
+    return (
+      <Pressable style={styles.tipDeclareButton} onPress={onPress}>
+        <Text style={styles.tipDeclareButtonText}>Declare tips →</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <Pressable onPress={onPress}>
+      <Text style={styles.tipDeclaredLink}>Tips declared ✓ · Edit</Text>
+    </Pressable>
   );
 }
 
@@ -424,6 +578,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.muted,
     fontStyle: "italic",
+  },
+  tipDim: {
+    marginTop: 8,
+    fontSize: 13,
+    color: colors.muted,
+  },
+  tipFinal: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.foreground,
+  },
+  tipDeclareButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  tipDeclareButtonText: {
+    color: colors.primaryOn,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  tipDeclaredLink: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.primaryDim,
   },
   emptyTitle: {
     fontSize: 16,

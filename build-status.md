@@ -270,6 +270,64 @@ until applied. The tab itself loads and shows its error state gracefully.)
   bundles clean (iOS, Android, web); `next build` clean (web preview
   unaffected).
 
+### PR #7 — Employee tip declaration (2026-08-05)
+
+**MIGRATION 009 PENDING — Isaiah to apply via Supabase dashboard before
+mobile Tips flow will work end-to-end.** (The three RPCs 404 until applied;
+the Schedule tab hides its tip rows and the Pay tab hides its Tip history
+section gracefully until then.)
+
+- `supabase/009_employee_tips.sql`: additive `own_rows_select` policies —
+  tip_sheet_rows (own employee_id) and tip_sheets (holds my row OR sits at
+  an outlet where I have shifts, via a SECURITY DEFINER
+  `employee_can_see_tip_sheet()` helper, since policy subqueries run under
+  the caller's own RLS); unique index on tip_sheet_rows (sheet, employee)
+  with a fail-fast duplicate audit before creating it; employee RPCs
+  `tip_declaration_submit` (upsert own declaration on the newest PENDING
+  sheet; requires an approved/posted timecard that day at that outlet, with
+  an ad-hoc-timecard fallback via a scheduled shift; non-negative amount
+  validation), `tip_declaration_for_me` (per-day status: sheet_exists /
+  sheet_open / declared values / finalized amount), `tip_history_for_me`
+  (own declarations in range). tip_amount is exposed only once a sheet is
+  POSTED — 'ready' amounts are still manager-editable drafts.
+- **Deliberate spec deviations (live schema differs from the spec's assumed
+  columns):** declarations live in the existing
+  `declared_service_charge` / `declared_non_cash` columns ts_compute
+  already reads (no new row columns); the spec's per-row
+  "large_party_revenue" doesn't exist — large-party money is sheet-level
+  (`large_party_revenues.revenue`, locked 20/3/2 split), so an employee-
+  declared party becomes an lpr row tagged with a new `declared_by_row_id`
+  column (edits update it, zero deletes it, manager-entered parties are
+  never touched; one declared party per employee per sheet).
+- **Workflow note:** pool-mode sheet totals (tip_sheets.service_charge /
+  non_cash_tips) remain manager-entered; declarations feed individual-mode
+  math directly and serve as reference figures on pool outlets.
+- Mobile: Schedule tab now hosts a stack (list → Declare Tips). Past-shift
+  cards (date passed, or today with end_time elapsed) show a tip action
+  row: "Tip sheet not yet open" / green "Declare tips →" / "Tips declared ✓
+  · Edit" / "Tips declared ✓ — pending manager review" ('ready') / "Tips
+  finalized: $XX.XX" ('posted'); statuses batched one RPC per unique
+  (outlet, day) and refreshed on screen focus. `TipDeclarationScreen`:
+  shift date + outlet + position header; SC / NC / large-party currency
+  fields (blur-formatted, validated non-negative; large-party always shown
+  per the spec's MVP heuristic); tip-out explainer card; closed/posted/
+  missing-sheet read-only states; submit → toast → back. `mobile/lib/
+  tips.ts` wraps all three RPCs. Pay tab gains a collapsible "Tip history"
+  section for the selected period (date · outlet · SC/NC/party · total,
+  status pill; total = finalized tip_amount once posted, declared SC+NC
+  before).
+- `shared/db.types.ts`: hand-added the four 009 Function entries (same
+  pending-migration caveat as the 007/008 hand-adds).
+- Verified: 009 executed end-to-end in PGlite (real 005 + 007 +
+  tip_sheet.sql + 017 + 008 applied first, 009 applied twice, 42 functional
+  checks: submit/edit/zero-party semantics, ad-hoc fallback, every
+  rejection branch incl. ready/posted locks, manager-party isolation,
+  own-row + outlet-based sheet visibility both directions, unique-index
+  guard, and the full declare → ts_compute → ts_post lifecycle with exact
+  math — 180 base − 10% busser tip-out − 25 pullback = 137 / mini-pool 18);
+  mobile + root `tsc --noEmit` clean; `expo export` bundles clean (iOS,
+  Android, web); `next build` clean (web preview unaffected).
+
 ### Upcoming
 
 - Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
