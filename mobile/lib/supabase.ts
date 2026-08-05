@@ -3,7 +3,7 @@ import "react-native-get-random-values";
 import * as aesjs from "aes-js";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../shared/db.types";
 
@@ -77,9 +77,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// expo-secure-store has no web implementation (setValueWithKeyAsync throws).
+// On web, plain AsyncStorage (localStorage-backed) is the fallback — browser
+// storage is sandboxed per-origin, the closest equivalent to Keychain/Keystore.
+const sessionStorage =
+  Platform.OS === "web" ? AsyncStorage : new LargeSecureStore();
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: new LargeSecureStore(),
+    storage: sessionStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
