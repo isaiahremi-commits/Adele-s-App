@@ -64,7 +64,71 @@ SMS — see the repo root and `supabase/` migrations for the full history.
 - Verified: `tsc --noEmit` clean, `expo export` bundles clean (iOS, Android,
   web).
 
+### PR #3 — Multi-tenant hardening + 2-device session limit (2026-08-05)
+
+**MIGRATIONS 005 + 006 PENDING — Isaiah to apply via Supabase dashboard
+before this can be tested end-to-end.** Order: run
+`supabase/005_multi_tenant.sql`, stamp `user_metadata.tenant_id` on Adele +
+test users (the UPDATE is in 005's comment block), then run
+`supabase/006_device_sessions.sql`. Users must sign out/in after stamping —
+the tenant claim only enters the JWT when a token is minted. Until then,
+signing in lands on the "No tenant assigned" screen by design.
+
+- Multi-tenant hardening: `supabase/005_multi_tenant.sql` creates `tenants`
+  (seeded with Adele Pilot `00000000-…-0001`), adds
+  `tenant_id NOT NULL → tenants(id)` + index to the 19 operational tables,
+  backfills existing rows to Adele Pilot, and rewrites every
+  `manager_full_access` policy to also require
+  `tenant_id = public.current_tenant_id()` (helper reading the JWT's
+  `user_metadata.tenant_id`; lives in `public`, not `auth` — Supabase revoked
+  CREATE on the `auth` schema). `is_restaurant_manager()` is now
+  tenant-scoped too. `tenant_id` defaults to `current_tenant_id()` so
+  existing web-app INSERTs keep working unchanged. Global reference tables
+  (departments, services, sms_*, …) stay tenant-agnostic for now.
+- 2-device limit (Netflix pattern): `supabase/006_device_sessions.sql`
+  creates `device_sessions` (own-rows RLS) + `enforce_device_limit()` RPC —
+  upserts the caller's session row, trims to the 2 most-recently-seen,
+  returns kicked session ids. The id is a SHA-256 of the JWT's stable
+  `session_id` claim (NOT the access token, which rotates hourly). Client
+  side (`mobile/lib/deviceSession.ts`): register on sign-in, heartbeat
+  `last_seen_at` on every foreground, and if our row is gone → toast ("This
+  device was signed out because you signed in on another device") + forced
+  sign-out. Kicks are client-enforced on next foreground; refresh tokens are
+  not revoked server-side (accepted pilot posture). All checks fail open —
+  offline or pre-migration errors never sign anyone out.
+- Mobile: `AuthContext` exposes `tenantId` (from `user_metadata.tenant_id`);
+  `App.tsx` gates session-but-no-tenant onto
+  `mobile/screens/NoTenantScreen.tsx`; `mobile/lib/tenant.ts` has
+  `assertTenantId()` for future manually-tenant-filtered queries;
+  `mobile/components/Toast.tsx` is a minimal app-wide toast host.
+- `shared/db.types.ts`: `tenant_id`, `tenants`, `device_sessions`, and the
+  two new RPC signatures were hand-added — do NOT `gen:types` until 005/006
+  are applied or the additions get silently dropped (header comment says the
+  same).
+- Deps: `expo-device` + `expo-crypto` added; `react-native-web` + `react-dom`
+  are now real `mobile/package.json` dependencies (web preview previously
+  relied on an unsaved install that `npm install` pruned).
+- 005 is REV 2: rev 1 failed at apply time — the `is_restaurant_manager()`
+  rewrite referenced `employees.tenant_id` before the ADD COLUMN ran
+  (Postgres validates `LANGUAGE sql` bodies at CREATE time). Rev 2 phases
+  strictly (columns → assertions → function/policies), drives every
+  per-table statement from one canonical `_tenant_tables` list so the column
+  and policy lists can't diverge, and adds three fail-fast assertion blocks
+  (column present before policies; policy tenant-scoped after; no stray
+  tenant_id on unlisted tables).
+- Verified: both migrations **executed end-to-end in real Postgres**
+  (PGlite/WASM with a mocked Supabase env — auth schema, roles, 004b
+  posture, seed rows): applied twice each (idempotent), 21 functional checks
+  pass incl. backfill, DEFAULT auto-stamping, cross-tenant/missing-claim
+  fail-closed RLS, third-device kick + heartbeat semantics, and RPC caller
+  guard; negative test proves assertion 3 aborts with full transaction
+  rollback. Also parse-clean under libpg_query (incl. rollback blocks);
+  mobile `tsc --noEmit` clean; `expo export` bundles clean (iOS, Android,
+  web); root web-app `tsc` has the same 7 pre-existing errors as `main`
+  (nothing new from this PR).
+
 ### Upcoming
 
-- PR #3 — 2-device session limit + multi-tenant `tenant_id` enforcement.
+- Server-side invite flow that stamps `tenant_id` at user creation.
 - app_metadata migration for T&C/password flags (security hardening).
+- Device inventory UI (users seeing/naming their own devices).

@@ -3,10 +3,19 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { AppState } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import { TOS_CURRENT_VERSION } from "../../shared/tos";
+import { showToast } from "../components/Toast";
+import {
+  KICKED_MESSAGE,
+  checkDeviceSession,
+  registerDeviceSession,
+  unregisterDeviceSession,
+} from "../lib/deviceSession";
 import { supabase } from "../lib/supabase";
 
 type AuthContextValue = {
@@ -18,6 +27,12 @@ type AuthContextValue = {
   mustChangePassword: boolean;
   /** Gate: user hasn't accepted the current T&C version yet. */
   needsTosAcceptance: boolean;
+  /**
+   * Tenant from user_metadata.tenant_id. RLS scopes every query by it
+   * server-side; null means the account was misprovisioned (App.tsx shows the
+   * "No tenant assigned" screen).
+   */
+  tenantId: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
@@ -43,8 +58,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // 2-device limit enforcement: heartbeat our device_sessions row whenever
+  // the app foregrounds (and whenever the session changes — boot restore and
+  // token refresh included). If our row is gone, a third device's sign-in
+  // kicked us → toast + sign out. Errors (offline, migration 006 not applied
+  // yet) never sign anyone out.
+  const checking = useRef(false);
+  useEffect(() => {
+    if (!session) return;
+
+    const runCheck = async () => {
+      if (checking.current) return;
+      checking.current = true;
+      try {
+        if ((await checkDeviceSession(session)) === "kicked") {
+          showToast(KICKED_MESSAGE);
+          await unregisterDeviceSession(session); // row already gone; clears the local marker
+          await supabase.auth.signOut();
+        }
+      } catch {
+        // Deliberately ignored — see above.
+      } finally {
+        checking.current = false;
+      }
+    };
+
+    runCheck();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") runCheck();
+    });
+    return () => sub.remove();
+  }, [session]);
+
   const value = useMemo<AuthContextValue>(() => {
     const user = session?.user ?? null;
+    const rawTenantId = user?.user_metadata?.tenant_id;
     return {
       session,
       user,
@@ -53,14 +101,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       needsTosAcceptance:
         user !== null &&
         user.user_metadata?.tos_accepted_version !== TOS_CURRENT_VERSION,
+      tenantId:
+        typeof rawTenantId === "string" && rawTenantId.length > 0
+          ? rawTenantId
+          : null,
       signIn: async (email, password) => {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
+        if (data.session) {
+          // Fire-and-forget: sign-in must not block on (or fail with) the
+          // device registration — the foreground check self-heals a miss.
+          registerDeviceSession(data.session).catch((e) =>
+            console.warn("device session registration failed", e)
+          );
+        }
         return { error: error?.message ?? null };
       },
       signOut: async () => {
+        if (session) {
+          await unregisterDeviceSession(session);
+        }
         await supabase.auth.signOut();
       },
     };
