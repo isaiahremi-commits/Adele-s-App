@@ -8,9 +8,12 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
 import { colors } from "./lib/theme";
+import type { PtoStackParamList } from "./lib/navigation";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import LoginScreen from "./screens/LoginScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
+import PtoDetailScreen from "./screens/PtoDetailScreen";
+import PtoScreen from "./screens/PtoScreen";
 import ScheduleScreen from "./screens/ScheduleScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 
@@ -24,11 +27,31 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Schedule: undefined;
+  Pto: undefined;
   Settings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const PtoStackNav = createNativeStackNavigator<PtoStackParamList>();
+
+// PTO gets its own stack so the detail screen has a native back header.
+function PtoStack() {
+  return (
+    <PtoStackNav.Navigator>
+      <PtoStackNav.Screen
+        name="PtoList"
+        component={PtoScreen}
+        options={{ title: "PTO" }}
+      />
+      <PtoStackNav.Screen
+        name="PtoDetail"
+        component={PtoDetailScreen}
+        options={{ title: "PTO Request" }}
+      />
+    </PtoStackNav.Navigator>
+  );
+}
 
 // The signed-in shell: bottom tabs. More tabs (PTO, Tips, Pay) land in later
 // PRs.
@@ -47,6 +70,17 @@ function MainTabs() {
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Pto"
+        component={PtoStack}
+        options={{
+          title: "PTO",
+          headerShown: false, // the PTO stack renders its own headers
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="checkmark-circle-outline" size={size} color={color} />
           ),
         }}
       />

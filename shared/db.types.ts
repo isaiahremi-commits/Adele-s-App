@@ -1521,6 +1521,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      // HAND-ADDED for pending migration 007_employee_pto.sql (current_employee_id,
+      // pto_submit, pto_modify, pto_cancel) — regenerating types before 007 is
+      // applied will silently drop these four entries; re-add or regen after.
+      current_employee_id: { Args: never; Returns: string }
       current_tenant_id: { Args: never; Returns: string }
       enforce_device_limit: {
         Args: {
@@ -1583,13 +1587,27 @@ export type Database = {
         Args: { p_periods: Json; p_request_id: string }
         Returns: Json
       }
+      pto_cancel: { Args: { p_request_id: string }; Returns: undefined }
       pto_deny: {
         Args: { p_notes?: string; p_request_id: string }
         Returns: Json
       }
+      pto_modify: {
+        Args: {
+          p_end_date: string
+          p_reason: string
+          p_request_id: string
+          p_start_date: string
+        }
+        Returns: undefined
+      }
       pto_recompute_balance: {
         Args: { p_employee_id: string }
         Returns: undefined
+      }
+      pto_submit: {
+        Args: { p_end_date: string; p_reason: string; p_start_date: string }
+        Returns: string
       }
       pto_summary: { Args: { p_employee_id: string }; Returns: Json }
       pto_unapprove: { Args: { p_request_id: string }; Returns: Json }

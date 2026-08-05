@@ -168,10 +168,60 @@ signing in lands on the "No tenant assigned" screen by design.
   (iOS, Android, web); all three PostgREST query shapes (embeds + filter
   paths) return 200 against the live API.
 
+### PR #5 — Employee PTO (2026-08-05)
+
+**MIGRATION 007 PENDING — Isaiah to apply via Supabase dashboard before
+mobile PTO screen will work end-to-end.** (Reads 200 already but return
+nothing an employee can see until the own-row policies exist; the three
+write RPCs 404 until applied.)
+
+- `supabase/007_employee_pto.sql`: `public.current_employee_id()` helper
+  (caller's employees.id, tenant-scoped, SECURITY DEFINER); additive
+  `own_rows_select` policies on pto_requests / pto_balances /
+  pto_allocations / pto_balance_transactions — the first employee-grade RLS;
+  employee RPCs `pto_submit` / `pto_modify` / `pto_cancel` (ownership
+  inferred from auth.uid(), reasons locked to the Phase 1 list, hours =
+  days × 8 like the web form default); widens the pto_requests status CHECK
+  to allow 'canceled' (drops/re-creates defensively — original DDL predates
+  the repo); fail-fast assertions inside the single BEGIN/COMMIT +
+  verification + rollback blocks.
+- **Deliberate spec deviation:** cancel-approved doesn't just flip status —
+  it mirrors `pto_unapprove`'s reversal (deletes pto_allocations, credits
+  the ledger, restores balance_hours, refuses if payroll already posted)
+  and THEN marks 'canceled'. A bare status flip would keep paying out the
+  canceled PTO and leave hours deducted forever.
+- Mobile: PTO tab (checkmark-circle-outline) between Schedule and Settings,
+  hosting its own stack (list → detail). `PtoScreen`: balance card,
+  Pending/Approved/Denied tabs, request rows, FAB → submit modal,
+  refetch-on-focus + pull-to-refresh + skeleton + error/retry + per-tab
+  empty states. `PtoSubmitModal`: create + edit modes, native date pickers
+  (`@react-native-community/datetimepicker`) with a DOM
+  `<input type="date">` branch on web, locked reason chips, client-side
+  validation. `PtoDetailScreen`: full detail; pending → Modify + Cancel;
+  approved → Cancel behind "This will revoke your approved PTO — are you
+  sure?"; denied/canceled read-only. Confirmations are INLINE (not
+  Alert.alert, which is a no-op on react-native-web). `mobile/lib/pto.ts`
+  wraps all reads/RPCs; zero client-side tenant filters.
+- Known issues flagged: Phase 1 manager RPCs (pto_approve/deny/unapprove/
+  adjust_balance) are SECURITY DEFINER with NO caller guard — any
+  authenticated user can call them; must be locked down before real
+  employee accounts exist. Web /pto "All" tab shows 'canceled' rows without
+  badge styling (cosmetic).
+- Verified: 007 executed end-to-end in PGlite (real 005 applied first,
+  applied twice, 22 functional checks: own-row visibility both directions,
+  submit/modify/cancel happy paths + every rejection branch, cancel-approved
+  reversal restores balance + ledger, posted-payroll guard, anon revoked,
+  CHECK replacement); mobile + root `tsc --noEmit` clean; `expo export`
+  bundles clean (iOS, Android, web); PTO read shapes 200 on the live API
+  (RPCs 404 as expected pre-007).
+
 ### Upcoming
 
-- Employee-grade RLS read policies (required before real employee logins).
+- Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
+  (required before real employee logins).
+- Employee-grade RLS for schedule reads (own employees row, shifts,
+  teammates) — PTO tables are covered by 007.
 - Server-side invite flow that stamps `tenant_id` at user creation.
 - app_metadata migration for T&C/password flags (security hardening).
 - Device inventory UI (users seeing/naming their own devices).
-- Shift detail modal, PTO / Tips / Pay tabs, NFC clock-in (PR #6).
+- Shift detail modal, Tips / Pay tabs, NFC clock-in (PR #6).
