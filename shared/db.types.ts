@@ -1524,8 +1524,19 @@ export type Database = {
       // HAND-ADDED for pending migration 007_employee_pto.sql (current_employee_id,
       // pto_submit, pto_modify, pto_cancel) — regenerating types before 007 is
       // applied will silently drop these four entries; re-add or regen after.
+      // HAND-ADDED likewise for pending migration 008_employee_pay_disciplinary.sql
+      // (employee_pay_settings, pay_breakdown_for_me) — same caveat.
       current_employee_id: { Args: never; Returns: string }
       current_tenant_id: { Args: never; Returns: string }
+      employee_pay_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          callout_threshold_count: number
+          callout_threshold_window_days: number
+          pay_cycle: string
+          period_start_day: string
+        }[]
+      }
       enforce_device_limit: {
         Args: {
           p_device_label: string
@@ -1536,6 +1547,42 @@ export type Database = {
       }
       is_restaurant_manager: { Args: never; Returns: boolean }
       pay_breakdown: {
+        Args: { p_end: string; p_mode?: string; p_start: string }
+        Returns: {
+          approved_count: number
+          department: string
+          employee_id: string
+          first_name: string
+          gross_pay: number
+          has_missing_rate: boolean
+          job_position: string
+          last_name: string
+          manager_amount: number
+          nc_tips: number
+          ot_hours: number
+          ot_pay: number
+          ot_rate_effective: number
+          outlet_name: string
+          pay_type: string
+          projected_hours: number
+          pto_hours: number
+          pto_pay: number
+          pto_rate: number
+          regular_hours: number
+          regular_pay: number
+          regular_rate: number
+          sc_tips: number
+          scheduled_count: number
+          tip_pay: number
+          tip_rows_amount: number
+          title: string
+          training_hours: number
+          training_pay: number
+          training_rate: number
+          warnings: string[]
+        }[]
+      }
+      pay_breakdown_for_me: {
         Args: { p_end: string; p_mode?: string; p_start: string }
         Returns: {
           approved_count: number

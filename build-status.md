@@ -215,13 +215,70 @@ write RPCs 404 until applied.)
   bundles clean (iOS, Android, web); PTO read shapes 200 on the live API
   (RPCs 404 as expected pre-007).
 
+### PR #6 — Employee pay + disciplinary visibility (2026-08-05)
+
+**MIGRATION 008 PENDING — Isaiah to apply via Supabase dashboard before
+mobile Pay screen will render real data.** (The own-row reads return
+nothing an employee can see until the policies exist; the two RPCs 404
+until applied. The tab itself loads and shows its error state gracefully.)
+
+- `supabase/008_employee_pay_disciplinary.sql`: additive `own_rows_select`
+  policies (same shape/name as 007's) on timecards / lateness_history /
+  callout_history; `pay_breakdown_for_me(p_start, p_end [, p_mode])` —
+  SECURITY DEFINER, infers the employee from auth.uid(), rejects unlinked
+  callers, and DELEGATES to `pay_breakdown()` filtered to the caller's own
+  employee_id rather than duplicating the pay engine (a result-signature
+  assertion pins the two together so a future engine revision fails loudly
+  instead of drifting); `employee_pay_settings()` — spec addition exposing
+  exactly the four setup values the tab needs (pay_cycle, period_start_day,
+  callout_threshold_count/_window_days), since setup stays manager-only;
+  fail-fast prerequisite assertions (005/007/017 applied, RLS actually
+  enabled) + post-assertions inside one BEGIN/COMMIT + verification +
+  rollback blocks.
+- **Deliberate spec extension:** `p_mode` ('actual' | 'prediction',
+  default 'actual') mirrors pay_breakdown's mode so the current-period card
+  can show a projected gross; two-arg calls match the spec signature.
+- **Known limitation flagged:** pay_breakdown's internal
+  `select pay_cycle from setup limit 1` (salary ppy) is not tenant-filtered;
+  harmless with one tenant, revisit before onboarding a second.
+- Pay-period math moved verbatim from `lib/payroll.ts` to
+  `shared/payroll.ts` (Metro can only import repo code from shared/);
+  lib/payroll.ts re-exports it, so all web imports and the anchor
+  (2026-01-03) are unchanged.
+- Mobile: Pay tab (cash-outline) between PTO and Settings. `PayScreen`:
+  current-period estimate card (hours worked so far + projected gross via
+  prediction mode); Current / Previous / Older-modal period picker driven
+  by the shared period math + employee_pay_settings; earnings breakdown
+  (Regular-or-Salary / OT / PTO / Training / Tips / Manager Commission —
+  non-zero rows only — + gross total + missing-rate warnings); collapsible
+  timecards list (date, in–out, hours, status pill); "Your standing" card
+  (lateness incidents + tier-2 count and callouts over the last 90 days,
+  with the threshold warning judged on setup's rolling window like the web
+  /reports flag). Pull-to-refresh + skeleton + error/retry + unlinked
+  states, matching the Schedule/PTO patterns. `mobile/lib/pay.ts` wraps all
+  reads/RPCs; zero client-side tenant filters. USD as $1,234.56, hours as
+  trimmed decimals (7.5h).
+- `shared/db.types.ts`: hand-added `pay_breakdown_for_me` +
+  `employee_pay_settings` Function entries (same pending-migration caveat
+  as the 007 hand-adds).
+- Verified: 008 executed end-to-end in PGlite (real 005 + 007 + 017 applied
+  first, 008 applied twice, 41 functional checks: own-row visibility both
+  directions incl. cross-tenant, the lateness→timecards join the standing
+  card uses, pay_breakdown_for_me numbers for hourly + salaried + manager
+  commission + prediction mode, every rejection branch, anon revoked,
+  settings defaults); mobile + root `tsc --noEmit` clean; `expo export`
+  bundles clean (iOS, Android, web); `next build` clean (web preview
+  unaffected).
+
 ### Upcoming
 
 - Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
   (required before real employee logins).
 - Employee-grade RLS for schedule reads (own employees row, shifts,
-  teammates) — PTO tables are covered by 007.
+  teammates) — PTO tables are covered by 007, pay/disciplinary by 008.
+- Tenant-scope pay_breakdown's internal setup read before a second tenant
+  onboards (flagged in 008).
 - Server-side invite flow that stamps `tenant_id` at user creation.
 - app_metadata migration for T&C/password flags (security hardening).
 - Device inventory UI (users seeing/naming their own devices).
-- Shift detail modal, Tips / Pay tabs, NFC clock-in (PR #6).
+- Shift detail modal, Tips tab, NFC clock-in.
