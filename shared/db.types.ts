@@ -1,1255 +1,1809 @@
-// Database types for the Manadele Supabase project (uytyohrgabvnupqyjjao).
-//
-// Regenerate against the live schema with:
-//   cd mobile && npm run gen:types
-// (requires a one-time `npx supabase login`, or SUPABASE_ACCESS_TOKEN in the
-// environment — the CLI is a devDependency of mobile/).
-//
-// This initial version was reconstructed from the repo's SQL migrations and
-// verified column-by-column against the live database via PostgREST (every
-// table/column below returned 200 on a live select probe on 2026-08-05).
-// Relationship metadata is left empty until the CLI regenerates the file —
-// typed nested-join inference is not needed by the mobile app yet.
-//
-// PR #3 (2026-08-05): `tenant_id`, the `tenants` + `device_sessions` tables
-// and the `current_tenant_id` / `enforce_device_limit` RPCs were HAND-ADDED
-// ahead of migrations 005_multi_tenant.sql + 006_device_sessions.sql, which
-// are pending manual application — regenerating before they're applied would
-// silently drop all of it. Re-run gen:types only after both migrations land.
-
 export type Json =
   | string
   | number
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
       approved_weeks: {
         Row: {
-          tenant_id: string;
-          period_start_date: string;
-          approved_at: string | null;
-          approved_by: string | null;
-          outlet_id: string | null;
-        };
+          approved_at: string | null
+          approved_by: string | null
+          outlet_id: string
+          period_start_date: string
+          tenant_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          period_start_date: string;
-          approved_at?: string | null;
-          approved_by?: string | null;
-          outlet_id?: string | null;
-        };
+          approved_at?: string | null
+          approved_by?: string | null
+          outlet_id: string
+          period_start_date: string
+          tenant_id?: string
+        }
         Update: {
-          tenant_id?: string;
-          period_start_date?: string;
-          approved_at?: string | null;
-          approved_by?: string | null;
-          outlet_id?: string | null;
-        };
-        Relationships: [];
-      };
+          approved_at?: string | null
+          approved_by?: string | null
+          outlet_id?: string
+          period_start_date?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approved_weeks_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approved_weeks_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approved_weeks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       callout_history: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string | null;
-          shift_id: string | null;
-          date: string;
-          reason: string | null;
-          entered_by: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          date: string
+          employee_id: string
+          entered_by: string | null
+          id: string
+          reason: string | null
+          shift_id: string | null
+          tenant_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          shift_id?: string | null;
-          date: string;
-          reason?: string | null;
-          entered_by?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          date: string
+          employee_id: string
+          entered_by?: string | null
+          id?: string
+          reason?: string | null
+          shift_id?: string | null
+          tenant_id?: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          shift_id?: string | null;
-          date?: string;
-          reason?: string | null;
-          entered_by?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          date?: string
+          employee_id?: string
+          entered_by?: string | null
+          id?: string
+          reason?: string | null
+          shift_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "callout_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "callout_history_entered_by_fkey"
+            columns: ["entered_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "callout_history_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "callout_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
-          id: string;
-          name: string;
-          type: string | null;
-          created_at: string | null;
-        };
+          created_at: string | null
+          id: string
+          name: string
+          tip_pool_strategy: string | null
+          type: string | null
+        }
         Insert: {
-          id?: string;
-          name: string;
-          type?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          id?: string
+          name: string
+          tip_pool_strategy?: string | null
+          type?: string | null
+        }
         Update: {
-          id?: string;
-          name?: string;
-          type?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          id?: string
+          name?: string
+          tip_pool_strategy?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
       device_sessions: {
         Row: {
-          id: string;
-          user_id: string;
-          session_id: string;
-          device_label: string | null;
-          last_seen_at: string | null;
-          created_at: string | null;
-        };
+          created_at: string | null
+          device_label: string | null
+          id: string
+          last_seen_at: string | null
+          session_id: string
+          user_id: string
+        }
         Insert: {
-          id?: string;
-          user_id: string;
-          session_id: string;
-          device_label?: string | null;
-          last_seen_at?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          device_label?: string | null
+          id?: string
+          last_seen_at?: string | null
+          session_id: string
+          user_id: string
+        }
         Update: {
-          id?: string;
-          user_id?: string;
-          session_id?: string;
-          device_label?: string | null;
-          last_seen_at?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          device_label?: string | null
+          id?: string
+          last_seen_at?: string | null
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       employee_outlets: {
         Row: {
-          id: string;
-          employee_id: string | null;
-          outlet_id: string | null;
-          position_name: string | null;
-        };
+          employee_id: string | null
+          id: string
+          outlet_id: string | null
+          position_name: string | null
+        }
         Insert: {
-          id?: string;
-          employee_id?: string | null;
-          outlet_id?: string | null;
-          position_name?: string | null;
-        };
+          employee_id?: string | null
+          id?: string
+          outlet_id?: string | null
+          position_name?: string | null
+        }
         Update: {
-          id?: string;
-          employee_id?: string | null;
-          outlet_id?: string | null;
-          position_name?: string | null;
-        };
-        Relationships: [];
-      };
+          employee_id?: string | null
+          id?: string
+          outlet_id?: string | null
+          position_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_outlets_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_outlets_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
-          tenant_id: string;
-          id: string;
-          first_name: string | null;
-          last_name: string | null;
-          title: string | null;
-          department: string | null;
-          position: string | null;
-          phone: string | null;
-          email: string | null;
-          created_at: string | null;
-          department_id: string | null;
-          home_outlet_id: string | null;
-          home_position: string | null;
-          employee_number: string | null;
-          shirt_size: string | null;
-          date_of_hire: string | null;
-          termination_date: string | null;
-          regular_rate: number | null;
-          ot_rate: number | null;
-          training_rate: number | null;
-          pto_rate: number | null;
-          pay_type: string;
-          annual_salary: number | null;
-          sms_opt_in: boolean | null;
-          sms_opt_in_pending: boolean | null;
-          sms_opted_in_at: string | null;
-          auth_user_id: string | null;
-        };
+          annual_salary: number | null
+          auth_user_id: string | null
+          created_at: string | null
+          date_of_birth: string | null
+          date_of_hire: string | null
+          department: string | null
+          department_id: string | null
+          email: string | null
+          employee_number: string | null
+          first_name: string
+          home_outlet_id: string | null
+          home_position: string | null
+          id: string
+          last_name: string
+          ot_rate: number | null
+          pay_type: string
+          phone: string | null
+          position: string | null
+          pto_rate: number | null
+          regular_rate: number | null
+          shirt_size: string | null
+          sms_opt_in: boolean
+          sms_opt_in_pending: boolean
+          sms_opted_in_at: string | null
+          tenant_id: string
+          termination_date: string | null
+          title: string | null
+          training_rate: number | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          first_name?: string | null;
-          last_name?: string | null;
-          title?: string | null;
-          department?: string | null;
-          position?: string | null;
-          phone?: string | null;
-          email?: string | null;
-          created_at?: string | null;
-          department_id?: string | null;
-          home_outlet_id?: string | null;
-          home_position?: string | null;
-          employee_number?: string | null;
-          shirt_size?: string | null;
-          date_of_hire?: string | null;
-          termination_date?: string | null;
-          regular_rate?: number | null;
-          ot_rate?: number | null;
-          training_rate?: number | null;
-          pto_rate?: number | null;
-          pay_type?: string;
-          annual_salary?: number | null;
-          sms_opt_in?: boolean | null;
-          sms_opt_in_pending?: boolean | null;
-          sms_opted_in_at?: string | null;
-          auth_user_id?: string | null;
-        };
+          annual_salary?: number | null
+          auth_user_id?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          date_of_hire?: string | null
+          department?: string | null
+          department_id?: string | null
+          email?: string | null
+          employee_number?: string | null
+          first_name: string
+          home_outlet_id?: string | null
+          home_position?: string | null
+          id?: string
+          last_name: string
+          ot_rate?: number | null
+          pay_type?: string
+          phone?: string | null
+          position?: string | null
+          pto_rate?: number | null
+          regular_rate?: number | null
+          shirt_size?: string | null
+          sms_opt_in?: boolean
+          sms_opt_in_pending?: boolean
+          sms_opted_in_at?: string | null
+          tenant_id?: string
+          termination_date?: string | null
+          title?: string | null
+          training_rate?: number | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          first_name?: string | null;
-          last_name?: string | null;
-          title?: string | null;
-          department?: string | null;
-          position?: string | null;
-          phone?: string | null;
-          email?: string | null;
-          created_at?: string | null;
-          department_id?: string | null;
-          home_outlet_id?: string | null;
-          home_position?: string | null;
-          employee_number?: string | null;
-          shirt_size?: string | null;
-          date_of_hire?: string | null;
-          termination_date?: string | null;
-          regular_rate?: number | null;
-          ot_rate?: number | null;
-          training_rate?: number | null;
-          pto_rate?: number | null;
-          pay_type?: string;
-          annual_salary?: number | null;
-          sms_opt_in?: boolean | null;
-          sms_opt_in_pending?: boolean | null;
-          sms_opted_in_at?: string | null;
-          auth_user_id?: string | null;
-        };
-        Relationships: [];
-      };
+          annual_salary?: number | null
+          auth_user_id?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          date_of_hire?: string | null
+          department?: string | null
+          department_id?: string | null
+          email?: string | null
+          employee_number?: string | null
+          first_name?: string
+          home_outlet_id?: string | null
+          home_position?: string | null
+          id?: string
+          last_name?: string
+          ot_rate?: number | null
+          pay_type?: string
+          phone?: string | null
+          position?: string | null
+          pto_rate?: number | null
+          regular_rate?: number | null
+          shirt_size?: string | null
+          sms_opt_in?: boolean
+          sms_opt_in_pending?: boolean
+          sms_opted_in_at?: string | null
+          tenant_id?: string
+          termination_date?: string | null
+          title?: string | null
+          training_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_home_outlet_id_fkey"
+            columns: ["home_outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       large_party_revenues: {
         Row: {
-          tenant_id: string;
-          id: string;
-          tip_sheet_id: string | null;
-          revenue: number | null;
-          manager_employee_id: string | null;
-          pool_amount: number | null;
-          house_amount: number | null;
-          manager_amount: number | null;
-          created_at: string | null;
-        };
+          created_at: string
+          house_amount: number | null
+          id: string
+          manager_amount: number | null
+          manager_employee_id: string | null
+          pool_amount: number | null
+          revenue: number
+          tenant_id: string
+          tip_sheet_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          tip_sheet_id?: string | null;
-          revenue?: number | null;
-          manager_employee_id?: string | null;
-          pool_amount?: number | null;
-          house_amount?: number | null;
-          manager_amount?: number | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          house_amount?: number | null
+          id?: string
+          manager_amount?: number | null
+          manager_employee_id?: string | null
+          pool_amount?: number | null
+          revenue: number
+          tenant_id?: string
+          tip_sheet_id: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          tip_sheet_id?: string | null;
-          revenue?: number | null;
-          manager_employee_id?: string | null;
-          pool_amount?: number | null;
-          house_amount?: number | null;
-          manager_amount?: number | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          house_amount?: number | null
+          id?: string
+          manager_amount?: number | null
+          manager_employee_id?: string | null
+          pool_amount?: number | null
+          revenue?: number
+          tenant_id?: string
+          tip_sheet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "large_party_revenues_manager_employee_id_fkey"
+            columns: ["manager_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "large_party_revenues_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "large_party_revenues_tip_sheet_id_fkey"
+            columns: ["tip_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "tip_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lateness_history: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string | null;
-          timecard_id: string | null;
-          shift_id: string | null;
-          date: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          shift_id: string | null
+          tenant_id: string
+          timecard_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          timecard_id?: string | null;
-          shift_id?: string | null;
-          date?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          date: string
+          employee_id: string
+          id?: string
+          shift_id?: string | null
+          tenant_id?: string
+          timecard_id: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          timecard_id?: string | null;
-          shift_id?: string | null;
-          date?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          shift_id?: string | null
+          tenant_id?: string
+          timecard_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lateness_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lateness_history_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lateness_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lateness_history_timecard_id_fkey"
+            columns: ["timecard_id"]
+            isOneToOne: false
+            referencedRelation: "timecards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outlet_roles: {
         Row: {
-          tenant_id: string;
-          id: string;
-          outlet_id: string | null;
-          position_name: string;
-          points: number;
-          tip_out_pct: number | null;
-          tip_out_revenue_source: string | null;
-        };
+          id: string
+          outlet_id: string | null
+          points: number
+          pool_id: string | null
+          position_name: string
+          tenant_id: string
+          tip_out_pct: number | null
+          tip_out_revenue_source: string | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          outlet_id?: string | null;
-          position_name: string;
-          points?: number;
-          tip_out_pct?: number | null;
-          tip_out_revenue_source?: string | null;
-        };
+          id?: string
+          outlet_id?: string | null
+          points?: number
+          pool_id?: string | null
+          position_name: string
+          tenant_id?: string
+          tip_out_pct?: number | null
+          tip_out_revenue_source?: string | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          outlet_id?: string | null;
-          position_name?: string;
-          points?: number;
-          tip_out_pct?: number | null;
-          tip_out_revenue_source?: string | null;
-        };
-        Relationships: [];
-      };
+          id?: string
+          outlet_id?: string | null
+          points?: number
+          pool_id?: string | null
+          position_name?: string
+          tenant_id?: string
+          tip_out_pct?: number | null
+          tip_out_revenue_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlet_roles_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_roles_pool_id_fkey"
+            columns: ["pool_id"]
+            isOneToOne: false
+            referencedRelation: "tip_pools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_roles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outlet_services: {
         Row: {
-          id: string;
-          outlet_id: string | null;
-          name: string;
-        };
+          end_time: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+          start_time: string | null
+        }
         Insert: {
-          id?: string;
-          outlet_id?: string | null;
-          name: string;
-        };
+          end_time?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+          start_time?: string | null
+        }
         Update: {
-          id?: string;
-          outlet_id?: string | null;
-          name?: string;
-        };
-        Relationships: [];
-      };
+          end_time?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          start_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlet_services_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outlets: {
         Row: {
-          tenant_id: string;
-          id: string;
-          name: string;
-          department_id: string | null;
-          tip_pool_mode: string | null;
-          created_at: string | null;
-        };
+          created_at: string | null
+          department_id: string | null
+          id: string
+          name: string
+          tenant_id: string
+          tip_pool_mode: string | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          name: string;
-          department_id?: string | null;
-          tip_pool_mode?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          department_id?: string | null
+          id?: string
+          name: string
+          tenant_id?: string
+          tip_pool_mode?: string | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          name?: string;
-          department_id?: string | null;
-          tip_pool_mode?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          department_id?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string
+          tip_pool_mode?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outlets_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_periods: {
         Row: {
-          id: string;
-          name: string | null;
-          start_date: string;
-          end_date: string;
-          pay_date: string | null;
-          active: boolean | null;
-          created_at: string | null;
-        };
+          active: boolean | null
+          created_at: string | null
+          end_date: string
+          id: string
+          name: string | null
+          pay_date: string | null
+          start_date: string
+        }
         Insert: {
-          id?: string;
-          name?: string | null;
-          start_date: string;
-          end_date: string;
-          pay_date?: string | null;
-          active?: boolean | null;
-          created_at?: string | null;
-        };
+          active?: boolean | null
+          created_at?: string | null
+          end_date: string
+          id?: string
+          name?: string | null
+          pay_date?: string | null
+          start_date: string
+        }
         Update: {
-          id?: string;
-          name?: string | null;
-          start_date?: string;
-          end_date?: string;
-          pay_date?: string | null;
-          active?: boolean | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          active?: boolean | null
+          created_at?: string | null
+          end_date?: string
+          id?: string
+          name?: string | null
+          pay_date?: string | null
+          start_date?: string
+        }
+        Relationships: []
+      }
       pto_allocations: {
         Row: {
-          tenant_id: string;
-          id: string;
-          pto_request_id: string | null;
-          employee_id: string | null;
-          date: string;
-          paid_hours: number | null;
-          unpaid_hours: number | null;
-          pay_period_start: string | null;
-          pay_period_end: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          paid_hours: number
+          pay_period_end: string
+          pay_period_start: string
+          pto_request_id: string
+          tenant_id: string
+          unpaid_hours: number
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          pto_request_id?: string | null;
-          employee_id?: string | null;
-          date: string;
-          paid_hours?: number | null;
-          unpaid_hours?: number | null;
-          pay_period_start?: string | null;
-          pay_period_end?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          date: string
+          employee_id: string
+          id?: string
+          paid_hours: number
+          pay_period_end: string
+          pay_period_start: string
+          pto_request_id: string
+          tenant_id?: string
+          unpaid_hours?: number
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          pto_request_id?: string | null;
-          employee_id?: string | null;
-          date?: string;
-          paid_hours?: number | null;
-          unpaid_hours?: number | null;
-          pay_period_start?: string | null;
-          pay_period_end?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          paid_hours?: number
+          pay_period_end?: string
+          pay_period_start?: string
+          pto_request_id?: string
+          tenant_id?: string
+          unpaid_hours?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pto_allocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pto_allocations_pto_request_id_fkey"
+            columns: ["pto_request_id"]
+            isOneToOne: false
+            referencedRelation: "pto_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pto_allocations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pto_balance_transactions: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string | null;
-          delta_hours: number;
-          transaction_type: string | null;
-          reference_id: string | null;
-          notes: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          delta_hours: number
+          employee_id: string
+          id: string
+          notes: string | null
+          reference_id: string | null
+          tenant_id: string
+          transaction_type: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          delta_hours: number;
-          transaction_type?: string | null;
-          reference_id?: string | null;
-          notes?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          delta_hours: number
+          employee_id: string
+          id?: string
+          notes?: string | null
+          reference_id?: string | null
+          tenant_id?: string
+          transaction_type: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          delta_hours?: number;
-          transaction_type?: string | null;
-          reference_id?: string | null;
-          notes?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          delta_hours?: number
+          employee_id?: string
+          id?: string
+          notes?: string | null
+          reference_id?: string | null
+          tenant_id?: string
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pto_balance_transactions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pto_balance_transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pto_balances: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string;
-          balance_hours: number | null;
-          updated_at: string | null;
-        };
+          balance_hours: number
+          employee_id: string
+          id: string
+          tenant_id: string
+          updated_at: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id: string;
-          balance_hours?: number | null;
-          updated_at?: string | null;
-        };
+          balance_hours?: number
+          employee_id: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string;
-          balance_hours?: number | null;
-          updated_at?: string | null;
-        };
-        Relationships: [];
-      };
+          balance_hours?: number
+          employee_id?: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pto_balances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pto_balances_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pto_requests: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string | null;
-          start_date: string;
-          end_date: string;
-          total_hours_requested: number;
-          reason: string | null;
-          notes: string | null;
-          status: string;
-          requested_at: string | null;
-          decided_at: string | null;
-          decided_by: string | null;
-        };
+          decided_at: string | null
+          decided_by: string | null
+          employee_id: string
+          end_date: string
+          id: string
+          notes: string | null
+          reason: string
+          requested_at: string
+          start_date: string
+          status: string
+          tenant_id: string
+          total_hours_requested: number
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          start_date: string;
-          end_date: string;
-          total_hours_requested: number;
-          reason?: string | null;
-          notes?: string | null;
-          status?: string;
-          requested_at?: string | null;
-          decided_at?: string | null;
-          decided_by?: string | null;
-        };
+          decided_at?: string | null
+          decided_by?: string | null
+          employee_id: string
+          end_date: string
+          id?: string
+          notes?: string | null
+          reason: string
+          requested_at?: string
+          start_date: string
+          status?: string
+          tenant_id?: string
+          total_hours_requested: number
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          start_date?: string;
-          end_date?: string;
-          total_hours_requested?: number;
-          reason?: string | null;
-          notes?: string | null;
-          status?: string;
-          requested_at?: string | null;
-          decided_at?: string | null;
-          decided_by?: string | null;
-        };
-        Relationships: [];
-      };
+          decided_at?: string | null
+          decided_by?: string | null
+          employee_id?: string
+          end_date?: string
+          id?: string
+          notes?: string | null
+          reason?: string
+          requested_at?: string
+          start_date?: string
+          status?: string
+          tenant_id?: string
+          total_hours_requested?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pto_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pto_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pto_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
-          id: string;
-          name: string;
-          outlet_id: string | null;
-          created_at: string | null;
-        };
+          created_at: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+        }
         Insert: {
-          id?: string;
-          name: string;
-          outlet_id?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+        }
         Update: {
-          id?: string;
-          name?: string;
-          outlet_id?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       setup: {
         Row: {
-          tenant_id: string;
-          id: string;
-          company_name: string | null;
-          pay_cycle: string;
-          period_start_day: string;
-          updated_at: string | null;
-          lateness_tier1_minutes: number | null;
-          lateness_tier2_minutes: number | null;
-          discrepancy_threshold_hours: number | null;
-          callout_threshold_count: number | null;
-          callout_threshold_window_days: number | null;
-        };
+          callout_threshold_count: number
+          callout_threshold_window_days: number
+          company_name: string | null
+          discrepancy_threshold_hours: number
+          id: string
+          lateness_tier1_minutes: number
+          lateness_tier2_minutes: number
+          pay_cycle: string
+          period_start_day: string
+          tenant_id: string
+          updated_at: string | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          company_name?: string | null;
-          pay_cycle?: string;
-          period_start_day?: string;
-          updated_at?: string | null;
-          lateness_tier1_minutes?: number | null;
-          lateness_tier2_minutes?: number | null;
-          discrepancy_threshold_hours?: number | null;
-          callout_threshold_count?: number | null;
-          callout_threshold_window_days?: number | null;
-        };
+          callout_threshold_count?: number
+          callout_threshold_window_days?: number
+          company_name?: string | null
+          discrepancy_threshold_hours?: number
+          id?: string
+          lateness_tier1_minutes?: number
+          lateness_tier2_minutes?: number
+          pay_cycle?: string
+          period_start_day?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          company_name?: string | null;
-          pay_cycle?: string;
-          period_start_day?: string;
-          updated_at?: string | null;
-          lateness_tier1_minutes?: number | null;
-          lateness_tier2_minutes?: number | null;
-          discrepancy_threshold_hours?: number | null;
-          callout_threshold_count?: number | null;
-          callout_threshold_window_days?: number | null;
-        };
-        Relationships: [];
-      };
+          callout_threshold_count?: number
+          callout_threshold_window_days?: number
+          company_name?: string | null
+          discrepancy_threshold_hours?: number
+          id?: string
+          lateness_tier1_minutes?: number
+          lateness_tier2_minutes?: number
+          pay_cycle?: string
+          period_start_day?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setup_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shifts: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string | null;
-          date: string;
-          start_time: string | null;
-          end_time: string | null;
-          shift_type: string | null;
-          department: string | null;
-          position: string | null;
-          outlet_id: string | null;
-          notes: string | null;
-          is_training: boolean | null;
-          is_event: boolean | null;
-          created_at: string | null;
-        };
+          created_at: string | null
+          date: string | null
+          day_of_week: number | null
+          department: string | null
+          employee_id: string | null
+          end_time: string | null
+          id: string
+          is_event: boolean
+          is_training: boolean
+          notes: string | null
+          outlet_id: string | null
+          position: string | null
+          shift_type: string | null
+          start_time: string | null
+          tenant_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          date: string;
-          start_time?: string | null;
-          end_time?: string | null;
-          shift_type?: string | null;
-          department?: string | null;
-          position?: string | null;
-          outlet_id?: string | null;
-          notes?: string | null;
-          is_training?: boolean | null;
-          is_event?: boolean | null;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          date?: string | null
+          day_of_week?: number | null
+          department?: string | null
+          employee_id?: string | null
+          end_time?: string | null
+          id?: string
+          is_event?: boolean
+          is_training?: boolean
+          notes?: string | null
+          outlet_id?: string | null
+          position?: string | null
+          shift_type?: string | null
+          start_time?: string | null
+          tenant_id?: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          date?: string;
-          start_time?: string | null;
-          end_time?: string | null;
-          shift_type?: string | null;
-          department?: string | null;
-          position?: string | null;
-          outlet_id?: string | null;
-          notes?: string | null;
-          is_training?: boolean | null;
-          is_event?: boolean | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          date?: string | null
+          day_of_week?: number | null
+          department?: string | null
+          employee_id?: string | null
+          end_time?: string | null
+          id?: string
+          is_event?: boolean
+          is_training?: boolean
+          notes?: string | null
+          outlet_id?: string | null
+          position?: string | null
+          shift_type?: string | null
+          start_time?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_log: {
         Row: {
-          id: string;
-          recipient_phone: string | null;
-          recipient_employee_id: string | null;
-          message: string | null;
-          status: string | null;
-          error_message: string | null;
-          sms_type: string | null;
-          related_entity_type: string | null;
-          related_entity_id: string | null;
-          direction: string | null;
-          twilio_sid: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          direction: string
+          error_message: string | null
+          id: string
+          message: string
+          recipient_employee_id: string | null
+          recipient_phone: string
+          related_entity_id: string | null
+          related_entity_type: string | null
+          sms_type: string | null
+          status: string
+          twilio_sid: string | null
+        }
         Insert: {
-          id?: string;
-          recipient_phone?: string | null;
-          recipient_employee_id?: string | null;
-          message?: string | null;
-          status?: string | null;
-          error_message?: string | null;
-          sms_type?: string | null;
-          related_entity_type?: string | null;
-          related_entity_id?: string | null;
-          direction?: string | null;
-          twilio_sid?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          direction?: string
+          error_message?: string | null
+          id?: string
+          message: string
+          recipient_employee_id?: string | null
+          recipient_phone: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          sms_type?: string | null
+          status?: string
+          twilio_sid?: string | null
+        }
         Update: {
-          id?: string;
-          recipient_phone?: string | null;
-          recipient_employee_id?: string | null;
-          message?: string | null;
-          status?: string | null;
-          error_message?: string | null;
-          sms_type?: string | null;
-          related_entity_type?: string | null;
-          related_entity_id?: string | null;
-          direction?: string | null;
-          twilio_sid?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          direction?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          recipient_employee_id?: string | null
+          recipient_phone?: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          sms_type?: string | null
+          status?: string
+          twilio_sid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_log_recipient_employee_id_fkey"
+            columns: ["recipient_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_settings: {
         Row: {
-          id: number;
-          shift_reminder_enabled: boolean | null;
-          shift_reminder_hours_before: number | null;
-          updated_at: string | null;
-        };
+          id: number
+          schedule_published_enabled: boolean
+          shift_reminder_enabled: boolean
+          shift_reminder_hours_before: number
+          tip_approved_enabled: boolean
+          updated_at: string
+        }
         Insert: {
-          id?: number;
-          shift_reminder_enabled?: boolean | null;
-          shift_reminder_hours_before?: number | null;
-          updated_at?: string | null;
-        };
+          id?: number
+          schedule_published_enabled?: boolean
+          shift_reminder_enabled?: boolean
+          shift_reminder_hours_before?: number
+          tip_approved_enabled?: boolean
+          updated_at?: string
+        }
         Update: {
-          id?: number;
-          shift_reminder_enabled?: boolean | null;
-          shift_reminder_hours_before?: number | null;
-          updated_at?: string | null;
-        };
-        Relationships: [];
-      };
+          id?: number
+          schedule_published_enabled?: boolean
+          shift_reminder_enabled?: boolean
+          shift_reminder_hours_before?: number
+          tip_approved_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       swap_history: {
         Row: {
-          tenant_id: string;
-          id: string;
-          shift_id: string | null;
-          original_employee_id: string | null;
-          new_employee_id: string | null;
-          status: string | null;
-          swapped_by: string | null;
-          notes: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          id: string
+          new_employee_id: string
+          notes: string | null
+          original_employee_id: string
+          shift_id: string
+          status: string
+          swapped_by: string | null
+          tenant_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          shift_id?: string | null;
-          original_employee_id?: string | null;
-          new_employee_id?: string | null;
-          status?: string | null;
-          swapped_by?: string | null;
-          notes?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          id?: string
+          new_employee_id: string
+          notes?: string | null
+          original_employee_id: string
+          shift_id: string
+          status?: string
+          swapped_by?: string | null
+          tenant_id?: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          shift_id?: string | null;
-          original_employee_id?: string | null;
-          new_employee_id?: string | null;
-          status?: string | null;
-          swapped_by?: string | null;
-          notes?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          id?: string
+          new_employee_id?: string
+          notes?: string | null
+          original_employee_id?: string
+          shift_id?: string
+          status?: string
+          swapped_by?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "swap_history_new_employee_id_fkey"
+            columns: ["new_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_history_original_employee_id_fkey"
+            columns: ["original_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_history_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_history_swapped_by_fkey"
+            columns: ["swapped_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
-          id: string;
-          name: string;
-          slug: string;
-          created_at: string | null;
-        };
+          created_at: string | null
+          id: string
+          name: string
+          slug: string
+        }
         Insert: {
-          id: string;
-          name: string;
-          slug: string;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          id: string
+          name: string
+          slug: string
+        }
         Update: {
-          id?: string;
-          name?: string;
-          slug?: string;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          id?: string
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       timecard_events: {
         Row: {
-          tenant_id: string;
-          id: string;
-          timecard_id: string | null;
-          event_type: string | null;
-          value_before: Json | null;
-          value_after: Json | null;
-          actor_id: string | null;
-          notes: string | null;
-          created_at: string | null;
-        };
+          actor_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          notes: string | null
+          tenant_id: string
+          timecard_id: string
+          value_after: Json | null
+          value_before: Json | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          timecard_id?: string | null;
-          event_type?: string | null;
-          value_before?: Json | null;
-          value_after?: Json | null;
-          actor_id?: string | null;
-          notes?: string | null;
-          created_at?: string | null;
-        };
+          actor_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          notes?: string | null
+          tenant_id?: string
+          timecard_id: string
+          value_after?: Json | null
+          value_before?: Json | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          timecard_id?: string | null;
-          event_type?: string | null;
-          value_before?: Json | null;
-          value_after?: Json | null;
-          actor_id?: string | null;
-          notes?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          actor_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          notes?: string | null
+          tenant_id?: string
+          timecard_id?: string
+          value_after?: Json | null
+          value_before?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timecard_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timecard_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timecard_events_timecard_id_fkey"
+            columns: ["timecard_id"]
+            isOneToOne: false
+            referencedRelation: "timecards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       timecards: {
         Row: {
-          tenant_id: string;
-          id: string;
-          employee_id: string | null;
-          shift_id: string | null;
-          date: string;
-          clock_in: string | null;
-          clock_out: string | null;
-          break_minutes: number | null;
-          training_hours: number | null;
-          notes: string | null;
-          status: string;
-          regular_hours: number | null;
-          ot_hours: number | null;
-          discrepancy_flag: boolean | null;
-          lateness_tier: number | null;
-          override_by: string | null;
-          override_at: string | null;
-          updated_at: string | null;
-          created_at: string | null;
-        };
+          break_minutes: number
+          clock_in: string | null
+          clock_out: string | null
+          created_at: string
+          date: string
+          discrepancy_flag: boolean
+          employee_id: string
+          id: string
+          lateness_tier: number
+          notes: string | null
+          ot_hours: number | null
+          override_at: string | null
+          override_by: string | null
+          regular_hours: number | null
+          shift_id: string | null
+          status: string
+          tenant_id: string
+          training_hours: number | null
+          updated_at: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          shift_id?: string | null;
-          date: string;
-          clock_in?: string | null;
-          clock_out?: string | null;
-          break_minutes?: number | null;
-          training_hours?: number | null;
-          notes?: string | null;
-          status?: string;
-          regular_hours?: number | null;
-          ot_hours?: number | null;
-          discrepancy_flag?: boolean | null;
-          lateness_tier?: number | null;
-          override_by?: string | null;
-          override_at?: string | null;
-          updated_at?: string | null;
-          created_at?: string | null;
-        };
+          break_minutes?: number
+          clock_in?: string | null
+          clock_out?: string | null
+          created_at?: string
+          date: string
+          discrepancy_flag?: boolean
+          employee_id: string
+          id?: string
+          lateness_tier?: number
+          notes?: string | null
+          ot_hours?: number | null
+          override_at?: string | null
+          override_by?: string | null
+          regular_hours?: number | null
+          shift_id?: string | null
+          status?: string
+          tenant_id?: string
+          training_hours?: number | null
+          updated_at?: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          employee_id?: string | null;
-          shift_id?: string | null;
-          date?: string;
-          clock_in?: string | null;
-          clock_out?: string | null;
-          break_minutes?: number | null;
-          training_hours?: number | null;
-          notes?: string | null;
-          status?: string;
-          regular_hours?: number | null;
-          ot_hours?: number | null;
-          discrepancy_flag?: boolean | null;
-          lateness_tier?: number | null;
-          override_by?: string | null;
-          override_at?: string | null;
-          updated_at?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          break_minutes?: number
+          clock_in?: string | null
+          clock_out?: string | null
+          created_at?: string
+          date?: string
+          discrepancy_flag?: boolean
+          employee_id?: string
+          id?: string
+          lateness_tier?: number
+          notes?: string | null
+          ot_hours?: number | null
+          override_at?: string | null
+          override_by?: string | null
+          regular_hours?: number | null
+          shift_id?: string | null
+          status?: string
+          tenant_id?: string
+          training_hours?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timecards_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timecards_override_by_fkey"
+            columns: ["override_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timecards_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timecards_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_allocations: {
         Row: {
-          id: string;
-          tip_sheet_id: string | null;
-          employee_id: string | null;
-          role: string | null;
-          hours: number | null;
-          points: number | null;
-          service_charge_amount: number | null;
-          non_cash_amount: number | null;
-          total_amount: number | null;
-          created_at: string | null;
-        };
+          created_at: string | null
+          employee_id: string | null
+          hours: number | null
+          id: string
+          non_cash_amount: number | null
+          points: number | null
+          role: string | null
+          service_charge_amount: number | null
+          tip_sheet_id: string | null
+          total_amount: number | null
+        }
         Insert: {
-          id?: string;
-          tip_sheet_id?: string | null;
-          employee_id?: string | null;
-          role?: string | null;
-          hours?: number | null;
-          points?: number | null;
-          service_charge_amount?: number | null;
-          non_cash_amount?: number | null;
-          total_amount?: number | null;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          employee_id?: string | null
+          hours?: number | null
+          id?: string
+          non_cash_amount?: number | null
+          points?: number | null
+          role?: string | null
+          service_charge_amount?: number | null
+          tip_sheet_id?: string | null
+          total_amount?: number | null
+        }
         Update: {
-          id?: string;
-          tip_sheet_id?: string | null;
-          employee_id?: string | null;
-          role?: string | null;
-          hours?: number | null;
-          points?: number | null;
-          service_charge_amount?: number | null;
-          non_cash_amount?: number | null;
-          total_amount?: number | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string | null
+          employee_id?: string | null
+          hours?: number | null
+          id?: string
+          non_cash_amount?: number | null
+          points?: number | null
+          role?: string | null
+          service_charge_amount?: number | null
+          tip_sheet_id?: string | null
+          total_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_allocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_allocations_tip_sheet_id_fkey"
+            columns: ["tip_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "tip_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_pools: {
         Row: {
-          tenant_id: string;
-          id: string;
-          outlet_id: string | null;
-          name: string | null;
-          created_at: string | null;
-        };
+          created_at: string
+          id: string
+          name: string
+          outlet_id: string
+          tenant_id: string
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          outlet_id?: string | null;
-          name?: string | null;
-          created_at?: string | null;
-        };
+          created_at?: string
+          id?: string
+          name: string
+          outlet_id: string
+          tenant_id?: string
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          outlet_id?: string | null;
-          name?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          id?: string
+          name?: string
+          outlet_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_pools_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_pools_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_sheet_rows: {
         Row: {
-          tenant_id: string;
-          id: string;
-          tip_sheet_id: string | null;
-          employee_id: string | null;
-          hours: number | null;
-          tip_amount: number | null;
-          declared_service_charge: number | null;
-          declared_non_cash: number | null;
-          role: string | null;
-          sc_amount: number | null;
-          nc_amount: number | null;
-        };
+          declared_non_cash: number | null
+          declared_service_charge: number | null
+          employee_id: string | null
+          hours: number | null
+          id: string
+          nc_amount: number | null
+          role: string | null
+          sc_amount: number | null
+          tenant_id: string
+          tip_amount: number | null
+          tip_sheet_id: string | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          tip_sheet_id?: string | null;
-          employee_id?: string | null;
-          hours?: number | null;
-          tip_amount?: number | null;
-          declared_service_charge?: number | null;
-          declared_non_cash?: number | null;
-          role?: string | null;
-          sc_amount?: number | null;
-          nc_amount?: number | null;
-        };
+          declared_non_cash?: number | null
+          declared_service_charge?: number | null
+          employee_id?: string | null
+          hours?: number | null
+          id?: string
+          nc_amount?: number | null
+          role?: string | null
+          sc_amount?: number | null
+          tenant_id?: string
+          tip_amount?: number | null
+          tip_sheet_id?: string | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          tip_sheet_id?: string | null;
-          employee_id?: string | null;
-          hours?: number | null;
-          tip_amount?: number | null;
-          declared_service_charge?: number | null;
-          declared_non_cash?: number | null;
-          role?: string | null;
-          sc_amount?: number | null;
-          nc_amount?: number | null;
-        };
-        Relationships: [];
-      };
+          declared_non_cash?: number | null
+          declared_service_charge?: number | null
+          employee_id?: string | null
+          hours?: number | null
+          id?: string
+          nc_amount?: number | null
+          role?: string | null
+          sc_amount?: number | null
+          tenant_id?: string
+          tip_amount?: number | null
+          tip_sheet_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_sheet_rows_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_sheet_rows_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_sheet_rows_tip_sheet_id_fkey"
+            columns: ["tip_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "tip_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_sheets: {
         Row: {
-          tenant_id: string;
-          id: string;
-          service_name: string | null;
-          department: string | null;
-          outlet_id: string | null;
-          date: string;
-          week_start: string | null;
-          shift_type: string | null;
-          source: string | null;
-          service_charge: number | null;
-          non_cash_tips: number | null;
-          status: string;
-          created_at: string | null;
-        };
+          created_at: string | null
+          date: string | null
+          department: string | null
+          id: string
+          non_cash_tips: number | null
+          outlet_id: string | null
+          service_charge: number | null
+          service_name: string | null
+          shift_type: string | null
+          source: string | null
+          status: string | null
+          tenant_id: string
+          week_start: string | null
+        }
         Insert: {
-          tenant_id?: string;
-          id?: string;
-          service_name?: string | null;
-          department?: string | null;
-          outlet_id?: string | null;
-          date: string;
-          week_start?: string | null;
-          shift_type?: string | null;
-          source?: string | null;
-          service_charge?: number | null;
-          non_cash_tips?: number | null;
-          status?: string;
-          created_at?: string | null;
-        };
+          created_at?: string | null
+          date?: string | null
+          department?: string | null
+          id?: string
+          non_cash_tips?: number | null
+          outlet_id?: string | null
+          service_charge?: number | null
+          service_name?: string | null
+          shift_type?: string | null
+          source?: string | null
+          status?: string | null
+          tenant_id?: string
+          week_start?: string | null
+        }
         Update: {
-          tenant_id?: string;
-          id?: string;
-          service_name?: string | null;
-          department?: string | null;
-          outlet_id?: string | null;
-          date?: string;
-          week_start?: string | null;
-          shift_type?: string | null;
-          source?: string | null;
-          service_charge?: number | null;
-          non_cash_tips?: number | null;
-          status?: string;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
-    };
+          created_at?: string | null
+          date?: string | null
+          department?: string | null
+          id?: string
+          non_cash_tips?: number | null
+          outlet_id?: string | null
+          service_charge?: number | null
+          service_name?: string | null
+          shift_type?: string | null
+          source?: string | null
+          status?: string | null
+          tenant_id?: string
+          week_start?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_sheets_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_sheets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
     Views: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     Functions: {
-      current_tenant_id: {
-        Args: Record<PropertyKey, never>;
-        Returns: string | null;
-      };
+      current_tenant_id: { Args: never; Returns: string }
       enforce_device_limit: {
         Args: {
-          p_user_id: string;
-          p_session_id: string;
-          p_device_label: string | null;
-        };
-        Returns: string[];
-      };
-      is_restaurant_manager: {
-        Args: Record<PropertyKey, never>;
-        Returns: boolean;
-      };
+          p_device_label: string
+          p_session_id: string
+          p_user_id: string
+        }
+        Returns: string[]
+      }
+      is_restaurant_manager: { Args: never; Returns: boolean }
       pay_breakdown: {
-        Args: { p_start: string; p_end: string; p_mode?: string };
+        Args: { p_end: string; p_mode?: string; p_start: string }
         Returns: {
-          employee_id: string;
-          first_name: string;
-          last_name: string;
-          title: string;
-          department: string;
-          job_position: string;
-          outlet_name: string;
-          regular_hours: number;
-          ot_hours: number;
-          training_hours: number;
-          pto_hours: number;
-          projected_hours: number;
-          approved_count: number;
-          scheduled_count: number;
-          regular_rate: number;
-          ot_rate_effective: number;
-          training_rate: number;
-          pto_rate: number;
-          regular_pay: number;
-          ot_pay: number;
-          training_pay: number;
-          pto_pay: number;
-          manager_amount: number;
-          tip_rows_amount: number;
-          sc_tips: number;
-          nc_tips: number;
-          tip_pay: number;
-          gross_pay: number;
-          has_missing_rate: boolean;
-          warnings: string[];
-          pay_type: string;
-        }[];
-      };
+          approved_count: number
+          department: string
+          employee_id: string
+          first_name: string
+          gross_pay: number
+          has_missing_rate: boolean
+          job_position: string
+          last_name: string
+          manager_amount: number
+          nc_tips: number
+          ot_hours: number
+          ot_pay: number
+          ot_rate_effective: number
+          outlet_name: string
+          pay_type: string
+          projected_hours: number
+          pto_hours: number
+          pto_pay: number
+          pto_rate: number
+          regular_hours: number
+          regular_pay: number
+          regular_rate: number
+          sc_tips: number
+          scheduled_count: number
+          tip_pay: number
+          tip_rows_amount: number
+          title: string
+          training_hours: number
+          training_pay: number
+          training_rate: number
+          warnings: string[]
+        }[]
+      }
       pay_post_period: {
-        Args: { p_start: string; p_end: string };
-        Returns: Json;
-      };
+        Args: { p_end: string; p_start: string }
+        Returns: Json
+      }
       pto_accrue_for_timecard: {
-        Args: { p_timecard_id: string };
-        Returns: undefined;
-      };
+        Args: { p_timecard_id: string }
+        Returns: undefined
+      }
       pto_adjust_balance: {
-        Args: { p_employee_id: string; p_delta: number; p_notes?: string };
-        Returns: Json;
-      };
+        Args: { p_delta: number; p_employee_id: string; p_notes?: string }
+        Returns: Json
+      }
       pto_approve: {
-        Args: { p_request_id: string; p_periods: Json };
-        Returns: Json;
-      };
+        Args: { p_periods: Json; p_request_id: string }
+        Returns: Json
+      }
       pto_deny: {
-        Args: { p_request_id: string; p_notes?: string };
-        Returns: Json;
-      };
+        Args: { p_notes?: string; p_request_id: string }
+        Returns: Json
+      }
       pto_recompute_balance: {
-        Args: { p_employee_id: string };
-        Returns: undefined;
-      };
-      pto_summary: {
-        Args: { p_employee_id: string };
-        Returns: Json;
-      };
-      pto_unapprove: {
-        Args: { p_request_id: string };
-        Returns: Json;
-      };
-      swap_accept: {
-        Args: { p_swap_id: string };
-        Returns: Json;
-      };
-      swap_cancel: {
-        Args: { p_swap_id: string };
-        Returns: Json;
-      };
+        Args: { p_employee_id: string }
+        Returns: undefined
+      }
+      pto_summary: { Args: { p_employee_id: string }; Returns: Json }
+      pto_unapprove: { Args: { p_request_id: string }; Returns: Json }
+      swap_accept: { Args: { p_swap_id: string }; Returns: Json }
+      swap_cancel: { Args: { p_swap_id: string }; Returns: Json }
       swap_create: {
-        Args: { p_shift_id: string; p_new_employee_id: string; p_notes?: string };
-        Returns: Json;
-      };
+        Args: {
+          p_new_employee_id: string
+          p_notes?: string
+          p_shift_id: string
+        }
+        Returns: Json
+      }
       tc_add_note: {
-        Args: { p_timecard_id: string; p_note: string };
-        Returns: Json;
-      };
+        Args: { p_note: string; p_timecard_id: string }
+        Returns: Json
+      }
       tc_approve: {
-        Args: { p_timecard_id: string; p_training_hours?: number };
-        Returns: Json;
-      };
+        Args: { p_timecard_id: string; p_training_hours?: number }
+        Returns: Json
+      }
       tc_create_adhoc: {
         Args: {
-          p_employee_id: string;
-          p_date: string;
-          p_clock_in?: string;
-          p_clock_out?: string;
-          p_break_minutes?: number;
-          p_notes?: string;
-        };
-        Returns: Json;
-      };
+          p_break_minutes?: number
+          p_clock_in?: string
+          p_clock_out?: string
+          p_date: string
+          p_employee_id: string
+          p_notes?: string
+        }
+        Returns: Json
+      }
       tc_lateness_range: {
-        Args: { p_start: string; p_end: string };
+        Args: { p_end: string; p_start: string }
         Returns: {
-          shift_id: string;
-          timecard_id: string;
-          employee_id: string;
-          work_date: string;
-          lateness_tier: number;
-          minutes_late: number;
-        }[];
-      };
+          employee_id: string
+          lateness_tier: number
+          minutes_late: number
+          shift_id: string
+          timecard_id: string
+          work_date: string
+        }[]
+      }
       tc_override: {
-        Args: { p_timecard_id: string; p_field: string; p_value: string; p_note: string };
-        Returns: Json;
-      };
+        Args: {
+          p_field: string
+          p_note: string
+          p_timecard_id: string
+          p_value: string
+        }
+        Returns: Json
+      }
       tc_save: {
         Args: {
-          p_timecard_id?: string;
-          p_shift_id?: string;
-          p_employee_id?: string;
-          p_date?: string;
-          p_clock_in?: string;
-          p_clock_out?: string;
-          p_break_minutes?: number;
-          p_training_hours?: number;
-          p_notes?: string;
-        };
-        Returns: Json;
-      };
+          p_break_minutes?: number
+          p_clock_in?: string
+          p_clock_out?: string
+          p_date?: string
+          p_employee_id?: string
+          p_notes?: string
+          p_shift_id?: string
+          p_timecard_id?: string
+          p_training_hours?: number
+        }
+        Returns: Json
+      }
       tc_set_status: {
-        Args: { p_timecard_id: string; p_to: string };
-        Returns: Json;
-      };
+        Args: { p_timecard_id: string; p_to: string }
+        Returns: Json
+      }
       ts_add_large_party: {
-        Args: { p_tip_sheet_id: string; p_revenue: number; p_manager_employee_id?: string };
-        Returns: Json;
-      };
-      ts_compute: {
-        Args: { p_tip_sheet_id: string };
-        Returns: Json;
-      };
-      ts_post: {
-        Args: { p_tip_sheet_id: string };
-        Returns: Json;
-      };
+        Args: {
+          p_manager_employee_id?: string
+          p_revenue: number
+          p_tip_sheet_id: string
+        }
+        Returns: Json
+      }
+      ts_compute: { Args: { p_tip_sheet_id: string }; Returns: Json }
+      ts_post: { Args: { p_tip_sheet_id: string }; Returns: Json }
       ts_reassign_manager: {
-        Args: { p_lpr_id: string; p_manager_employee_id: string };
-        Returns: Json;
-      };
-      ts_unpost: {
-        Args: { p_tip_sheet_id: string };
-        Returns: Json;
-      };
-    };
+        Args: { p_lpr_id: string; p_manager_employee_id: string }
+        Returns: Json
+      }
+      ts_unpost: { Args: { p_tip_sheet_id: string }; Returns: Json }
+    }
     Enums: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     CompositeTypes: {
-      [_ in never]: never;
-    };
-  };
-};
+      [_ in never]: never
+    }
+  }
+}
 
-type DatabaseWithoutInternals = Database;
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals["public"];
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
-  TableName extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"]),
-> = (DefaultSchema["Tables"] &
-  DefaultSchema["Views"])[TableName] extends { Row: infer R }
-  ? R
-  : never;
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
 export type TablesInsert<
-  TableName extends keyof DefaultSchema["Tables"],
-> = DefaultSchema["Tables"][TableName] extends { Insert: infer I } ? I : never;
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
 export type TablesUpdate<
-  TableName extends keyof DefaultSchema["Tables"],
-> = DefaultSchema["Tables"][TableName] extends { Update: infer U } ? U : never;
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
 
-export type Functions<
-  FunctionName extends keyof DefaultSchema["Functions"],
-> = DefaultSchema["Functions"][FunctionName];
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
