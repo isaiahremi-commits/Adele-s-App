@@ -7,3 +7,13 @@ export type PtoStackParamList = {
   PtoList: undefined;
   PtoDetail: { request: PtoRequest };
 };
+
+export type ScheduleStackParamList = {
+  ScheduleList: undefined;
+  TipDeclaration: {
+    outletId: string;
+    outletName: string | null;
+    shiftDate: string; // "yyyy-MM-dd"
+    position: string | null;
+  };
+};

@@ -8,7 +8,10 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
 import { colors } from "./lib/theme";
-import type { PtoStackParamList } from "./lib/navigation";
+import type {
+  PtoStackParamList,
+  ScheduleStackParamList,
+} from "./lib/navigation";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import LoginScreen from "./screens/LoginScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
@@ -17,6 +20,7 @@ import PtoDetailScreen from "./screens/PtoDetailScreen";
 import PtoScreen from "./screens/PtoScreen";
 import ScheduleScreen from "./screens/ScheduleScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import TipDeclarationScreen from "./screens/TipDeclarationScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -36,6 +40,26 @@ export type MainTabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const PtoStackNav = createNativeStackNavigator<PtoStackParamList>();
+const ScheduleStackNav = createNativeStackNavigator<ScheduleStackParamList>();
+
+// Schedule gets its own stack so the tip-declaration screen has a native
+// back header (same pattern as the PTO stack).
+function ScheduleStack() {
+  return (
+    <ScheduleStackNav.Navigator>
+      <ScheduleStackNav.Screen
+        name="ScheduleList"
+        component={ScheduleScreen}
+        options={{ title: "Schedule" }}
+      />
+      <ScheduleStackNav.Screen
+        name="TipDeclaration"
+        component={TipDeclarationScreen}
+        options={{ title: "Declare Tips" }}
+      />
+    </ScheduleStackNav.Navigator>
+  );
+}
 
 // PTO gets its own stack so the detail screen has a native back header.
 function PtoStack() {
@@ -68,8 +92,9 @@ function MainTabs() {
     >
       <Tab.Screen
         name="Schedule"
-        component={ScheduleScreen}
+        component={ScheduleStack}
         options={{
+          headerShown: false, // the Schedule stack renders its own headers
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),
