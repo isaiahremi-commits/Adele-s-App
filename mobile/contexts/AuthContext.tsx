@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { TOS_CURRENT_VERSION } from "../../shared/tos";
 import { supabase } from "../lib/supabase";
 
 type AuthContextValue = {
@@ -13,6 +14,10 @@ type AuthContextValue = {
   user: User | null;
   /** True while the persisted session is being restored on app boot. */
   loading: boolean;
+  /** Gate: admin set user_metadata.must_change_password on this account. */
+  mustChangePassword: boolean;
+  /** Gate: user hasn't accepted the current T&C version yet. */
+  needsTosAcceptance: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
@@ -38,11 +43,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
+  const value = useMemo<AuthContextValue>(() => {
+    const user = session?.user ?? null;
+    return {
       session,
-      user: session?.user ?? null,
+      user,
       loading,
+      mustChangePassword: user?.user_metadata?.must_change_password === true,
+      needsTosAcceptance:
+        user !== null &&
+        user.user_metadata?.tos_accepted_version !== TOS_CURRENT_VERSION,
       signIn: async (email, password) => {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -53,9 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut: async () => {
         await supabase.auth.signOut();
       },
-    }),
-    [session, loading]
-  );
+    };
+  }, [session, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
