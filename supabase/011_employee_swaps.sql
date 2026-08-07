@@ -27,7 +27,9 @@
 --   2. Own-row SELECT policy on swap_history (initiator OR target),
 --      additive to the 005 manager policy.
 --   3. SECURITY DEFINER helper employee_eligible_for_swap(shift, candidate)
---      — one predicate for "who can take this shift": active, not the
+--      — one predicate for "who can take this shift": not terminated
+--      (employees has NO active column — termination_date IS NULL is the
+--      live schema's "still active" signal), not the
 --      shift's owner, position matches the shift's position (candidate's
 --      home_position falling back to position), member of the shift's
 --      outlet by any Phase 1 signal (home_outlet_id / employee_outlets /
@@ -156,7 +158,10 @@ AS $$
     WHERE s.id = p_shift_id
       AND s.tenant_id = public.current_tenant_id()
       AND c.tenant_id = public.current_tenant_id()
-      AND coalesce(c.active, true)
+      -- still employed: NULL termination_date is the live "active" signal
+      -- (there is no employees.active column). A future-dated termination
+      -- also excludes — slightly strict, never wrong.
+      AND c.termination_date IS NULL
       AND c.id <> s.employee_id
       -- same position as the shift being given away
       AND s.position IS NOT NULL
@@ -224,6 +229,11 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Shift not found';
   END IF;
+  -- shifts.date is NULLABLE in the live schema; a NULL date would make the
+  -- cutoff comparison NULL and silently skip the raise — fail closed.
+  IF v_shift.date IS NULL THEN
+    RAISE EXCEPTION 'This shift has no date — ask your manager to fix it';
+  END IF;
 
   -- Adèle's rule: no swap requests inside 24 hours of the shift.
   IF public.shift_start_ts(v_shift.date, v_shift.start_time)
@@ -243,8 +253,9 @@ BEGIN
     IF NOT FOUND THEN
       RAISE EXCEPTION 'Selected shift does not belong to that teammate';
     END IF;
-    IF public.shift_start_ts(v_their.date, v_their.start_time)
-       < (now() + interval '24 hours')::timestamp THEN
+    IF v_their.date IS NULL
+       OR public.shift_start_ts(v_their.date, v_their.start_time)
+          < (now() + interval '24 hours')::timestamp THEN
       RAISE EXCEPTION 'Their shift is less than 24 hours away — pick another';
     END IF;
   END IF;

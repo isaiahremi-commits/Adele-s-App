@@ -410,7 +410,8 @@ gracefully until then.)
   immediate manager reassignment, a different animal; PR #10's approval
   RPC will do the actual shift reassignment for employee swaps. Own-row
   SELECT policy (initiator OR target). SECURITY DEFINER
-  employee_eligible_for_swap(shift, candidate) — active, not the owner,
+  employee_eligible_for_swap(shift, candidate) — not terminated
+  (termination_date IS NULL — see REV 2), not the owner,
   position matches the shift (home_position→position fallback), member of
   the shift's outlet by any Phase 1 signal, no conflicting shift (same
   rules as 010's coverage eligibility) — shared by the teammate list AND
@@ -423,6 +424,18 @@ gracefully until then.)
   name; pending always + settled from last 30 days), swap_eligible_
   teammates (one row per teammate × trade-candidate shift in the next 14
   days that is itself ≥24h out — MVP stand-in for "this pay period").
+- **REV 2 (post-apply fix):** rev 1 failed at apply time with `column
+  c.active does not exist` — the eligibility predicate assumed an
+  employees.active column that only exists in the stale supabase/schema.sql
+  (the live "still active" signal is `termination_date IS NULL`; a
+  future-dated termination also excludes — slightly strict, never wrong).
+  The PGlite harness had inherited the same stale column, which is why 41
+  checks passed against a schema the live DB doesn't have; its DDL now
+  mirrors shared/db.types.ts (no active column, NULLABLE shifts.date). The
+  full-file column audit that followed found one latent bug the same way:
+  live shifts.date is nullable, and a NULL date would have made the 24h
+  cutoff comparison NULL and silently skipped the raise — submit now fails
+  closed ('This shift has no date') on both sides of the trade.
 - **24h-cutoff timezone caveat (documented in the file):** shifts are
   wall-clock local, the DB clock is UTC; for US tenants the comparison
   trips EARLIER than true-local 24h — conservative in the safe direction.
@@ -445,10 +458,11 @@ gracefully until then.)
   columns + eight Function entries (same pending-migration caveat).
 - Verified: 011 executed end-to-end in PGlite (real 005 + 007 + tier2
   applied first with legacy 'pending'/'completed' rows seeded BEFORE 011
-  so the widened CHECK validates them, 011 applied twice, 41 functional
-  checks: eligible-teammate matrix — position/outlet/conflict/inactive/
+  so the widened CHECK validates them, 011 applied twice, 42 functional
+  checks: eligible-teammate matrix — position/outlet/conflict/terminated/
   self arms, candidate-shift 24h + 14-day windows — submit + every
-  rejection incl. both 24h cutoffs and the no-existence-leak, the full
+  rejection incl. both 24h cutoffs, the NULL-date fail-closed guard and
+  the no-existence-leak, the full
   accept/decline/cancel lifecycle by the right parties only, either-party
   cancel, RLS visibility for all personas + direct-UPDATE write-block,
   my_swap_requests directions/details with legacy rows); mobile + root
