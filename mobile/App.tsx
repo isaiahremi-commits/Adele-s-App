@@ -20,6 +20,7 @@ import PtoDetailScreen from "./screens/PtoDetailScreen";
 import PtoScreen from "./screens/PtoScreen";
 import ScheduleScreen from "./screens/ScheduleScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import SwapRequestScreen from "./screens/SwapRequestScreen";
 import TipDeclarationScreen from "./screens/TipDeclarationScreen";
 
 export type RootStackParamList = {
@@ -56,6 +57,11 @@ function ScheduleStack() {
         name="TipDeclaration"
         component={TipDeclarationScreen}
         options={{ title: "Declare Tips" }}
+      />
+      <ScheduleStackNav.Screen
+        name="SwapRequest"
+        component={SwapRequestScreen}
+        options={{ title: "Request Swap" }}
       />
     </ScheduleStackNav.Navigator>
   );

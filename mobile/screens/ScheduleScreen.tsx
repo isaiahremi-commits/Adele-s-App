@@ -34,6 +34,13 @@ import {
   withdrawCoverage,
 } from "../lib/coverage";
 import {
+  type MySwapRequest,
+  acceptSwap,
+  cancelSwap,
+  declineSwap,
+  getMySwapRequests,
+} from "../lib/swaps";
+import {
   type TipStatus,
   getTipStatusForShifts,
   shiftTipKey,
@@ -59,6 +66,13 @@ function isPastShift(
   if (s.date < todayKey) return true;
   if (s.date > todayKey) return false;
   return !!s.end_time && s.end_time <= nowTime;
+}
+
+/** Adèle's swap rule, client-side mirror: shift starts more than 24h out. */
+function isSwappable(s: ScheduleShift): boolean {
+  if (!s.date) return false;
+  const start = new Date(`${s.date}T${s.start_time ?? "00:00:00"}`);
+  return start.getTime() > Date.now() + 24 * 3600 * 1000;
 }
 
 function fmtUSD(n: number): string {
@@ -104,6 +118,8 @@ export default function ScheduleScreen() {
     mine: MyCalloutOrOffer[];
   } | null>(null);
   const [calloutShift, setCalloutShift] = useState<ScheduleShift | null>(null);
+  // null = swaps unavailable (RPCs missing pre-011, or a fetch error).
+  const [swaps, setSwaps] = useState<MySwapRequest[] | null>(null);
   const requestSeq = useRef(0);
 
   const weekStart = useMemo(() => {
@@ -199,14 +215,38 @@ export default function ScheduleScreen() {
     }
   }, []);
 
+  const loadSwaps = useCallback(async () => {
+    try {
+      setSwaps(await getMySwapRequests());
+    } catch {
+      setSwaps(null);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       if (state.kind === "ready") {
         loadTipStatuses(state.shifts);
         loadCoverage();
+        loadSwaps();
       }
-    }, [state, loadTipStatuses, loadCoverage])
+    }, [state, loadTipStatuses, loadCoverage, loadSwaps])
   );
+
+  // My pending outgoing swap per shift — replaces the "Request swap" link.
+  const pendingSwapByShift = useMemo(() => {
+    const m = new Map<string, MySwapRequest>();
+    for (const s of swaps ?? []) {
+      if (
+        s.direction === "outgoing" &&
+        (s.status === "pending_target" || s.status === "pending_manager") &&
+        s.requested_shift_id
+      ) {
+        m.set(s.requested_shift_id, s);
+      }
+    }
+    return m;
+  }, [swaps]);
 
   // My callouts by shift id — hides the "Call out" button once submitted.
   const calloutsByShift = useMemo(() => {
@@ -334,6 +374,20 @@ export default function ScheduleScreen() {
                               ? () => setCalloutShift(shift)
                               : undefined
                           }
+                          pendingSwap={pendingSwapByShift.get(shift.id)}
+                          onRequestSwap={
+                            !past && swaps !== null && isSwappable(shift)
+                              ? () =>
+                                  navigation.navigate("SwapRequest", {
+                                    shiftId: shift.id,
+                                    shiftDate: shift.date!,
+                                    startTime: shift.start_time,
+                                    endTime: shift.end_time,
+                                    position: shift.position,
+                                    outletName: shift.outlets?.name ?? null,
+                                  })
+                              : undefined
+                          }
                         />
                       );
                     })}
@@ -343,20 +397,23 @@ export default function ScheduleScreen() {
             )}
 
             {coverage !== null && (
-              <>
-                <CoverageSection
-                  available={coverage.available}
-                  pendingOffers={coverage.mine.filter(
-                    (m) =>
-                      m.kind === "coverage_offer" &&
-                      m.coverage_status === "volunteer_pending"
-                  )}
-                  onChanged={loadCoverage}
-                />
-                <MyCalloutsSection callouts={coverage.mine.filter(
-                  (m) => m.kind === "callout"
-                )} />
-              </>
+              <CoverageSection
+                available={coverage.available}
+                pendingOffers={coverage.mine.filter(
+                  (m) =>
+                    m.kind === "coverage_offer" &&
+                    m.coverage_status === "volunteer_pending"
+                )}
+                onChanged={loadCoverage}
+              />
+            )}
+            {swaps !== null && (
+              <SwapRequestsSection swaps={swaps} onChanged={loadSwaps} />
+            )}
+            {coverage !== null && (
+              <MyCalloutsSection callouts={coverage.mine.filter(
+                (m) => m.kind === "callout"
+              )} />
             )}
 
             <TeammatesSection
@@ -388,12 +445,16 @@ function ShiftBlock({
   onDeclareTips,
   myCallout,
   onCallOut,
+  pendingSwap,
+  onRequestSwap,
 }: {
   shift: ScheduleShift;
   tipStatus?: TipStatus;
   onDeclareTips?: () => void;
   myCallout?: MyCalloutOrOffer;
   onCallOut?: () => void;
+  pendingSwap?: MySwapRequest;
+  onRequestSwap?: () => void;
 }) {
   return (
     <View style={styles.shiftBlock}>
@@ -425,11 +486,27 @@ function ShiftBlock({
               ? " — covered"
               : " — awaiting coverage"}
         </Text>
-      ) : onCallOut ? (
-        <Pressable onPress={onCallOut}>
-          <Text style={styles.callOutLink}>Call out</Text>
-        </Pressable>
-      ) : null}
+      ) : (
+        <View style={styles.shiftActionsRow}>
+          {onCallOut && (
+            <Pressable onPress={onCallOut}>
+              <Text style={styles.callOutLink}>Call out</Text>
+            </Pressable>
+          )}
+          {pendingSwap ? (
+            <Text style={styles.swapPendingNote}>
+              Swap requested —{" "}
+              {pendingSwap.status === "pending_target"
+                ? `waiting on ${pendingSwap.counterparty_name}`
+                : "waiting on manager"}
+            </Text>
+          ) : onRequestSwap ? (
+            <Pressable onPress={onRequestSwap}>
+              <Text style={styles.swapLink}>Request swap →</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }
@@ -622,6 +699,188 @@ function CoverageSection({
               Nothing open right now — your pending offer is listed above.
             </Text>
           )}
+        </>
+      )}
+    </View>
+  );
+}
+
+const SWAP_STATUS_LABEL: Record<string, string> = {
+  pending_target: "Waiting on teammate",
+  pending_manager: "Waiting on manager",
+  approved: "Approved",
+  denied: "Denied by manager",
+  declined: "Declined",
+  canceled: "Canceled",
+  pending: "Pending (manager-recorded)",
+  completed: "Completed",
+};
+
+function SwapRequestsSection({
+  swaps,
+  onChanged,
+}: {
+  swaps: MySwapRequest[];
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState<{
+    id: string;
+    action: "accept" | "decline" | "cancel";
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (swaps.length === 0) return null;
+
+  const incoming = swaps.filter(
+    (s) => s.direction === "incoming" && s.status === "pending_target"
+  );
+  const outgoing = swaps.filter(
+    (s) =>
+      s.direction === "outgoing" &&
+      (s.status === "pending_target" || s.status === "pending_manager")
+  );
+  const settled = swaps.filter(
+    (s) => !incoming.includes(s) && !outgoing.includes(s)
+  );
+  const pendingCount = incoming.length + outgoing.length;
+
+  async function act(
+    id: string,
+    action: "accept" | "decline" | "cancel"
+  ) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (action === "accept") {
+        await acceptSwap(id);
+        showToast("Swap accepted — waiting on your manager.");
+      } else if (action === "decline") {
+        await declineSwap(id);
+        showToast("Swap declined.");
+      } else {
+        await cancelSwap(id);
+        showToast("Swap request canceled.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+      onChanged();
+    }
+  }
+
+  const when = (s: MySwapRequest) =>
+    s.requested_shift_date
+      ? `${format(new Date(`${s.requested_shift_date}T00:00:00`), "EEE, MMM d")} · ${formatShiftTime(s.requested_start_time)}–${formatShiftTime(s.requested_end_time)}`
+      : "—";
+
+  return (
+    <View style={styles.card}>
+      <Pressable style={styles.teammatesHeader} onPress={() => setOpen((v) => !v)}>
+        <Text style={styles.dayHeader}>Swap requests ({pendingCount})</Text>
+        <Ionicons
+          name={open ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open && (
+        <>
+          {error && <Text style={styles.coverageError}>{error}</Text>}
+
+          {incoming.map((s) => (
+            <View key={s.swap_id} style={styles.coverageRow}>
+              <Text style={styles.coverageTitle}>
+                {s.counterparty_name} wants to swap
+              </Text>
+              <Text style={styles.coverageMeta}>
+                Their shift: {when(s)}
+                {s.requested_outlet_name ? ` · ${s.requested_outlet_name}` : ""}
+                {"\n"}
+                For:{" "}
+                {s.offered_shift_date
+                  ? `your ${format(new Date(`${s.offered_shift_date}T00:00:00`), "EEE, MMM d")} shift (${formatShiftTime(s.offered_start_time)}–${formatShiftTime(s.offered_end_time)})`
+                  : "any of your shifts (manager assigns)"}
+              </Text>
+              {confirm?.id === s.swap_id ? (
+                <View style={styles.coverageActions}>
+                  <Text style={styles.coverageConfirmText}>
+                    {confirm.action === "accept" ? "Accept this swap?" : "Decline this swap?"}
+                  </Text>
+                  <Pressable
+                    disabled={busy}
+                    onPress={() => act(s.swap_id, confirm.action)}
+                  >
+                    <Text style={styles.coverageActionStrong}>
+                      {busy ? "Working..." : "Confirm"}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setConfirm(null)}>
+                    <Text style={styles.coverageActionMuted}>Back</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.coverageActions}>
+                  <Pressable
+                    style={styles.volunteerButton}
+                    onPress={() => setConfirm({ id: s.swap_id, action: "accept" })}
+                  >
+                    <Text style={styles.volunteerButtonText}>Accept</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setConfirm({ id: s.swap_id, action: "decline" })}
+                  >
+                    <Text style={styles.coverageActionMuted}>Decline</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          ))}
+
+          {outgoing.map((s) => (
+            <View key={s.swap_id} style={styles.coverageRow}>
+              <Text style={styles.coverageTitle}>
+                To {s.counterparty_name} · {when(s)}
+              </Text>
+              <Text style={styles.coverageMeta}>
+                {SWAP_STATUS_LABEL[s.status] ?? s.status}
+              </Text>
+              {confirm?.id === s.swap_id ? (
+                <View style={styles.coverageActions}>
+                  <Text style={styles.coverageConfirmText}>
+                    Cancel this swap request?
+                  </Text>
+                  <Pressable disabled={busy} onPress={() => act(s.swap_id, "cancel")}>
+                    <Text style={styles.coverageActionStrong}>
+                      {busy ? "Canceling..." : "Yes, cancel"}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setConfirm(null)}>
+                    <Text style={styles.coverageActionMuted}>Keep it</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => setConfirm({ id: s.swap_id, action: "cancel" })}
+                >
+                  <Text style={styles.coverageActionMuted}>Cancel request</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+
+          {settled.map((s) => (
+            <View key={s.swap_id} style={styles.coverageRow}>
+              <Text style={styles.settledSwapText}>
+                {s.direction === "outgoing" ? "To" : "From"}{" "}
+                {s.counterparty_name} · {when(s)} ·{" "}
+                {SWAP_STATUS_LABEL[s.status] ?? s.status}
+              </Text>
+            </View>
+          ))}
         </>
       )}
     </View>
@@ -907,10 +1166,31 @@ const styles = StyleSheet.create({
     color: colors.primaryDim,
   },
   callOutLink: {
-    marginTop: 8,
     fontSize: 13,
     fontWeight: "600",
     color: colors.amber,
+  },
+  shiftActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 16,
+    marginTop: 8,
+  },
+  swapLink: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.primaryDim,
+  },
+  swapPendingNote: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  settledSwapText: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
   },
   calledOutNote: {
     marginTop: 8,
