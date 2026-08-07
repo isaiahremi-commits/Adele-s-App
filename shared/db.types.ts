@@ -61,14 +61,18 @@ export type Database = {
         ]
       }
       callout_history: {
+        // notes + status HAND-ADDED for pending migration 010 (see Functions
+        // note below) — regen after 010 is applied.
         Row: {
           created_at: string
           date: string
           employee_id: string
           entered_by: string | null
           id: string
+          notes: string | null
           reason: string | null
           shift_id: string | null
+          status: string | null
           tenant_id: string
         }
         Insert: {
@@ -77,8 +81,10 @@ export type Database = {
           employee_id: string
           entered_by?: string | null
           id?: string
+          notes?: string | null
           reason?: string | null
           shift_id?: string | null
+          status?: string | null
           tenant_id?: string
         }
         Update: {
@@ -87,8 +93,10 @@ export type Database = {
           employee_id?: string
           entered_by?: string | null
           id?: string
+          notes?: string | null
           reason?: string | null
           shift_id?: string | null
+          status?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -115,6 +123,81 @@ export type Database = {
           },
           {
             foreignKeyName: "callout_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // HAND-ADDED table for pending migration 010_callouts_coverage.sql —
+      // regenerating types before 010 is applied will silently drop this
+      // entry; re-add or regen after.
+      coverage_requests: {
+        Row: {
+          callout_id: string
+          created_at: string | null
+          id: string
+          manager_decision_at: string | null
+          manager_decision_by: string | null
+          shift_id: string
+          status: string
+          tenant_id: string
+          volunteer_employee_id: string | null
+        }
+        Insert: {
+          callout_id: string
+          created_at?: string | null
+          id?: string
+          manager_decision_at?: string | null
+          manager_decision_by?: string | null
+          shift_id: string
+          status?: string
+          tenant_id?: string
+          volunteer_employee_id?: string | null
+        }
+        Update: {
+          callout_id?: string
+          created_at?: string | null
+          id?: string
+          manager_decision_at?: string | null
+          manager_decision_by?: string | null
+          shift_id?: string
+          status?: string
+          tenant_id?: string
+          volunteer_employee_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coverage_requests_callout_id_fkey"
+            columns: ["callout_id"]
+            isOneToOne: true
+            referencedRelation: "callout_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coverage_requests_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coverage_requests_volunteer_employee_id_fkey"
+            columns: ["volunteer_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coverage_requests_manager_decision_by_fkey"
+            columns: ["manager_decision_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coverage_requests_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1529,10 +1612,44 @@ export type Database = {
       // HAND-ADDED likewise for pending migration 009_employee_tips.sql
       // (tip_declaration_submit, tip_declaration_for_me, tip_history_for_me,
       // employee_can_see_tip_sheet) — same caveat.
+      // HAND-ADDED likewise for pending migration 010_callouts_coverage.sql
+      // (callout_submit, coverage_available_for_me, coverage_offer,
+      // coverage_withdraw, my_callouts_and_coverage,
+      // employee_eligible_for_coverage) — same caveat.
+      callout_submit: {
+        Args: { p_notes?: string; p_reason: string; p_shift_id: string }
+        Returns: string
+      }
+      coverage_available_for_me: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          end_time: string
+          outlet_id: string
+          outlet_name: string
+          request_id: string
+          requested_by: string
+          shift_date: string
+          shift_id: string
+          shift_position: string
+          start_time: string
+        }[]
+      }
+      coverage_offer: {
+        Args: { p_coverage_request_id: string }
+        Returns: undefined
+      }
+      coverage_withdraw: {
+        Args: { p_coverage_request_id: string }
+        Returns: undefined
+      }
       current_employee_id: { Args: never; Returns: string }
       current_tenant_id: { Args: never; Returns: string }
       employee_can_see_tip_sheet: {
         Args: { p_outlet_id: string; p_sheet_id: string }
+        Returns: boolean
+      }
+      employee_eligible_for_coverage: {
+        Args: { p_request_id: string }
         Returns: boolean
       }
       employee_pay_settings: {
@@ -1553,6 +1670,27 @@ export type Database = {
         Returns: string[]
       }
       is_restaurant_manager: { Args: never; Returns: boolean }
+      my_callouts_and_coverage: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          callout_id: string
+          callout_status: string
+          coverage_status: string
+          created_at: string
+          end_time: string
+          kind: string
+          notes: string
+          outlet_name: string
+          reason: string
+          request_id: string
+          requested_by: string
+          shift_date: string
+          shift_id: string
+          shift_position: string
+          start_time: string
+          volunteer_name: string
+        }[]
+      }
       pay_breakdown: {
         Args: { p_end: string; p_mode?: string; p_start: string }
         Returns: {
