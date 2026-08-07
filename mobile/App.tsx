@@ -6,6 +6,8 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { InboxProvider } from "./contexts/InboxContext";
+import InboxBell from "./components/InboxBell";
 import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
 import { isManager } from "./lib/manager";
@@ -14,7 +16,10 @@ import type {
   PtoStackParamList,
   ScheduleStackParamList,
 } from "./lib/navigation";
+import BroadcastDetailScreen from "./screens/BroadcastDetailScreen";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
+import ComposeBroadcastScreen from "./screens/ComposeBroadcastScreen";
+import InboxScreen from "./screens/InboxScreen";
 import LoginScreen from "./screens/LoginScreen";
 import ManagerInboxScreen from "./screens/ManagerInboxScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
@@ -32,6 +37,9 @@ export type RootStackParamList = {
   ChangePassword: undefined;
   TosAcceptance: undefined;
   Main: undefined;
+  Inbox: undefined;
+  BroadcastDetail: { broadcastId: string };
+  ComposeBroadcast: undefined;
 };
 
 export type MainTabParamList = {
@@ -55,7 +63,7 @@ function ScheduleStack() {
       <ScheduleStackNav.Screen
         name="ScheduleList"
         component={ScheduleScreen}
-        options={{ title: "Schedule" }}
+        options={{ title: "Schedule", headerRight: () => <InboxBell /> }}
       />
       <ScheduleStackNav.Screen
         name="TipDeclaration"
@@ -78,7 +86,7 @@ function PtoStack() {
       <PtoStackNav.Screen
         name="PtoList"
         component={PtoScreen}
-        options={{ title: "PTO" }}
+        options={{ title: "PTO", headerRight: () => <InboxBell /> }}
       />
       <PtoStackNav.Screen
         name="PtoDetail"
@@ -118,6 +126,10 @@ function MainTabs() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         headerTitleStyle: { color: colors.foreground },
+        // The broadcast-inbox bell (PR #11) lives in every header. Tabs
+        // with their own stacks (Schedule, PTO) set it on their root
+        // screens instead, since their tab header is hidden.
+        headerRight: () => <InboxBell />,
       }}
     >
       <Tab.Screen
@@ -221,11 +233,31 @@ function RootNavigator() {
           options={{ headerShown: false }}
         />
       ) : (
-        <Stack.Screen
-          name="Main"
-          component={MainTabs}
-          options={{ headerShown: false }}
-        />
+        <Stack.Group>
+          <Stack.Screen
+            name="Main"
+            component={MainTabs}
+            options={{ headerShown: false }}
+          />
+          {/* Broadcast inbox rides ABOVE the tabs, opened from the header
+              bell. Plain card pushes (not native modals): a pushed card
+              keeps its back button on every platform incl. web. */}
+          <Stack.Screen
+            name="Inbox"
+            component={InboxScreen}
+            options={{ title: "Inbox" }}
+          />
+          <Stack.Screen
+            name="BroadcastDetail"
+            component={BroadcastDetailScreen}
+            options={{ title: "Message" }}
+          />
+          <Stack.Screen
+            name="ComposeBroadcast"
+            component={ComposeBroadcastScreen}
+            options={{ title: "New Broadcast" }}
+          />
+        </Stack.Group>
       )}
     </Stack.Navigator>
   );
@@ -234,11 +266,13 @@ function RootNavigator() {
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
-        <RootNavigator />
-        <ToastHost />
-        <StatusBar style="auto" />
-      </NavigationContainer>
+      <InboxProvider>
+        <NavigationContainer>
+          <RootNavigator />
+          <ToastHost />
+          <StatusBar style="auto" />
+        </NavigationContainer>
+      </InboxProvider>
     </AuthProvider>
   );
 }

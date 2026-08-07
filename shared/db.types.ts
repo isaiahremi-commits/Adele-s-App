@@ -60,6 +60,146 @@ export type Database = {
           },
         ]
       }
+      // HAND-ADDED tables for pending migration 013_broadcasts.sql —
+      // regenerating types before 013 is applied will silently drop these
+      // entries; re-add or regen after.
+      broadcast_reads: {
+        Row: {
+          broadcast_id: string
+          employee_id: string
+          read_at: string
+          tenant_id: string
+        }
+        Insert: {
+          broadcast_id: string
+          employee_id: string
+          read_at?: string
+          tenant_id?: string
+        }
+        Update: {
+          broadcast_id?: string
+          employee_id?: string
+          read_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_reads_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_reads_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_reads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_replies: {
+        Row: {
+          body: string
+          broadcast_id: string
+          created_at: string | null
+          id: string
+          sender_employee_id: string
+          tenant_id: string
+        }
+        Insert: {
+          body: string
+          broadcast_id: string
+          created_at?: string | null
+          id?: string
+          sender_employee_id: string
+          tenant_id?: string
+        }
+        Update: {
+          body?: string
+          broadcast_id?: string
+          created_at?: string | null
+          id?: string
+          sender_employee_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_replies_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_replies_sender_employee_id_fkey"
+            columns: ["sender_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_replies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcasts: {
+        Row: {
+          audience_employee_ids: string[] | null
+          audience_type: string
+          body: string
+          created_at: string | null
+          id: string
+          sender_employee_id: string
+          tenant_id: string
+        }
+        Insert: {
+          audience_employee_ids?: string[] | null
+          audience_type: string
+          body: string
+          created_at?: string | null
+          id?: string
+          sender_employee_id: string
+          tenant_id?: string
+        }
+        Update: {
+          audience_employee_ids?: string[] | null
+          audience_type?: string
+          body?: string
+          created_at?: string | null
+          id?: string
+          sender_employee_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcasts_sender_employee_id_fkey"
+            columns: ["sender_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcasts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       callout_history: {
         // notes + status HAND-ADDED for pending migration 010 (see Functions
         // note below) — regen after 010 is applied.
@@ -1648,13 +1788,55 @@ export type Database = {
       // HAND-ADDED likewise for pending migration 012_manager_approvals.sql
       // (am_i_a_manager, coverage_approve/deny, swap_request_approve/deny,
       // large_party_add, manager_approval_inbox) — same caveat.
+      // HAND-ADDED likewise for pending migration 013_broadcasts.sql
+      // (broadcast_send/mark_read/reply/thread/read_receipts, my_inbox,
+      // my_sent_broadcasts, can_see_broadcast) — same caveat.
       am_i_a_manager: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      broadcast_mark_read: {
+        Args: { p_broadcast_id: string }
+        Returns: undefined
+      }
+      broadcast_read_receipts: {
+        Args: { p_broadcast_id: string }
+        Returns: {
+          employee_id: string
+          employee_name: string
+          read_at: string
+        }[]
+      }
+      broadcast_reply: {
+        Args: { p_body: string; p_broadcast_id: string }
+        Returns: string
+      }
+      broadcast_send: {
+        Args: {
+          p_audience_employee_ids?: string[]
+          p_audience_type: string
+          p_body: string
+        }
+        Returns: string
+      }
+      broadcast_thread: {
+        Args: { p_broadcast_id: string }
+        Returns: {
+          body: string
+          created_at: string
+          item_id: string
+          kind: string
+          sender_employee_id: string
+          sender_name: string
+        }[]
+      }
       callout_submit: {
         Args: { p_notes?: string; p_reason: string; p_shift_id: string }
         Returns: string
+      }
+      can_see_broadcast: {
+        Args: { p_broadcast_id: string }
+        Returns: boolean
       }
       coverage_approve: {
         Args: { p_coverage_request_id: string }
@@ -1750,6 +1932,32 @@ export type Database = {
           shift_position: string
           start_time: string
           volunteer_name: string
+        }[]
+      }
+      my_inbox: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          audience_type: string
+          body: string
+          broadcast_id: string
+          created_at: string
+          is_mine: boolean
+          is_read: boolean
+          reply_count: number
+          sender_employee_id: string
+          sender_name: string
+        }[]
+      }
+      my_sent_broadcasts: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          audience_type: string
+          body: string
+          broadcast_id: string
+          created_at: string
+          read_count: number
+          reply_count: number
+          total_audience_size: number
         }[]
       }
       my_swap_requests: {
