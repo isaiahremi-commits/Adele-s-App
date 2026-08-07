@@ -1134,37 +1134,51 @@ export type Database = {
         Relationships: []
       }
       swap_history: {
+        // target_shift_id / target_accepted_at / manager_decision_* HAND-ADDED
+        // for pending migration 011 — regen after 011 is applied.
         Row: {
           created_at: string
           id: string
+          manager_decision_at: string | null
+          manager_decision_by: string | null
           new_employee_id: string
           notes: string | null
           original_employee_id: string
           shift_id: string
           status: string
           swapped_by: string | null
+          target_accepted_at: string | null
+          target_shift_id: string | null
           tenant_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          manager_decision_at?: string | null
+          manager_decision_by?: string | null
           new_employee_id: string
           notes?: string | null
           original_employee_id: string
           shift_id: string
           status?: string
           swapped_by?: string | null
+          target_accepted_at?: string | null
+          target_shift_id?: string | null
           tenant_id?: string
         }
         Update: {
           created_at?: string
           id?: string
+          manager_decision_at?: string | null
+          manager_decision_by?: string | null
           new_employee_id?: string
           notes?: string | null
           original_employee_id?: string
           shift_id?: string
           status?: string
           swapped_by?: string | null
+          target_accepted_at?: string | null
+          target_shift_id?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -1616,6 +1630,10 @@ export type Database = {
       // (callout_submit, coverage_available_for_me, coverage_offer,
       // coverage_withdraw, my_callouts_and_coverage,
       // employee_eligible_for_coverage) — same caveat.
+      // HAND-ADDED likewise for pending migration 011_employee_swaps.sql
+      // (swap_request_submit/accept/decline/cancel, my_swap_requests,
+      // swap_eligible_teammates, employee_eligible_for_swap, shift_start_ts)
+      // — same caveat.
       callout_submit: {
         Args: { p_notes?: string; p_reason: string; p_shift_id: string }
         Returns: string
@@ -1650,6 +1668,10 @@ export type Database = {
       }
       employee_eligible_for_coverage: {
         Args: { p_request_id: string }
+        Returns: boolean
+      }
+      employee_eligible_for_swap: {
+        Args: { p_candidate_id: string; p_shift_id: string }
         Returns: boolean
       }
       employee_pay_settings: {
@@ -1689,6 +1711,30 @@ export type Database = {
           shift_position: string
           start_time: string
           volunteer_name: string
+        }[]
+      }
+      my_swap_requests: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          counterparty_name: string
+          created_at: string
+          direction: string
+          manager_decision_at: string
+          offered_end_time: string
+          offered_outlet_name: string
+          offered_position: string
+          offered_shift_date: string
+          offered_shift_id: string
+          offered_start_time: string
+          requested_end_time: string
+          requested_outlet_name: string
+          requested_position: string
+          requested_shift_date: string
+          requested_shift_id: string
+          requested_start_time: string
+          status: string
+          swap_id: string
+          target_accepted_at: string
         }[]
       }
       pay_breakdown: {
@@ -1803,6 +1849,10 @@ export type Database = {
       }
       pto_summary: { Args: { p_employee_id: string }; Returns: Json }
       pto_unapprove: { Args: { p_request_id: string }; Returns: Json }
+      shift_start_ts: {
+        Args: { p_date: string; p_start: string }
+        Returns: string
+      }
       swap_accept: { Args: { p_swap_id: string }; Returns: Json }
       swap_cancel: { Args: { p_swap_id: string }; Returns: Json }
       swap_create: {
@@ -1812,6 +1862,40 @@ export type Database = {
           p_shift_id: string
         }
         Returns: Json
+      }
+      swap_eligible_teammates: {
+        Args: { p_shift_id: string }
+        Returns: {
+          employee_id: string
+          employee_name: string
+          employee_position: string
+          end_time: string
+          outlet_name: string
+          shift_date: string
+          shift_id: string
+          shift_position: string
+          start_time: string
+        }[]
+      }
+      swap_request_accept: {
+        Args: { p_swap_id: string }
+        Returns: undefined
+      }
+      swap_request_cancel: {
+        Args: { p_swap_id: string }
+        Returns: undefined
+      }
+      swap_request_decline: {
+        Args: { p_swap_id: string }
+        Returns: undefined
+      }
+      swap_request_submit: {
+        Args: {
+          p_my_shift_id: string
+          p_target_employee_id: string
+          p_target_shift_id?: string
+        }
+        Returns: string
       }
       tc_add_note: {
         Args: { p_note: string; p_timecard_id: string }

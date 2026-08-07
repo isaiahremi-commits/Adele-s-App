@@ -16,4 +16,12 @@ export type ScheduleStackParamList = {
     shiftDate: string; // "yyyy-MM-dd"
     position: string | null;
   };
+  SwapRequest: {
+    shiftId: string;
+    shiftDate: string; // "yyyy-MM-dd"
+    startTime: string | null;
+    endTime: string | null;
+    position: string | null;
+    outletName: string | null;
+  };
 };

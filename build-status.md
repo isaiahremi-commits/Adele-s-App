@@ -393,6 +393,82 @@ sections gracefully until then.)
   mobile + root `tsc --noEmit` clean; `expo export` bundles clean (iOS,
   Android, web); `next build` clean (web preview unaffected).
 
+### PR #9 — Employee swap requests (2026-08-07)
+
+**MIGRATION 011 PENDING — Isaiah to apply via Supabase dashboard before
+mobile Swap flow works end-to-end.** (The RPCs 404 until applied; the
+Schedule tab hides the Request-swap link and the Swap requests section
+gracefully until then.)
+
+- `supabase/011_employee_swaps.sql`: swap_history gains target_shift_id
+  (nullable = "any of their shifts", manager assigns at approval),
+  target_accepted_at, manager_decision_at/by, and a status CHECK covering
+  BOTH the Phase 1 manager values ('pending'/'completed') and the employee
+  lifecycle ('pending_target' → 'pending_manager' →
+  'approved'/'denied'/'declined'/'canceled'). The Phase 1 manager RPCs
+  (swap_create/accept/cancel) are deliberately untouched — they record an
+  immediate manager reassignment, a different animal; PR #10's approval
+  RPC will do the actual shift reassignment for employee swaps. Own-row
+  SELECT policy (initiator OR target). SECURITY DEFINER
+  employee_eligible_for_swap(shift, candidate) — not terminated
+  (termination_date IS NULL — see REV 2), not the owner,
+  position matches the shift (home_position→position fallback), member of
+  the shift's outlet by any Phase 1 signal, no conflicting shift (same
+  rules as 010's coverage eligibility) — shared by the teammate list AND
+  submit so they can never drift. RPCs: swap_request_submit (own shift, no
+  existence leak, 24h cutoff on BOTH sides of the trade, eligibility gate,
+  duplicate-pending guard), swap_request_accept/decline (target only,
+  row-locked), swap_request_cancel (either party, pre-decision only, keeps
+  the row for audit — unlike Phase 1 swap_cancel which deletes),
+  my_swap_requests (both directions, both shifts' details, counterparty
+  name; pending always + settled from last 30 days), swap_eligible_
+  teammates (one row per teammate × trade-candidate shift in the next 14
+  days that is itself ≥24h out — MVP stand-in for "this pay period").
+- **REV 2 (post-apply fix):** rev 1 failed at apply time with `column
+  c.active does not exist` — the eligibility predicate assumed an
+  employees.active column that only exists in the stale supabase/schema.sql
+  (the live "still active" signal is `termination_date IS NULL`; a
+  future-dated termination also excludes — slightly strict, never wrong).
+  The PGlite harness had inherited the same stale column, which is why 41
+  checks passed against a schema the live DB doesn't have; its DDL now
+  mirrors shared/db.types.ts (no active column, NULLABLE shifts.date). The
+  full-file column audit that followed found one latent bug the same way:
+  live shifts.date is nullable, and a NULL date would have made the 24h
+  cutoff comparison NULL and silently skipped the raise — submit now fails
+  closed ('This shift has no date') on both sides of the trade.
+- **24h-cutoff timezone caveat (documented in the file):** shifts are
+  wall-clock local, the DB clock is UTC; for US tenants the comparison
+  trips EARLIER than true-local 24h — conservative in the safe direction.
+  Revisit when setup grows a timezone.
+- **Left to the manager gate (documented):** whether the initiator can
+  actually work the target's offered shift (conflicts on their side).
+- Mobile: future shift cards >24h out get a green "Request swap →" link
+  next to Call out (hidden once called out; replaced by "Swap requested —
+  waiting on [teammate]/manager" while pending). `SwapRequestScreen`: shift
+  header, eligible-teammate radio list (name/position/upcoming-shift
+  count), per-teammate "trade for which shift?" picker with an "Any of
+  their shifts" default, plain-language summary ("You'll trade X for Y,
+  pending [Name]'s and your manager's approval"), submit → toast → back.
+  Schedule tab gains a "Swap requests" section between Coverage and My
+  callouts: incoming (their shift vs yours + inline-confirm Accept/
+  Decline), outgoing pending (status + inline-confirm Cancel), settled
+  last-30-days rows muted. Refreshes on focus; degrades gracefully
+  pre-011 independently of the coverage section. `mobile/lib/swaps.ts`
+  wraps the six RPCs; `shared/db.types.ts` hand-adds the swap_history
+  columns + eight Function entries (same pending-migration caveat).
+- Verified: 011 executed end-to-end in PGlite (real 005 + 007 + tier2
+  applied first with legacy 'pending'/'completed' rows seeded BEFORE 011
+  so the widened CHECK validates them, 011 applied twice, 42 functional
+  checks: eligible-teammate matrix — position/outlet/conflict/terminated/
+  self arms, candidate-shift 24h + 14-day windows — submit + every
+  rejection incl. both 24h cutoffs, the NULL-date fail-closed guard and
+  the no-existence-leak, the full
+  accept/decline/cancel lifecycle by the right parties only, either-party
+  cancel, RLS visibility for all personas + direct-UPDATE write-block,
+  my_swap_requests directions/details with legacy rows); mobile + root
+  `tsc --noEmit` clean; `expo export` bundles clean (iOS, Android, web);
+  `next build` clean (web preview unaffected).
+
 ### Upcoming
 
 - Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
