@@ -140,6 +140,7 @@ export type Database = {
           id: string
           manager_decision_at: string | null
           manager_decision_by: string | null
+          notes: string | null
           shift_id: string
           status: string
           tenant_id: string
@@ -151,6 +152,7 @@ export type Database = {
           id?: string
           manager_decision_at?: string | null
           manager_decision_by?: string | null
+          notes?: string | null
           shift_id: string
           status?: string
           tenant_id?: string
@@ -162,6 +164,7 @@ export type Database = {
           id?: string
           manager_decision_at?: string | null
           manager_decision_by?: string | null
+          notes?: string | null
           shift_id?: string
           status?: string
           tenant_id?: string
@@ -408,12 +411,16 @@ export type Database = {
         ]
       }
       large_party_revenues: {
+        // declared_by_row_id (pending 009) + notes (pending 012) HAND-ADDED —
+        // regen after those migrations are applied.
         Row: {
           created_at: string
+          declared_by_row_id: string | null
           house_amount: number | null
           id: string
           manager_amount: number | null
           manager_employee_id: string | null
+          notes: string | null
           pool_amount: number | null
           revenue: number
           tenant_id: string
@@ -421,10 +428,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          declared_by_row_id?: string | null
           house_amount?: number | null
           id?: string
           manager_amount?: number | null
           manager_employee_id?: string | null
+          notes?: string | null
           pool_amount?: number | null
           revenue: number
           tenant_id?: string
@@ -432,10 +441,12 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          declared_by_row_id?: string | null
           house_amount?: number | null
           id?: string
           manager_amount?: number | null
           manager_employee_id?: string | null
+          notes?: string | null
           pool_amount?: number | null
           revenue?: number
           tenant_id?: string
@@ -1634,9 +1645,20 @@ export type Database = {
       // (swap_request_submit/accept/decline/cancel, my_swap_requests,
       // swap_eligible_teammates, employee_eligible_for_swap, shift_start_ts)
       // — same caveat.
+      // HAND-ADDED likewise for pending migration 012_manager_approvals.sql
+      // (am_i_a_manager, coverage_approve/deny, swap_request_approve/deny,
+      // large_party_add, manager_approval_inbox) — same caveat.
+      am_i_a_manager: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       callout_submit: {
         Args: { p_notes?: string; p_reason: string; p_shift_id: string }
         Returns: string
+      }
+      coverage_approve: {
+        Args: { p_coverage_request_id: string }
+        Returns: undefined
       }
       coverage_available_for_me: {
         Args: Record<PropertyKey, never>
@@ -1651,6 +1673,10 @@ export type Database = {
           shift_position: string
           start_time: string
         }[]
+      }
+      coverage_deny: {
+        Args: { p_coverage_request_id: string; p_reason?: string }
+        Returns: undefined
       }
       coverage_offer: {
         Args: { p_coverage_request_id: string }
@@ -1692,6 +1718,19 @@ export type Database = {
         Returns: string[]
       }
       is_restaurant_manager: { Args: never; Returns: boolean }
+      large_party_add: {
+        Args: {
+          p_amount: number
+          p_date: string
+          p_notes?: string
+          p_outlet_id: string
+        }
+        Returns: string
+      }
+      manager_approval_inbox: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       my_callouts_and_coverage: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1881,12 +1920,20 @@ export type Database = {
         Args: { p_swap_id: string }
         Returns: undefined
       }
+      swap_request_approve: {
+        Args: { p_swap_id: string; p_target_shift_id_override?: string }
+        Returns: undefined
+      }
       swap_request_cancel: {
         Args: { p_swap_id: string }
         Returns: undefined
       }
       swap_request_decline: {
         Args: { p_swap_id: string }
+        Returns: undefined
+      }
+      swap_request_deny: {
+        Args: { p_reason?: string; p_swap_id: string }
         Returns: undefined
       }
       swap_request_submit: {

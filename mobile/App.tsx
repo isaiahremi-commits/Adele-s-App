@@ -3,10 +3,12 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
+import { isManager } from "./lib/manager";
 import { colors } from "./lib/theme";
 import type {
   PtoStackParamList,
@@ -14,6 +16,7 @@ import type {
 } from "./lib/navigation";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import LoginScreen from "./screens/LoginScreen";
+import ManagerInboxScreen from "./screens/ManagerInboxScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
 import PayScreen from "./screens/PayScreen";
 import PtoDetailScreen from "./screens/PtoDetailScreen";
@@ -35,6 +38,7 @@ export type MainTabParamList = {
   Schedule: undefined;
   Pto: undefined;
   Pay: undefined;
+  Approvals: undefined;
   Settings: undefined;
 };
 
@@ -88,6 +92,26 @@ function PtoStack() {
 // The signed-in shell: bottom tabs. Tips (and any later tabs) land in
 // future PRs.
 function MainTabs() {
+  const { user } = useAuth();
+  // The Approvals tab renders only for Restaurant Managers. Checked once per
+  // session via am_i_a_manager (cached per user in lib/manager); the RPCs
+  // behind the tab re-verify manager status server-side regardless, so this
+  // gate is purely cosmetic. Pre-012 (RPC missing) reads as false.
+  const [showApprovals, setShowApprovals] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (user) {
+      isManager(user.id).then((v) => {
+        if (alive) setShowApprovals(v);
+      });
+    } else {
+      setShowApprovals(false);
+    }
+    return () => {
+      alive = false;
+    };
+  }, [user]);
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -126,6 +150,17 @@ function MainTabs() {
           ),
         }}
       />
+      {showApprovals && (
+        <Tab.Screen
+          name="Approvals"
+          component={ManagerInboxScreen}
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="checkmark-done-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
