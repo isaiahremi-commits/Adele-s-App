@@ -469,10 +469,91 @@ gracefully until then.)
   `tsc --noEmit` clean; `expo export` bundles clean (iOS, Android, web);
   `next build` clean (web preview unaffected).
 
+### PR #10 — Manager approvals suite (2026-08-07)
+
+**MIGRATION 012 PENDING — Isaiah to apply via Supabase dashboard before
+Manager Inbox is functional.** (am_i_a_manager 404s until applied, so the
+Approvals tab simply doesn't render; nothing else breaks.)
+
+- `supabase/012_manager_approvals.sql` — the manager-side halves of the
+  PR #8/#9 employee flows, all SECURITY DEFINER and guarded server-side on
+  is_restaurant_manager() + current_tenant_id():
+  - `coverage_approve` — reassigns the shift to the volunteer, marks the
+    callout 'covered', stamps decision at/by. Stale-guarded (refuses if
+    the shift's owner changed since the callout).
+  - `coverage_deny` — **chosen semantics (spec offered two):** denying
+    rejects the VOLUNTEER, not the need for coverage — volunteer cleared,
+    request back to 'open' for re-broadcast, callout stays 'open'; the
+    denial (volunteer name + reason) is appended to a new
+    coverage_requests.notes column with decision stamps. A terminal
+    'denied' would strand a shift that still needs covering.
+  - `swap_request_approve(p_swap_id [, p_target_shift_id_override])` —
+    reassigns BOTH shifts; "any of their shifts" requests REQUIRE the
+    override (validated to belong to the target, recorded back onto the
+    row) — blind approval refused with a clear error. Stale-guarded on
+    both current owners; refuses past shifts.
+  - `swap_request_deny` — from pending_manager OR pending_target
+    (documented widening: a manager may kill a request before the target
+    answers); reason appended to notes.
+  - `large_party_add(outlet, date, amount, notes)` — finds the newest
+    PENDING tip sheet for (outlet, date) or creates one; the entering
+    manager becomes manager_employee_id (tenant-correct, unlike legacy
+    ts_add_large_party's first-manager-ever default); notes column added
+    to large_party_revenues. Split stamped later by ts_compute, unchanged.
+  - `manager_approval_inbox()` — one jsonb round-trip: true counts +
+    capped (100) summary arrays for pending PTOs, tip sheets
+    (pending/ready with row counts + declared/party totals), coverage
+    (volunteer_pending), swaps (pending_manager, with needs_target_shift
+    flag), and timecards (pending/reviewed, last 30 days, missing_punch
+    flagged).
+  - `am_i_a_manager()` — thin wrapper for mobile tab gating.
+- **DELIBERATE DEVIATION:** the spec's "missed punch requests" don't exist
+  in Phase 1 — no table, no RPCs, nothing greps for "punch" anywhere. The
+  actual Phase 1 surface is timecards in pending/reviewed approved via
+  tc_approve, which itself refuses rows missing clock in/out. The inbox
+  ships pending_timecards with missing_punch flagged: flagged rows are
+  fix-on-web (tc_save/tc_override), the rest approve on mobile.
+- **KNOWN ISSUE (unchanged, tracked since 007):** the Phase 1 RPCs mobile
+  wraps (pto_approve/pto_deny, ts_compute/ts_post, tc_approve) have NO
+  caller guard + legacy first-manager actor lookups — still the standing
+  lockdown task, not silently patched here.
+- Mobile: conditional 5th tab "Approvals" (checkmark-done-outline) between
+  Pay and Settings, rendered only when am_i_a_manager() is true (cached
+  per user; cosmetic — every RPC re-verifies server-side).
+  `ManagerInboxScreen`: total-pending header + last-refreshed time,
+  pull-to-refresh + refetch-on-focus, five expandable sections with
+  uniform two-tap confirm (tap Approve → tap Confirm; Alert.alert is a
+  web no-op), optimistic row removal + background reload, and "Nothing to
+  approve right now — nice work" empty state. PTO approve builds
+  pto_approve's per-day p_periods map from shared/payroll.ts exactly like
+  the web /pto page; tip sheets get "Compute & mark ready" (ts_compute)
+  then "Post sheet" (ts_post); any-shift swaps get an in-row picker of the
+  target's upcoming shifts (manager-RLS direct read) feeding the override;
+  missing-punch timecards render as fix-on-web. Quick actions:
+  `LargePartyEntryModal` (outlet chips + PtoSubmitModal-style date field +
+  currency input + notes). `mobile/lib/manager.ts` wraps everything;
+  `shared/db.types.ts` hand-adds the seven 012 Functions + notes columns
+  (and backfills the 009 declared_by_row_id hand-add).
+- Verified: 012 executed end-to-end in PGlite on the FULL real chain
+  (004b-lite → 005 → 007 → tip_sheet → 017 → 008 → 009 → 010 → 011 → 012
+  ×2), 36 functional checks: am_i_a_manager for all personas; manager
+  gating + anon revocation on every RPC; coverage approve reassigns the
+  shift + covers the callout + re-approve rejected; deny re-opens with
+  audit note and the denied volunteer can re-offer; swap approve reassigns
+  both sides (named target AND override path, override recorded), blind
+  any-shift approval refused, wrong-owner override refused, stale-owner
+  refused; swap deny incl. pending_target + re-deny rejected;
+  large_party_add find-or-create (second add reuses the sheet), manager +
+  notes recorded, non-manager/zero/unknown-outlet rejected; inbox counts
+  1/1/1/1/2 with exact names, party totals, needs_target_shift and
+  missing_punch flags. Mobile + root `tsc --noEmit` clean; `expo export`
+  bundles clean (iOS, Android, web); `next build` clean.
+
 ### Upcoming
 
 - Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
-  (required before real employee logins).
+  (required before real employee logins) — now higher priority: PR #10
+  puts mobile UI in front of them.
 - Employee-grade RLS for schedule reads (own employees row, shifts,
   teammates) — PTO tables are covered by 007, pay/disciplinary by 008.
 - Tenant-scope pay_breakdown's internal setup read before a second tenant
