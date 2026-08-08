@@ -1090,6 +1090,7 @@ export type Database = {
           pay_cycle: string
           period_start_day: string
           tenant_id: string
+          timezone: string
           updated_at: string | null
         }
         Insert: {
@@ -1103,6 +1104,7 @@ export type Database = {
           pay_cycle?: string
           period_start_day?: string
           tenant_id?: string
+          timezone?: string
           updated_at?: string | null
         }
         Update: {
@@ -1116,6 +1118,7 @@ export type Database = {
           pay_cycle?: string
           period_start_day?: string
           tenant_id?: string
+          timezone?: string
           updated_at?: string | null
         }
         Relationships: [
