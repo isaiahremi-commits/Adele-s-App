@@ -549,6 +549,71 @@ Approvals tab simply doesn't render; nothing else breaks.)
   missing_punch flags. Mobile + root `tsc --noEmit` clean; `expo export`
   bundles clean (iOS, Android, web); `next build` clean.
 
+### PR #11 — Broadcast messaging + read receipts + replies (2026-08-07)
+
+**MIGRATION 013 PENDING — Isaiah to apply via Supabase dashboard before
+broadcast flow works end-to-end.** (my_inbox 404s until applied — the bell
+badge reads 0 and the Inbox screen shows its error state; nothing else
+breaks.)
+
+- `supabase/013_broadcasts.sql`: three tenant-scoped RLS tables —
+  broadcasts (sender, body ≤2000, audience 'all' | 'subset' uuid[]),
+  broadcast_reads ((broadcast, employee) PK; FIRST read wins — re-opens
+  never move the receipt), broadcast_replies (the employee → manager reply
+  channel). Policies: broadcasts audience visibility is entirely row-local
+  (all / in-subset / sender + linked-employee required — the harness
+  caught that without the linked-employee term an authenticated-but-
+  UNLINKED account could read every all-hands broadcast); replies
+  visibility PIGGYBACKS on the broadcasts policy via an EXISTS that runs
+  under the caller's own RLS, so the two can never drift; reads are
+  own-rows (SELECT + INSERT); 005-shape manager policies on all three.
+  RPCs (SECURITY DEFINER): broadcast_send (manager-only; subset ids
+  deduped + verified in-tenant; body trimmed), broadcast_mark_read
+  (idempotent), broadcast_reply, my_inbox (visible broadcasts + is_read /
+  is_mine / reply_count, newest 50), my_sent_broadcasts (manager-only;
+  read_count / total_audience_size / reply_count), broadcast_thread
+  (message + replies chronological), broadcast_read_receipts
+  (manager-only per-employee read status — an ADDITION over the spec's
+  Part A list because Part C's "tap to see per-employee read status"
+  needs it).
+- **Documented choices:** total_audience_size for 'all' counts CURRENT
+  non-terminated employees (audiences aren't materialized at send time —
+  acceptable drift at pilot scale, receipts always show exactly who did
+  read); subset picks are honored verbatim (even terminated employees);
+  the three tables carry tenant_id but are NOT in 005's _tenant_tables
+  (same re-run caveat as coverage_requests).
+- **Nav decision (Part B): option (b), the header bell.** A 6th tab is
+  crowded on iPhone (option a) and option (c) splits the manager reply
+  flow across tabs; the bell + badge is the standard mobile messaging
+  pattern and needed only two wiring points (tab-navigator screenOptions
+  + the two stack root screens). One deviation from the option-(b) text:
+  Inbox opens as a pushed CARD, not a native modal — native-stack modals
+  lose the back affordance on web, and the web preview must keep working.
+- Mobile: `InboxBell` header icon on every tab (badge = unread count from
+  a new `InboxContext` — refreshes on sign-in, app foreground, Inbox
+  focus, and after mark-read; pre-013 reads 0). `InboxScreen`: Received
+  list (unread bold + dot, reply counts) and for managers a Received|Sent
+  segmented view (Sent rows: read X/Y + replies) + compose FAB.
+  `BroadcastDetailScreen`: thread bubbles + reply composer
+  (KeyboardAvoiding); fires broadcast_mark_read on mount then refreshes
+  the bell; managers get a collapsed "Read receipts (x/y)" per-employee
+  list. `ComposeBroadcastScreen` (manager): 2000-char body, All /
+  Select-employees audience with search + multi-select checkboxes.
+  Root-stack screens ride above the tabs (Inbox / BroadcastDetail /
+  ComposeBroadcast). `mobile/lib/broadcasts.ts` wraps the seven RPCs +
+  the audience-picker employee read; `shared/db.types.ts` hand-adds the
+  three tables + eight Functions (same pending-migration caveat).
+- Verified: 013 executed end-to-end in PGlite (real 005 + 007 first, 013
+  applied twice, 44 functional checks: every send guard incl. cross-tenant
+  recipients + dedupe + trimming; audience RLS for seven personas incl.
+  the unlinked-account leak fix, cross-tenant and terminated; first-read-
+  wins receipts; reply gating incl. manager in-thread; inbox flags/order;
+  sent aggregates (1/2 read, audience 4 with terminated excluded); thread
+  order; receipts for subset AND all-hands; direct-table write-blocks —
+  forged receipts and rogue broadcast INSERTs both rejected by RLS).
+  Mobile + root `tsc --noEmit` clean; `expo export` bundles clean (iOS,
+  Android, web); `next build` clean.
+
 ### Upcoming
 
 - Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
