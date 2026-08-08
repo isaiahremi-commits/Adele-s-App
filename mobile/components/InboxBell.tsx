@@ -40,12 +40,17 @@ export default function InboxBell() {
 
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: 4,
+    paddingLeft: 4,
+    // Standard header trailing inset — headerRight renders flush against
+    // the screen edge otherwise.
+    paddingRight: 16,
   },
   badge: {
     position: "absolute",
     top: -4,
-    right: -2,
+    // Keeps the badge on the icon's top-right corner despite the trailing
+    // padding (2px past the icon edge, as before).
+    right: 14,
     minWidth: 16,
     height: 16,
     borderRadius: 8,
