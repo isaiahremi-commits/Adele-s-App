@@ -1,5 +1,15 @@
 -- =========================================================================
--- Migration 005 (Phase 2) — Multi-tenant hardening.  REV 2.
+-- Migration 005 (Phase 2) — Multi-tenant hardening.  REV 3.
+--
+-- REV 3 (PR #12): the Phase 2 tables that arrived after this migration —
+-- coverage_requests (010), broadcasts / broadcast_reads / broadcast_replies
+-- (013) — are now in _tenant_tables, so a re-run of this file no longer
+-- trips assertion 3 on them. They were born tenant-scoped; on a re-run the
+-- column/backfill loop no-ops and the policy rewrite recreates the same
+-- manager_full_access shape they already carry. Because this file runs
+-- BEFORE 010/013 on a fresh database, every loop and assertion now skips
+-- (with a NOTICE) listed tables that don't exist yet — they're picked up
+-- the next time this file runs after they're created.
 -- Run in the Supabase SQL editor. Idempotent (IF NOT EXISTS / OR REPLACE /
 -- ON CONFLICT guards); safe to re-run. One transaction — all or nothing: a
 -- failure at any point (including inside the DO blocks' dynamic SQL) rolls
@@ -84,7 +94,11 @@ BEGIN;
 CREATE TEMP TABLE _tenant_tables (name text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _tenant_tables (name) VALUES
   ('approved_weeks'),
+  ('broadcast_reads'),      -- REV 3 (013)
+  ('broadcast_replies'),    -- REV 3 (013)
+  ('broadcasts'),           -- REV 3 (013)
   ('callout_history'),
+  ('coverage_requests'),    -- REV 3 (010)
   ('employees'),
   ('large_party_revenues'),
   ('lateness_history'),
@@ -136,7 +150,14 @@ $$;
 DO $$
 DECLARE t text;
 BEGIN
-  FOR t IN SELECT name FROM _tenant_tables ORDER BY name LOOP
+  -- REV 3: skip listed tables that don't exist yet (fresh DB runs this
+  -- before 010/013 create theirs).
+  FOR t IN SELECT name FROM _tenant_tables
+           WHERE to_regclass('public.' || name) IS NULL LOOP
+    RAISE NOTICE 'skipping % — not created yet (apply its migration, then re-run 005 if desired)', t;
+  END LOOP;
+  FOR t IN SELECT name FROM _tenant_tables
+           WHERE to_regclass('public.' || name) IS NOT NULL ORDER BY name LOOP
     EXECUTE format(
       'ALTER TABLE %I ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES tenants(id)', t);
     EXECUTE format(
@@ -158,7 +179,8 @@ DECLARE missing text;
 BEGIN
   SELECT string_agg(t.name, ', ' ORDER BY t.name) INTO missing
   FROM _tenant_tables t
-  WHERE NOT EXISTS (
+  WHERE to_regclass('public.' || t.name) IS NOT NULL  -- REV 3: absent = skipped
+    AND NOT EXISTS (
     SELECT 1 FROM information_schema.columns c
     WHERE c.table_schema = 'public'
       AND c.table_name = t.name
@@ -206,7 +228,8 @@ CREATE POLICY member_read_own_tenant ON tenants FOR SELECT TO authenticated
 DO $$
 DECLARE t text;
 BEGIN
-  FOR t IN SELECT name FROM _tenant_tables ORDER BY name LOOP
+  FOR t IN SELECT name FROM _tenant_tables
+           WHERE to_regclass('public.' || name) IS NOT NULL ORDER BY name LOOP
     EXECUTE format('DROP POLICY IF EXISTS manager_full_access ON %I', t);
     EXECUTE format(
       'CREATE POLICY manager_full_access ON %I FOR ALL TO authenticated
@@ -223,7 +246,8 @@ DECLARE bad text;
 BEGIN
   SELECT string_agg(t.name, ', ' ORDER BY t.name) INTO bad
   FROM _tenant_tables t
-  WHERE NOT EXISTS (
+  WHERE to_regclass('public.' || t.name) IS NOT NULL  -- REV 3: absent = skipped
+    AND NOT EXISTS (
     SELECT 1 FROM pg_policies p
     WHERE p.schemaname = 'public'
       AND p.tablename = t.name

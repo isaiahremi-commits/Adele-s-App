@@ -614,16 +614,99 @@ breaks.)
   Mobile + root `tsc --noEmit` clean; `expo export` bundles clean (iOS,
   Android, web); `next build` clean.
 
+### PR #12 — Pre-onboard hardening (2026-08-07)
+
+**MIGRATION 014 PENDING — Isaiah to apply via Supabase dashboard.** (Until
+then the four gaps below remain open on the live DB; nothing user-visible
+changes when it lands — employee surfaces and manager web flows behave
+identically, verified end-to-end.)
+
+- **1. Caller guards on every Phase 1 SECURITY DEFINER RPC.** Full audit of
+  the Phase 1 SQL files found 21 unguarded definer functions (the spec's
+  ~12 plus tc_save, tc_create_adhoc, tc_set_status, ts_unpost, swap_create/
+  accept/cancel, pay_post_period, pto_recompute_balance,
+  pto_accrue_for_timecard). 19 entry points are now guarded with
+  `is_restaurant_manager() OR service_role JWT` — the web app's server
+  client uses the ANON key + user cookies (lib/supabase-server.ts), so
+  every web call carries the manager's own JWT and keeps working; the
+  service_role arm is defensive headroom per the spec. Mechanism: each
+  original is RENAMED to `<name>_unguarded` (EXECUTE revoked from
+  everyone) and a shim with the original name/signature/parameter names
+  guards then delegates — bodies aren't copied, so Phase 1 behavior can't
+  drift. One canonical list drives rename + shim + revoke + assertions
+  (the 005 pattern). The 2 plumbing functions (pto_recompute_balance,
+  pto_accrue_for_timecard) are REVOKED from authenticated/anon instead of
+  guarded — employee flows reach them indirectly (pto_cancel, the accrual
+  trigger), and definer-internal calls check privileges as the owner.
+  **Documented exemptions:** pto_summary + tc_lateness_range (LANGUAGE sql
+  WITHOUT definer — already RLS-bound, employees see only their own
+  rows); enforce_device_limit (every user's login path); trg_pto_accrue
+  (trigger-returning, not RPC-callable); pay_breakdown (RLS-bound,
+  employee access flows through 008's guarded pay_breakdown_for_me).
+- **2. Tenant-table refresh + 005 REV 3.** coverage_requests, broadcasts,
+  broadcast_reads, broadcast_replies now carry %_tenant_id_idx indexes and
+  are asserted against the 005 contract (NOT NULL + default + tenant-
+  filtered policies). The 005 FILE is rev 3: the four tables joined
+  _tenant_tables, and every loop/assertion now SKIPS (with a NOTICE)
+  listed tables that don't exist yet — so a fresh-database first run
+  (before 010/013) still works AND a post-013 re-run passes assertion 3
+  instead of tripping. Both orders are exercised in the harness.
+- **3. Timezone fix.** setup.timezone (NOT NULL, default
+  'America/Los_Angeles'). New helpers tenant_tz() / tenant_today() /
+  shift_start_at() convert wall-clock shift times to absolute instants.
+  Redefined: swap_request_submit + swap_eligible_teammates +
+  employee_eligible_for_swap (the 24h cutoff AND its candidate list AND
+  its gate — all three so they can't drift; the old naive-vs-UTC compare
+  tripped ~7-8h early for PT), and callout_submit +
+  employee_eligible_for_coverage ("today" was the UTC date, wrongly
+  rejecting same-day callouts after 5pm PT).
+- **4. Pay engine tenant filters.** pay_breakdown's `select pay_cycle from
+  setup limit 1` is tenant-filtered (the 008 flag, closed). Repo-wide
+  audit of `from setup` in function bodies found exactly one other:
+  tc_approve's thresholds read — tc_approve is redefined in full (guard +
+  tenant-filtered setup + audit actor = the actual caller, tenant-scoped
+  legacy fallback). pay_post_period reads no setup; no other function has
+  the pattern. 008's pay_breakdown↔pay_breakdown_for_me signature drift
+  alarm is re-asserted after the redefine.
+- Part B (InboxBell trailing inset) landed ahead of this PR on PR #11's
+  branch — already on main.
+- `shared/db.types.ts`: setup.timezone hand-added (regen after 014).
+- Verified: 49-check PGlite run of the FULL production chain — tables →
+  pto/timecards/payroll/tip_sheet/tier2 → 004b → 005 → 007 →
+  012_pto_accrual → 017 → 019 → 008…013 → **005 re-run (assertion-3
+  proof)** → 014 ×2. Guard matrix: all 19 reject an employee, manager and
+  service_role pass to domain errors, anon revoked, renamed originals and
+  plumbing uncallable, accrual trigger still fires through the revoked
+  plumbing; pto_summary/tc_lateness_range stay employee-callable
+  (RLS-bound); 25h-out swap accepted where the old UTC math rejected it,
+  23h rejected, teammate list matches the gate, same-local-day callout
+  accepted; salaried pay reads the caller-tenant's cycle with a decoy
+  tenant seeded first; and the flows of PRs #5–#11 re-exercised post-014
+  (PTO submit→approve→cancel, timecard approve at 7.42h, tip
+  declare→compute→post = $150, legacy swap reassign, pay_post_period,
+  broadcasts, coverage, manager inbox). Mobile + root `tsc --noEmit`
+  clean; `expo export` bundles clean (iOS, Android, web); `next build`
+  clean.
+
+### Pre-onboard checklist (all closed by migration 014)
+
+- ✅ Caller guards: every Phase 1 SECURITY DEFINER entry point rejects
+  non-managers server-side (19 guarded, 2 plumbing revoked, 4 exemptions
+  documented above).
+- ✅ Tenant scoping: all 23 tenant tables (19 original + 4 Phase 2) carry
+  tenant_id + index + tenant-filtered policies; 005 rev 3 re-runs clean.
+- ✅ Timezone: 24h swap cutoff and same-day callout checks run in
+  setup.timezone (America/Los_Angeles), exact instead of ~7-8h early.
+- ✅ Pay tenant filter: pay_breakdown and tc_approve read the caller
+  tenant's setup row; no other `from setup` patterns exist.
+
 ### Upcoming
 
-- Lock down Phase 1 manager RPCs with is_restaurant_manager() guards
-  (required before real employee logins) — now higher priority: PR #10
-  puts mobile UI in front of them.
 - Employee-grade RLS for schedule reads (own employees row, shifts,
-  teammates) — PTO tables are covered by 007, pay/disciplinary by 008.
-- Tenant-scope pay_breakdown's internal setup read before a second tenant
-  onboards (flagged in 008).
+  teammates) — PTO tables are covered by 007, pay/disciplinary by 008,
+  tips by 009.
 - Server-side invite flow that stamps `tenant_id` at user creation.
 - app_metadata migration for T&C/password flags (security hardening).
 - Device inventory UI (users seeing/naming their own devices).
-- Shift detail modal, Tips tab, NFC clock-in.
+- Shift detail modal, Tips tab, NFC clock-in + push (pending Apple
+  Developer Program enrollment).
