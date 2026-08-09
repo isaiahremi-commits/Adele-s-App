@@ -1,5 +1,12 @@
 -- =========================================================================
--- Migration 005 (Phase 2) — Multi-tenant hardening.  REV 3.
+-- Migration 005 (Phase 2) — Multi-tenant hardening.  REV 4.
+--
+-- REV 4 (PR #13): employee_outlets joins _tenant_tables. It was originally
+-- left tenant-agnostic (see the note further down) but the onboarding flow
+-- writes it per-employee, and every employee row is tenant-owned — so the
+-- junction rows are too. Migration 015 does the actual column/backfill/
+-- policy work standalone (so applying 015 alone suffices); listing it here
+-- keeps future 005 re-runs consistent with it. Either order converges.
 --
 -- REV 3 (PR #12): the Phase 2 tables that arrived after this migration —
 -- coverage_requests (010), broadcasts / broadcast_reads / broadcast_replies
@@ -39,7 +46,7 @@
 --
 -- What this does:
 --   1. Creates `tenants` and seeds the Adele Pilot tenant.
---   2. Adds `tenant_id` to the 19 operational tables in _tenant_tables,
+--   2. Adds `tenant_id` to every operational table in _tenant_tables,
 --      backfills every existing row to Adele Pilot, then sets NOT NULL +
 --      DEFAULT + an index per table.
 --   3. Creates `public.current_tenant_id()` reading the JWT's
@@ -60,9 +67,10 @@
 --      explicitly.
 --
 -- Tables intentionally left tenant-agnostic (global reference/support data,
--- policies unchanged from 004b): departments, employee_outlets,
--- outlet_services, payroll_periods, services, sms_log, sms_settings,
--- tip_allocations. Revisit if any of these become tenant-specific.
+-- policies unchanged from 004b): departments, outlet_services,
+-- payroll_periods, services, sms_log, sms_settings, tip_allocations.
+-- Revisit if any of these become tenant-specific. (employee_outlets was on
+-- this list through REV 3; REV 4 moved it into _tenant_tables — see header.)
 --
 -- =========================================================================
 -- user_metadata.tenant_id — MANUAL STEPS (Isaiah), do these WITH this
@@ -82,8 +90,9 @@
 --   so after stamping, users must sign out/in (or wait for the next token
 --   refresh) to pick it up. Apply migration + stamp in the same sitting.
 --
---   A future PR adds a server-side invite flow that stamps tenant_id at user
---   creation; this manual UPDATE is pilot-only scaffolding.
+--   PR #13's /api/admin/employees/create route stamps tenant_id at user
+--   creation for everyone onboarded from now on; this manual UPDATE remains
+--   only for accounts that predate it.
 -- =========================================================================
 
 BEGIN;
@@ -99,6 +108,7 @@ INSERT INTO _tenant_tables (name) VALUES
   ('broadcasts'),           -- REV 3 (013)
   ('callout_history'),
   ('coverage_requests'),    -- REV 3 (010)
+  ('employee_outlets'),     -- REV 4 (015)
   ('employees'),
   ('large_party_revenues'),
   ('lateness_history'),

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import { createAdminClient } from "@/lib/supabase-admin";
 
 type EmployeeRow = {
   id: string;
@@ -48,7 +49,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
+  // Read the auth link BEFORE deleting (RLS scopes this to the caller's
+  // tenant, so a non-manager gets nothing and deletes nothing).
+  const { data: row } = await supabase
+    .from("employees")
+    .select("auth_user_id")
+    .eq("id", params.id)
+    .maybeSingle();
   const { error } = await supabase.from("employees").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Best-effort: also remove the login, so delete + re-add with the same
+  // email works (Adèle's migration path for test employees). Without the
+  // service key this silently skips — Phase 1 behavior.
+  if (row?.auth_user_id) {
+    const admin = createAdminClient();
+    if (admin) await admin.auth.admin.deleteUser(row.auth_user_id).catch(() => {});
+  }
   return NextResponse.json({ ok: true });
 }

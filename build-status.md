@@ -700,13 +700,98 @@ identically, verified end-to-end.)
 - ✅ Pay tenant filter: pay_breakdown and tc_approve read the caller
   tenant's setup row; no other `from setup` patterns exist.
 
+### PR #13 — Employee onboarding, web admin (2026-08-08)
+
+**MIGRATION 015 PENDING — Isaiah to apply via Supabase dashboard before
+onboarding flow works end-to-end.** Also required: add
+`SUPABASE_SERVICE_ROLE_KEY` to `.env.local` (and the deploy env) from
+Supabase → Settings → API. Without the key, /employees still loads and
+Edit/Remove keep working; the wizard, invite/reset, and status chips
+respond with a clear setup message instead.
+
+- **Why:** Adèle could not add real staff — the Phase 1 /employees page
+  wrote employees rows only: no auth.users record, no auth_user_id link,
+  no user_metadata.tenant_id claim, no way for the person to sign in.
+  Since 005, an unlinked user sees NOTHING (current_tenant_id() = NULL
+  fails every policy); since 007, employee flows also need
+  current_employee_id(), i.e. a stamped auth_user_id.
+- **Migration 015** (`supabase/015_employee_onboarding.sql`):
+  - employee_outlets was NEVER tenant-scoped (missed by 005 — it sat on
+    the "tenant-agnostic" list). 015 gives it the full 005 treatment:
+    tenant_id backfilled from the linked employee (orphans → pilot
+    tenant), NOT NULL + DEFAULT current_tenant_id() + indexes +
+    tenant-scoped manager_full_access. 005 is now REV 4 (the table joined
+    _tenant_tables); either order converges, both proven in the harness.
+  - `employees_tenant_auth_user_uniq`: partial unique index — one auth
+    login maps to at most one employee per tenant (a duplicate would make
+    current_employee_id()'s LIMIT 1 nondeterministic). Pre-assertion
+    names offending rows instead of failing opaquely.
+  - Manager-only RPCs (inline assert_manager_or_service guard, anon
+    revoked): `employee_terminate` (stamps termination_date, defaults to
+    tenant-local today, deletes the user's device_sessions rows, returns
+    auth_user_id), `employee_reactivate` (clears it),
+    `employee_reset_password_needed` (re-arms must_change_password in
+    auth.users.raw_user_meta_data — merges, preserving tenant_id).
+- **Admin API routes** (all verify the caller: getUser() + am_i_a_manager
+  RPC → 401/403; service key via new `lib/supabase-admin.ts`, gated by
+  new `lib/admin-guard.ts`):
+  - `POST /api/admin/employees/create` — auth user (temp password,
+    email_confirm, user_metadata { tenant_id, must_change_password }) →
+    employees row (manager's own client, so RLS applies) → assignment
+    rows. Any later step failing rolls back the earlier ones.
+  - `POST /api/admin/employees/[id]/resend-invite` — linked: rotates to a
+    fresh temp password + re-arms the gate; UNLINKED (legacy row): creates
+    + links the login. Both return a one-time temp password.
+  - `POST .../[id]/terminate` — 015 RPC + Auth Admin ban (real
+    server-side revocation; refresh tokens stop working). `.../[id]/
+    reactivate` lifts the ban.
+  - `GET /api/admin/employees/status` — auth-side linkage map (invited_at,
+    last_sign_in_at, banned) for the page chips.
+  - Existing DELETE /api/employees/[id] now also removes the linked auth
+    user (best-effort) so Adèle's delete-and-re-add migration path works.
+- **Deliberate deviation — temp password, not magic-link email:** the
+  built-in Supabase SMTP is rate-limited to a couple of emails per hour
+  (custom SMTP isn't configured), which would break "10 staff in 10
+  minutes"; and a recovery link would land employees on the manager web
+  app (no mobile deep links until Apple Developer enrollment). The wizard
+  shows a one-time password for Adèle to hand off; the mobile app's
+  existing must_change_password gate (employee-shell PR) forces a
+  personal password on first sign-in. Title is intentionally NOT offered in the wizard —
+  'Restaurant Manager' grants manager rights, and role assignment is out
+  of scope.
+- **/employees page:** "+ Add Employee" opens a 4-step wizard (Basics →
+  Position & outlets → Pay rates → Review & invite) with hire date
+  defaulting to today, email-becomes-login, hourly-rate/salary
+  validation; success screen shows the temp password with copy. Per-row
+  linkage chip (Terminated <date> / Not invited / Invite sent (Xd ago) /
+  Active) and actions: Edit (legacy modal, unchanged) / Invite or Reset
+  password / Terminate or Reactivate / Remove.
+- `shared/db.types.ts`: employee_outlets.tenant_id +
+  employee_terminate/reactivate/reset_password_needed hand-added (regen
+  after 015).
+- Verified: 42-check PGlite run of the full production chain (tables +
+  auth.users mock → Phase 1 files → 004b → 005 REV 4 → 006 → 007 →
+  012_pto_accrual → 017 → 019 → 008…013 → 005 re-run → 014 → **revert
+  employee_outlets to the live pre-015 shape** → 015 ×2 → 005 re-run).
+  Covers: join-based backfill (the path Isaiah's apply takes), orphan
+  fallback, policy + RLS + DEFAULT stamping, employee sees zero rows,
+  per-tenant unique link (dup rejected, cross-tenant allowed), the full
+  terminate/reactivate/reset matrix (guards, not-found masking for
+  cross-tenant ids, before-hire-date rejection, tenant-local default
+  date, device_sessions revoked 2-for-2 with the other user untouched,
+  metadata merge preserving tenant_id), service_role bypass, and
+  prior-PR flows post-015. Root + mobile `tsc --noEmit` clean;
+  `next build` clean; `expo export` bundles clean.
+
 ### Upcoming
 
 - Employee-grade RLS for schedule reads (own employees row, shifts,
   teammates) — PTO tables are covered by 007, pay/disciplinary by 008,
   tips by 009.
-- Server-side invite flow that stamps `tenant_id` at user creation.
-- app_metadata migration for T&C/password flags (security hardening).
+- app_metadata migration for T&C/password flags (security hardening —
+  user_metadata is user-writable; must_change_password should eventually
+  move to app_metadata).
+- Custom SMTP + email invite option (magic link) once configured.
 - Device inventory UI (users seeing/naming their own devices).
 - Shift detail modal, Tips tab, NFC clock-in + push (pending Apple
   Developer Program enrollment).
