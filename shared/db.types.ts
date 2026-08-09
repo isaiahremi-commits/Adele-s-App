@@ -400,23 +400,29 @@ export type Database = {
         Relationships: []
       }
       employee_outlets: {
+        // tenant_id HAND-ADDED for pending migration 015_employee_onboarding.sql
+        // — regenerating types before 015 is applied will drop it; re-add or
+        // regen after.
         Row: {
           employee_id: string | null
           id: string
           outlet_id: string | null
           position_name: string | null
+          tenant_id: string
         }
         Insert: {
           employee_id?: string | null
           id?: string
           outlet_id?: string | null
           position_name?: string | null
+          tenant_id?: string
         }
         Update: {
           employee_id?: string | null
           id?: string
           outlet_id?: string | null
           position_name?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -1794,6 +1800,10 @@ export type Database = {
       // HAND-ADDED likewise for pending migration 013_broadcasts.sql
       // (broadcast_send/mark_read/reply/thread/read_receipts, my_inbox,
       // my_sent_broadcasts, can_see_broadcast) — same caveat.
+      // HAND-ADDED likewise for pending migration 015_employee_onboarding.sql
+      // (employee_terminate, employee_reactivate,
+      // employee_reset_password_needed; also employee_outlets.tenant_id in
+      // Tables above) — same caveat.
       am_i_a_manager: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1893,6 +1903,18 @@ export type Database = {
           pay_cycle: string
           period_start_day: string
         }[]
+      }
+      employee_reactivate: {
+        Args: { p_employee_id: string }
+        Returns: Json
+      }
+      employee_reset_password_needed: {
+        Args: { p_employee_id: string }
+        Returns: Json
+      }
+      employee_terminate: {
+        Args: { p_employee_id: string; p_termination_date?: string }
+        Returns: Json
       }
       enforce_device_limit: {
         Args: {

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import AddEmployeeWizard from "./AddEmployeeWizard";
 import { PREDEFINED_ROLES, SHIRT_SIZES, OTHER_OPTION } from "@/lib/constants";
 import { titleCase } from "@/lib/format";
 
@@ -9,6 +10,7 @@ type Employee = {
   name: string;
   first_name?: string | null;
   last_name?: string | null;
+  auth_user_id?: string | null;
   department?: string;
   position?: string;
   title?: string | null;
@@ -35,6 +37,8 @@ type Employee = {
 type Outlet = { id: string; name: string };
 type Department = { id: string; name: string };
 type Totals = { total_tips: number; total_sc: number; total_nc: number };
+// From /api/admin/employees/status (service key) — auth-side linkage detail.
+type AuthStatus = { invited_at: string | null; last_sign_in_at: string | null; banned: boolean };
 type ViewMode = "grid" | "list";
 type Role = { id: string; role_name: string; outlet_id: string };
 type Assignment = { outlet_id: string; position_name: string };
@@ -102,16 +106,29 @@ export default function EmployeesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, Totals>>({});
   const [assignmentsByEmp, setAssignmentsByEmp] = useState<Record<string, Assignment[]>>({});
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
+  // One-time temp password surfaced after an Invite / Reset password action.
+  const [tempPw, setTempPw] = useState<{ name: string; email: string; password: string } | null>(null);
+  const [pwCopied, setPwCopied] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   async function load() {
-    const [r, o, d, rl, t, a] = await Promise.all([
+    const [r, o, d, rl, t, a, st] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/departments").then((r) => r.json()),
       fetch("/api/outlet-roles").then((r) => r.json()),
       fetch("/api/employees/totals").then((r) => r.json()).catch(() => ({})),
       fetch("/api/employee-outlets").then((r) => r.json()).catch(() => []),
+      // 501 when the service key isn't configured — chips degrade gracefully.
+      fetch("/api/admin/employees/status").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
     ]);
+    setAuthStatus(
+      typeof st === "object" && st !== null && !Array.isArray(st)
+        ? (st as Record<string, AuthStatus>)
+        : {}
+    );
     setRows(Array.isArray(r) ? r : []);
     setOutlets(Array.isArray(o) ? o : []);
     setDepartments(Array.isArray(d) ? d : []);
@@ -134,13 +151,53 @@ export default function EmployeesPage() {
     return roles.filter((r) => r.outlet_id === outletId);
   }
 
-  function openAdd() {
-    setEditing(null);
-    setForm(emptyForm);
-    setHomePosOther(false);
-    setShirtOther(false);
-    setError(null);
-    setOpen(true);
+  // "+ Add Employee" now opens the onboarding wizard (auth login + linked
+  // row + temp password). The legacy modal remains for Edit only.
+
+  // Linkage status chip. Terminated wins; then employees.auth_user_id says
+  // invited-or-not; auth-side detail (actually signed in yet?) needs the
+  // admin status route and degrades to plain "Invited" without it.
+  function statusFor(e: Employee): { label: string; color: string } {
+    if (e.termination_date) {
+      return {
+        label: `Terminated ${new Date(e.termination_date + "T00:00:00").toLocaleDateString()}`,
+        color: "var(--danger)",
+      };
+    }
+    if (!e.auth_user_id) return { label: "Not invited", color: "var(--muted)" };
+    const s = authStatus[e.auth_user_id];
+    if (s?.last_sign_in_at) return { label: "Active", color: "var(--primary)" };
+    if (s?.invited_at) {
+      const days = Math.max(0, Math.floor((Date.now() - new Date(s.invited_at).getTime()) / 86400000));
+      return { label: `Invite sent (${days === 0 ? "today" : `${days}d ago`})`, color: "var(--amber)" };
+    }
+    return { label: "Invited", color: "var(--amber)" };
+  }
+
+  async function adminAction(
+    e: Employee,
+    path: "terminate" | "reactivate" | "resend-invite",
+    confirmMsg?: string
+  ) {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    setActionBusy(e.id + path);
+    try {
+      const res = await fetch(`/api/admin/employees/${e.id}/${path}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      if (path === "resend-invite" && data.temp_password) {
+        setPwCopied(false);
+        setTempPw({ name: e.name, email: data.email, password: data.temp_password });
+      }
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setActionBusy(null);
+    }
   }
 
   // Persist Item 5 filters.
@@ -274,7 +331,7 @@ export default function EmployeesPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Remove this employee?")) return;
+    if (!confirm("Permanently remove this employee AND their app login? For someone who left, use Terminate instead — it keeps their history.")) return;
     await fetch(`/api/employees/${id}`, { method: "DELETE" });
     load();
   }
@@ -312,7 +369,7 @@ export default function EmployeesPage() {
           <h1 className="text-3xl font-bold">Employees</h1>
           <p className="text-sm" style={{ color: "var(--muted)" }}>{rows.length} total</p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Employee</button>
+        <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>+ Add Employee</button>
       </header>
 
       {/* Section 2: backfill banner for employees missing a hire date */}
@@ -436,6 +493,15 @@ export default function EmployeesPage() {
                             return e.title || "—"; // managers have a title but no staff position/dept
                           })()}
                         </div>
+                        {(() => {
+                          const st = statusFor(e);
+                          return (
+                            <div className="text-xs mt-1 inline-block px-2 py-0.5 rounded-md"
+                              style={{ color: st.color, border: `1px solid ${st.color}`, opacity: 0.9 }}>
+                              {st.label}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                     <span className="text-xs" style={{ color: "var(--muted)" }}>
@@ -483,8 +549,34 @@ export default function EmployeesPage() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button className="btn btn-secondary text-xs" onClick={(ev) => { ev.stopPropagation(); openEdit(e); }}>Edit</button>
+                        {!e.termination_date && (
+                          <button className="btn btn-secondary text-xs"
+                            disabled={actionBusy === e.id + "resend-invite"}
+                            onClick={(ev) => { ev.stopPropagation(); adminAction(e, "resend-invite"); }}>
+                            {actionBusy === e.id + "resend-invite"
+                              ? "Working…"
+                              : e.auth_user_id ? "Reset password" : "Invite"}
+                          </button>
+                        )}
+                        {e.termination_date ? (
+                          <button className="btn btn-secondary text-xs"
+                            disabled={actionBusy === e.id + "reactivate"}
+                            onClick={(ev) => { ev.stopPropagation(); adminAction(e, "reactivate"); }}>
+                            {actionBusy === e.id + "reactivate" ? "Working…" : "Reactivate"}
+                          </button>
+                        ) : (
+                          <button className="btn btn-secondary text-xs" style={{ color: "var(--amber)" }}
+                            disabled={actionBusy === e.id + "terminate"}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              adminAction(e, "terminate",
+                                `Terminate ${e.name}? Sets today as their last day and signs them out everywhere.`);
+                            }}>
+                            {actionBusy === e.id + "terminate" ? "Working…" : "Terminate"}
+                          </button>
+                        )}
                         <button className="btn btn-secondary text-xs" onClick={(ev) => { ev.stopPropagation(); remove(e.id); }} style={{ color: "var(--danger)" }}>Remove</button>
                       </div>
                     </div>
@@ -713,6 +805,53 @@ export default function EmployeesPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <AddEmployeeWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        outlets={outlets}
+        departments={departments}
+        roles={roles}
+        onCreated={load}
+      />
+
+      {/* One-time temp password after Invite / Reset password */}
+      <Modal open={tempPw !== null} onClose={() => setTempPw(null)} title="New temporary password">
+        {tempPw && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm">
+              <strong>{tempPw.name}</strong> signs in with:
+            </p>
+            <div className="rounded-md p-3" style={{ background: "var(--surface-2)" }}>
+              <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Email</div>
+              <div className="text-sm font-semibold mb-3">{tempPw.email}</div>
+              <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Temporary password</div>
+              <div className="flex items-center gap-2">
+                <code className="text-lg font-semibold tracking-wider" style={{ color: "var(--primary)" }}>
+                  {tempPw.password}
+                </code>
+                <button className="btn btn-secondary text-xs"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(tempPw.password);
+                      setPwCopied(true);
+                      setTimeout(() => setPwCopied(false), 2000);
+                    } catch { /* visible to copy by hand */ }
+                  }}>
+                  {pwCopied ? "Copied ✓" : "Copy"}
+                </button>
+              </div>
+            </div>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Shown only once and never stored. Their old password no longer works;
+              on next sign-in the app forces them to set a new one.
+            </p>
+            <div className="flex justify-end">
+              <button className="btn btn-primary" onClick={() => setTempPw(null)}>Done</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
