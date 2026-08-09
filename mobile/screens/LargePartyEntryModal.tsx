@@ -12,6 +12,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
 import { addLargeParty, getOutlets } from "../lib/manager";
 import { colors } from "../lib/theme";
 
@@ -57,19 +58,21 @@ export default function LargePartyEntryModal({
         setOutlets(o);
         if (o.length === 1) setOutletId(o[0].id);
       })
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Couldn't load outlets")
-      );
+      .catch((e) => {
+        // [] = loaded-but-failed; null would leave the spinner forever.
+        setOutlets([]);
+        setError(friendly(e));
+      });
   }, [visible]);
 
   async function onSubmit() {
     const amt = Number(amount.replace(/[$,\s]/g, ""));
     if (!outletId) {
-      setError("Pick an outlet");
+      setError("Pick which outlet the party was at.");
       return;
     }
     if (!Number.isFinite(amt) || amt <= 0) {
-      setError("Amount must be greater than zero");
+      setError("Enter the party's total bill — it has to be more than zero.");
       return;
     }
     setBusy(true);
@@ -79,20 +82,25 @@ export default function LargePartyEntryModal({
       showToast("Large-party sale recorded.");
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
       setBusy(false);
     }
   }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      {/* Backdrop dismiss is disabled mid-submit. */}
+      <Pressable style={styles.backdrop} onPress={busy ? undefined : onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <Text style={styles.title}>Enter large-party sale</Text>
 
           <Text style={styles.label}>Outlet</Text>
           {outlets === null ? (
             <ActivityIndicator color={colors.primary} />
+          ) : outlets.length === 0 ? (
+            <Text style={styles.emptyOutlets}>
+              No outlets to show — close this and try again in a moment.
+            </Text>
           ) : (
             <View style={styles.chipRow}>
               {outlets.map((o) => (
@@ -230,7 +238,7 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor: colors.card,
     borderRadius: 12,
-    padding: 18,
+    padding: 16,
   },
   title: {
     fontSize: 17,
@@ -259,7 +267,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(45, 184, 122, 0.12)",
+    backgroundColor: colors.primarySoft,
   },
   chipText: {
     fontSize: 13,
@@ -268,6 +276,11 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.primaryDim,
+  },
+  emptyOutlets: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
   },
   dateButton: {
     borderWidth: 1,
@@ -313,7 +326,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   buttonRow: {
@@ -323,8 +336,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   cancelButton: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
     borderRadius: 8,
   },
   cancelButtonText: {
@@ -335,10 +350,12 @@ const styles = StyleSheet.create({
   submitButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     minWidth: 110,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   dim: {
     opacity: 0.6,

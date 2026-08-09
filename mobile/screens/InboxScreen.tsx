@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,8 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../App";
+import { showToast } from "../components/Toast";
 import { useAuth } from "../contexts/AuthContext";
 import { useInbox } from "../contexts/InboxContext";
+import { friendly } from "../lib/errors";
 import {
   type InboxItem,
   type SentBroadcast,
@@ -36,7 +39,7 @@ type LoadState =
   | { kind: "ready"; received: InboxItem[]; sent: SentBroadcast[] | null };
 
 function when(iso: string): string {
-  return format(new Date(iso), "MMM d · h:mm a");
+  return format(new Date(iso), "MMM d · h:mmaaa");
 }
 
 export default function InboxScreen() {
@@ -67,10 +70,13 @@ export default function InboxScreen() {
         }
       } catch (e) {
         if (seq === requestSeq.current) {
-          setState({
-            kind: "error",
-            message: e instanceof Error ? e.message : "Something went wrong",
-          });
+          // Keep a loaded inbox on refresh failure; only the initial load
+          // may take over the screen with the error card.
+          if (mode === "refresh") {
+            showToast(friendly(e));
+          } else {
+            setState({ kind: "error", message: friendly(e) });
+          }
         }
       } finally {
         if (seq === requestSeq.current) setRefreshing(false);
@@ -120,11 +126,14 @@ export default function InboxScreen() {
             onRefresh={() => load("refresh")}
             colors={[colors.primary]}
             tintColor={colors.primary}
+            title="Refreshing..."
           />
         }
       >
         {state.kind === "loading" && (
-          <Text style={styles.mutedCenter}>Loading…</Text>
+          <View style={[styles.card, styles.centered]}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
         )}
 
         {state.kind === "error" && (
@@ -192,6 +201,10 @@ export default function InboxScreen() {
             {(state.sent ?? []).length === 0 && (
               <View style={styles.card}>
                 <Text style={styles.emptyTitle}>Nothing sent yet</Text>
+                <Text style={styles.mutedBody}>
+                  Messages you send to the team will show up here. Tap the +
+                  button to write one.
+                </Text>
               </View>
             )}
             {(state.sent ?? []).map((b) => (
@@ -317,6 +330,9 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: 24,
   },
+  centered: {
+    alignItems: "center",
+  },
   emptyTitle: {
     fontSize: 16,
     fontWeight: "600",
@@ -329,32 +345,33 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   retryButton: {
-    marginTop: 14,
+    marginTop: 12,
     alignSelf: "flex-start",
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   retryButtonText: {
     color: colors.primaryOn,
     fontSize: 14,
     fontWeight: "600",
   },
+  // Same size as the PTO tab's FAB (56/28) — they're the same control.
   fab: {
     position: "absolute",
     right: 20,
     bottom: 24,
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    // boxShadow works across native (new architecture) and web; the old
+    // shadow* props printed deprecation warnings on web.
+    boxShadow: "0px 3px 6px rgba(0, 0, 0, 0.2)",
   },
 });

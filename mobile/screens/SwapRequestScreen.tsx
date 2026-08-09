@@ -13,6 +13,8 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
+import { titleCase } from "../lib/format";
 import type { ScheduleStackParamList } from "../lib/navigation";
 import { formatShiftTime } from "../lib/schedule";
 import {
@@ -59,10 +61,7 @@ export default function SwapRequestScreen() {
       if (seq === requestSeq.current) setState({ kind: "ready", teammates });
     } catch (e) {
       if (seq === requestSeq.current) {
-        setState({
-          kind: "error",
-          message: e instanceof Error ? e.message : "Something went wrong",
-        });
+        setState({ kind: "error", message: friendly(e) });
       }
     }
   }, [params.shiftId]);
@@ -91,7 +90,7 @@ export default function SwapRequestScreen() {
       );
       navigation.goBack();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Something went wrong");
+      setFormError(friendly(e));
       setSubmitting(false);
     }
   }
@@ -146,6 +145,7 @@ export default function SwapRequestScreen() {
               <View key={t.employee_id}>
                 <Pressable
                   style={[styles.teammateRow, active && styles.teammateRowActive]}
+                  disabled={submitting}
                   onPress={() => {
                     setTeammateId(active ? null : t.employee_id);
                     setShiftChoice(ANY_SHIFT);
@@ -155,9 +155,9 @@ export default function SwapRequestScreen() {
                   <View style={styles.teammateInfo}>
                     <Text style={styles.teammateName}>{t.employee_name}</Text>
                     <Text style={styles.teammateMeta}>
-                      {t.employee_position ?? "—"} ·{" "}
+                      {titleCase(t.employee_position) || "—"} ·{" "}
                       {t.shifts.length === 0
-                        ? "no upcoming shifts"
+                        ? "no upcoming shifts (you can still ask — your manager assigns the trade)"
                         : `${t.shifts.length} upcoming ${
                             t.shifts.length === 1 ? "shift" : "shifts"
                           }`}
@@ -363,14 +363,16 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   submitButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 12,
   },
   submitDisabled: {

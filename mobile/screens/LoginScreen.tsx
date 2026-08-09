@@ -27,7 +27,14 @@ export default function LoginScreen() {
     setError(null);
     const { error } = await signIn(email, password);
     if (error) {
-      setError(error);
+      // Supabase's raw messages read cold ("Invalid login credentials") —
+      // translate the common ones for a non-technical reader.
+      const friendly = /invalid login credentials/i.test(error)
+        ? "That email and password don't match. Double-check both and try again."
+        : /network|fetch/i.test(error)
+          ? "Can't reach the server — check your connection and try again."
+          : error;
+      setError(friendly);
       setBusy(false);
     }
     // On success AuthContext picks up the new session and the navigator

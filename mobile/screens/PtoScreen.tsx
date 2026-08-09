@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,9 @@ import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
+import { hoursFmt } from "../lib/format";
 import type { PtoStackParamList } from "../lib/navigation";
 import {
   type PtoRequest,
@@ -60,7 +64,13 @@ export default function PtoScreen() {
       }
     } catch (e) {
       if (seq === requestSeq.current) {
-        setError(e instanceof Error ? e.message : "Something went wrong");
+        // A failed pull-to-refresh must not wipe rows we already have —
+        // keep them and mention the problem in passing instead.
+        if (mode === "refresh") {
+          showToast(friendly(e));
+        } else {
+          setError(friendly(e));
+        }
       }
     } finally {
       if (seq === requestSeq.current) setRefreshing(false);
@@ -101,9 +111,13 @@ export default function PtoScreen() {
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>PTO balance</Text>
           <Text style={styles.balanceValue}>
-            {balance === null ? "—" : `${Number(balance).toFixed(2)} h`}
+            {balance === null ? "—" : hoursFmt(balance)}
           </Text>
-          <Text style={styles.balanceHint}>hours available</Text>
+          <Text style={styles.balanceHint}>
+            {balance === null && !loading
+              ? "couldn't load — pull down to refresh"
+              : "hours available"}
+          </Text>
         </View>
 
         <View style={styles.statusTabs}>
@@ -139,7 +153,14 @@ export default function PtoScreen() {
 
         {!loading && !error && visible.length === 0 && (
           <View style={styles.card}>
-            <Text style={styles.emptyBody}>No {tab} requests</Text>
+            <Text style={styles.emptyTitle}>
+              {tab === "pending" ? "No pending requests" : `Nothing ${tab} yet`}
+            </Text>
+            <Text style={styles.emptyBody}>
+              {tab === "pending"
+                ? "Need time off? Tap the + button to send a request."
+                : `Requests your manager has ${tab} will show up here.`}
+            </Text>
           </View>
         )}
 
@@ -158,7 +179,7 @@ export default function PtoScreen() {
               </View>
             </View>
             <Text style={styles.rowMeta}>
-              {Number(r.total_hours_requested).toFixed(0)} h · requested{" "}
+              {hoursFmt(r.total_hours_requested)} · requested{" "}
               {format(new Date(r.requested_at), "MMM d")}
               {r.decided_at
                 ? ` · decided ${format(new Date(r.decided_at), "MMM d")}`
@@ -183,6 +204,7 @@ export default function PtoScreen() {
         onSaved={() => {
           setSubmitOpen(false);
           setTab("pending");
+          showToast("Request sent — your manager will review it.");
           load("refresh");
         }}
       />
@@ -195,8 +217,9 @@ function SkeletonRows() {
   React.useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.35, duration: 650, useNativeDriver: true }),
+        // No native driver on web — passing true there logs a warning.
+        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: Platform.OS !== "web" }),
+        Animated.timing(pulse, { toValue: 0.35, duration: 650, useNativeDriver: Platform.OS !== "web" }),
       ])
     );
     loop.start();
@@ -296,7 +319,7 @@ const styles = StyleSheet.create({
     color: colors.foreground,
   },
   reasonChip: {
-    backgroundColor: "rgba(45, 184, 122, 0.14)",
+    backgroundColor: colors.primarySoft,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -323,12 +346,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   retryButton: {
-    marginTop: 14,
+    marginTop: 12,
     alignSelf: "flex-start",
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   retryButtonText: {
     color: colors.primaryOn,
@@ -345,11 +370,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    // boxShadow works across native (new architecture) and web; the old
+    // shadow* props printed deprecation warnings on web.
+    boxShadow: "0px 3px 6px rgba(0, 0, 0, 0.2)",
   },
   dim: {
     opacity: 0.8,

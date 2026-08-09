@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +15,8 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { showToast } from "../components/Toast";
 import { useAuth } from "../contexts/AuthContext";
+import { friendly } from "../lib/errors";
+import { money } from "../lib/format";
 import type { ScheduleStackParamList } from "../lib/navigation";
 import {
   type CurrentEmployee,
@@ -76,13 +79,7 @@ function isSwappable(s: ScheduleShift): boolean {
 }
 
 function fmtUSD(n: number): string {
-  return (
-    "$" +
-    n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return money(n);
 }
 
 type LoadState =
@@ -159,10 +156,14 @@ export default function ScheduleScreen() {
         }
       } catch (e) {
         if (seq === requestSeq.current) {
-          setState({
-            kind: "error",
-            message: e instanceof Error ? e.message : "Something went wrong",
-          });
+          // A failed pull-to-refresh keeps the loaded week on screen and
+          // mentions the problem in passing; only an initial load may show
+          // the full-screen error card.
+          if (mode === "refresh") {
+            showToast(friendly(e));
+          } else {
+            setState({ kind: "error", message: friendly(e) });
+          }
         }
       } finally {
         if (seq === requestSeq.current) setRefreshing(false);
@@ -315,10 +316,11 @@ export default function ScheduleScreen() {
 
         {state.kind === "unlinked" && (
           <View style={styles.card}>
-            <Text style={styles.emptyTitle}>No employee record</Text>
+            <Text style={styles.emptyTitle}>Account not set up yet</Text>
             <Text style={styles.emptyBody}>
-              Your account isn't linked to an employee record yet — contact
-              your manager.
+              Your login isn't connected to the staff list yet, so there's no
+              schedule to show. Ask your manager to finish setting up your
+              account, then pull down to refresh.
             </Text>
           </View>
         )}
@@ -462,7 +464,9 @@ function ShiftBlock({
         <Text style={styles.shiftPosition}>{shift.position ?? "Shift"}</Text>
         {shift.shift_type && (
           <View style={styles.typePill}>
-            <Text style={styles.typePillText}>{shift.shift_type}</Text>
+            <Text style={styles.typePillText}>
+              {shift.shift_type[0].toUpperCase() + shift.shift_type.slice(1)}
+            </Text>
           </View>
         )}
       </View>
@@ -489,7 +493,7 @@ function ShiftBlock({
       ) : (
         <View style={styles.shiftActionsRow}>
           {onCallOut && (
-            <Pressable onPress={onCallOut}>
+            <Pressable onPress={onCallOut} hitSlop={12}>
               <Text style={styles.callOutLink}>Call out</Text>
             </Pressable>
           )}
@@ -501,7 +505,7 @@ function ShiftBlock({
                 : "waiting on manager"}
             </Text>
           ) : onRequestSwap ? (
-            <Pressable onPress={onRequestSwap}>
+            <Pressable onPress={onRequestSwap} hitSlop={12}>
               <Text style={styles.swapLink}>Request swap →</Text>
             </Pressable>
           ) : null}
@@ -519,7 +523,11 @@ function TipActionRow({
   onPress?: () => void;
 }) {
   if (!status.sheetExists) {
-    return <Text style={styles.tipDim}>Tip sheet not yet open</Text>;
+    return (
+      <Text style={styles.tipDim}>
+        Tip sheet not open yet — check back after your manager opens it
+      </Text>
+    );
   }
   if (status.sheetStatus === "posted") {
     return (
@@ -535,7 +543,7 @@ function TipActionRow({
       <Text style={styles.tipDim}>
         {status.rowId
           ? "Tips declared ✓ — pending manager review"
-          : "Tip sheet closed for review"}
+          : "Tip sheet closed for review — talk to your manager if you still need to declare"}
       </Text>
     );
   }
@@ -547,7 +555,7 @@ function TipActionRow({
     );
   }
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} hitSlop={12}>
       <Text style={styles.tipDeclaredLink}>Tips declared ✓ · Edit</Text>
     </Pressable>
   );
@@ -582,7 +590,7 @@ function CoverageSection({
       );
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
       onChanged(); // list may be stale (someone else volunteered first)
     } finally {
       setBusyId(null);
@@ -636,18 +644,27 @@ function CoverageSection({
                   </Text>
                   <Pressable
                     disabled={busyId !== null}
+                    hitSlop={12}
                     onPress={() => m.request_id && act(m.request_id, withdrawCoverage)}
                   >
                     <Text style={styles.coverageActionStrong}>
                       {busyId === m.request_id ? "Withdrawing..." : "Yes, withdraw"}
                     </Text>
                   </Pressable>
-                  <Pressable onPress={() => setConfirmId(null)}>
+                  <Pressable
+                    disabled={busyId !== null}
+                    hitSlop={12}
+                    onPress={() => setConfirmId(null)}
+                  >
                     <Text style={styles.coverageActionMuted}>Keep it</Text>
                   </Pressable>
                 </View>
               ) : (
-                <Pressable onPress={() => setConfirmId(m.request_id)}>
+                <Pressable
+                  disabled={busyId !== null}
+                  hitSlop={12}
+                  onPress={() => setConfirmId(m.request_id)}
+                >
                   <Text style={styles.coverageActionMuted}>Withdraw</Text>
                 </Pressable>
               )}
@@ -671,19 +688,25 @@ function CoverageSection({
                   </Text>
                   <Pressable
                     disabled={busyId !== null}
+                    hitSlop={12}
                     onPress={() => act(c.request_id, offerCoverage)}
                   >
                     <Text style={styles.coverageActionStrong}>
                       {busyId === c.request_id ? "Sending..." : "Yes, volunteer"}
                     </Text>
                   </Pressable>
-                  <Pressable onPress={() => setConfirmId(null)}>
+                  <Pressable
+                    disabled={busyId !== null}
+                    hitSlop={12}
+                    onPress={() => setConfirmId(null)}
+                  >
                     <Text style={styles.coverageActionMuted}>Cancel</Text>
                   </Pressable>
                 </View>
               ) : (
                 <Pressable
                   style={styles.volunteerButton}
+                  disabled={busyId !== null}
                   onPress={() => setConfirmId(c.request_id)}
                 >
                   <Text style={styles.volunteerButtonText}>
@@ -712,9 +735,18 @@ const SWAP_STATUS_LABEL: Record<string, string> = {
   denied: "Denied by manager",
   declined: "Declined",
   canceled: "Canceled",
-  pending: "Pending (manager-recorded)",
+  pending: "Recorded by manager — pending",
   completed: "Completed",
 };
+
+/** Fallback for a status value we don't recognize — humanize instead of
+ * leaking raw codes like "pending_target". */
+function swapStatusLabel(status: string): string {
+  return (
+    SWAP_STATUS_LABEL[status] ??
+    status.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+  );
+}
 
 function SwapRequestsSection({
   swaps,
@@ -764,7 +796,7 @@ function SwapRequestsSection({
         showToast("Swap request canceled.");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
     } finally {
       setBusy(false);
       setConfirm(null);
@@ -812,13 +844,14 @@ function SwapRequestsSection({
                   </Text>
                   <Pressable
                     disabled={busy}
+                    hitSlop={12}
                     onPress={() => act(s.swap_id, confirm.action)}
                   >
                     <Text style={styles.coverageActionStrong}>
                       {busy ? "Working..." : "Confirm"}
                     </Text>
                   </Pressable>
-                  <Pressable onPress={() => setConfirm(null)}>
+                  <Pressable disabled={busy} hitSlop={12} onPress={() => setConfirm(null)}>
                     <Text style={styles.coverageActionMuted}>Back</Text>
                   </Pressable>
                 </View>
@@ -826,11 +859,14 @@ function SwapRequestsSection({
                 <View style={styles.coverageActions}>
                   <Pressable
                     style={styles.volunteerButton}
+                    disabled={busy}
                     onPress={() => setConfirm({ id: s.swap_id, action: "accept" })}
                   >
                     <Text style={styles.volunteerButtonText}>Accept</Text>
                   </Pressable>
                   <Pressable
+                    disabled={busy}
+                    hitSlop={12}
                     onPress={() => setConfirm({ id: s.swap_id, action: "decline" })}
                   >
                     <Text style={styles.coverageActionMuted}>Decline</Text>
@@ -846,24 +882,30 @@ function SwapRequestsSection({
                 To {s.counterparty_name} · {when(s)}
               </Text>
               <Text style={styles.coverageMeta}>
-                {SWAP_STATUS_LABEL[s.status] ?? s.status}
+                {swapStatusLabel(s.status)}
               </Text>
               {confirm?.id === s.swap_id ? (
                 <View style={styles.coverageActions}>
                   <Text style={styles.coverageConfirmText}>
                     Cancel this swap request?
                   </Text>
-                  <Pressable disabled={busy} onPress={() => act(s.swap_id, "cancel")}>
+                  <Pressable
+                    disabled={busy}
+                    hitSlop={12}
+                    onPress={() => act(s.swap_id, "cancel")}
+                  >
                     <Text style={styles.coverageActionStrong}>
                       {busy ? "Canceling..." : "Yes, cancel"}
                     </Text>
                   </Pressable>
-                  <Pressable onPress={() => setConfirm(null)}>
+                  <Pressable disabled={busy} hitSlop={12} onPress={() => setConfirm(null)}>
                     <Text style={styles.coverageActionMuted}>Keep it</Text>
                   </Pressable>
                 </View>
               ) : (
                 <Pressable
+                  disabled={busy}
+                  hitSlop={12}
                   onPress={() => setConfirm({ id: s.swap_id, action: "cancel" })}
                 >
                   <Text style={styles.coverageActionMuted}>Cancel request</Text>
@@ -877,7 +919,7 @@ function SwapRequestsSection({
               <Text style={styles.settledSwapText}>
                 {s.direction === "outgoing" ? "To" : "From"}{" "}
                 {s.counterparty_name} · {when(s)} ·{" "}
-                {SWAP_STATUS_LABEL[s.status] ?? s.status}
+                {swapStatusLabel(s.status)}
               </Text>
             </View>
           ))}
@@ -915,7 +957,7 @@ function MyCalloutsSection({ callouts }: { callouts: MyCalloutOrOffer[] }) {
               : c.coverage_status === "approved"
                 ? "Covered"
                 : (c.callout_status && CALLOUT_STATUS_LABEL[c.callout_status]) ??
-                  "—";
+                  "Recorded";
           return (
             <View key={c.callout_id} style={styles.coverageRow}>
               <Text style={styles.coverageTitle}>
@@ -989,7 +1031,7 @@ function TeammatesSection({
               <Text key={s.id} style={styles.teammateShiftRow}>
                 {[
                   s.position ?? "Shift",
-                  s.date ? format(new Date(`${s.date}T00:00:00`), "EEE d") : "—",
+                  s.date ? format(new Date(`${s.date}T00:00:00`), "EEE, MMM d") : "—",
                   `${formatShiftTime(s.start_time)}–${formatShiftTime(s.end_time)}`,
                   s.outlets?.name,
                 ]
@@ -1008,15 +1050,16 @@ function SkeletonCards() {
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
+        // No native driver on web — passing true there logs a warning.
         Animated.timing(pulse, {
           toValue: 1,
           duration: 650,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(pulse, {
           toValue: 0.35,
           duration: 650,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ])
     );
@@ -1151,8 +1194,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   tipDeclareButtonText: {
     color: colors.primaryOn,
@@ -1241,7 +1286,7 @@ const styles = StyleSheet.create({
   coverageError: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   volunteerButton: {
@@ -1249,8 +1294,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   volunteerButtonText: {
     color: colors.primaryOn,
@@ -1269,12 +1316,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   retryButton: {
-    marginTop: 14,
+    marginTop: 12,
     alignSelf: "flex-start",
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   retryButtonText: {
     color: colors.primaryOn,

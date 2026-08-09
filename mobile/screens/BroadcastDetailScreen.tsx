@@ -15,8 +15,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "../App";
+import { showToast } from "../components/Toast";
 import { useAuth } from "../contexts/AuthContext";
 import { useInbox } from "../contexts/InboxContext";
+import { friendly } from "../lib/errors";
 import {
   type ReadReceipt,
   type ThreadItem,
@@ -40,7 +42,7 @@ type LoadState =
   | { kind: "ready"; thread: ThreadItem[]; receipts: ReadReceipt[] | null };
 
 function when(iso: string): string {
-  return format(new Date(iso), "MMM d · h:mm a");
+  return format(new Date(iso), "MMM d · h:mmaaa");
 }
 
 export default function BroadcastDetailScreen() {
@@ -56,6 +58,9 @@ export default function BroadcastDetailScreen() {
 
   const load = useCallback(async () => {
     const seq = ++requestSeq.current;
+    // Re-entering from "Try again" must visibly load — otherwise a second
+    // failure is indistinguishable from the button doing nothing.
+    setState({ kind: "loading" });
     try {
       const mgr = user ? await isManager(user.id) : false;
       const [thread, receipts] = await Promise.all([
@@ -69,10 +74,7 @@ export default function BroadcastDetailScreen() {
       }
     } catch (e) {
       if (seq === requestSeq.current) {
-        setState({
-          kind: "error",
-          message: e instanceof Error ? e.message : "Something went wrong",
-        });
+        setState({ kind: "error", message: friendly(e) });
       }
     }
   }, [params.broadcastId, user]);
@@ -95,9 +97,10 @@ export default function BroadcastDetailScreen() {
     try {
       await reply(params.broadcastId, body);
       setDraft("");
+      showToast("Reply sent.");
       await load();
     } catch (e) {
-      setSendError(e instanceof Error ? e.message : "Something went wrong");
+      setSendError(friendly(e));
     } finally {
       setSending(false);
     }
@@ -126,6 +129,14 @@ export default function BroadcastDetailScreen() {
             <Pressable style={styles.sendButton} onPress={load}>
               <Text style={styles.sendButtonText}>Try again</Text>
             </Pressable>
+          </View>
+        )}
+
+        {state.kind === "ready" && state.thread.length === 0 && (
+          <View style={styles.card}>
+            <Text style={styles.mutedBody}>
+              This message is no longer available — it may have been removed.
+            </Text>
           </View>
         )}
 
@@ -291,9 +302,11 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 8,
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   sendDisabled: {
     opacity: 0.5,
@@ -304,7 +317,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   sendError: {
-    color: "#dc2626",
+    color: colors.danger,
     fontSize: 13,
     paddingHorizontal: 16,
     paddingBottom: 4,

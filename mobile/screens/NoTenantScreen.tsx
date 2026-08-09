@@ -1,5 +1,11 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { colors } from "../lib/theme";
 
@@ -10,21 +16,38 @@ import { colors } from "../lib/theme";
 // render past this point.
 export default function NoTenantScreen() {
   const { user, signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  async function onSignOut() {
+    // This button is the only way off this screen — it must visibly react
+    // and never die silently.
+    setBusy(true);
+    try {
+      await signOut();
+    } catch {
+      setBusy(false);
+    }
+  }
 
   return (
     <View style={styles.screen}>
       <View style={styles.card}>
-        <Text style={styles.title}>No tenant assigned</Text>
+        <Text style={styles.title}>Account not set up yet</Text>
         <Text style={styles.body}>
-          Your account ({user?.email}) isn't linked to a restaurant yet, so
-          nothing can be shown. Please contact your administrator to finish
-          setting up your account, then sign in again.
+          Your login ({user?.email}) isn't connected to the restaurant yet, so
+          there's nothing to show. Ask your manager to finish setting up your
+          account, then sign in again.
         </Text>
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonDim]}
-          onPress={signOut}
+          onPress={onSignOut}
+          disabled={busy}
         >
-          <Text style={styles.buttonText}>Sign out</Text>
+          {busy ? (
+            <ActivityIndicator color={colors.foreground} />
+          ) : (
+            <Text style={styles.buttonText}>Sign out</Text>
+          )}
         </Pressable>
       </View>
     </View>
@@ -66,8 +89,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingVertical: 11,
+    paddingVertical: 12,
     paddingHorizontal: 24,
+    minHeight: 44,
+    justifyContent: "center",
   },
   buttonDim: {
     opacity: 0.6,

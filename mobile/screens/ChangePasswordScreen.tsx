@@ -44,7 +44,13 @@ export default function ChangePasswordScreen() {
       data: { must_change_password: false },
     });
     if (error) {
-      setError(error.message);
+      // GoTrue's raw messages ("New password should be different…") are
+      // mostly readable; soften the network-ish ones.
+      setError(
+        /network|fetch/i.test(error.message)
+          ? "Can't reach the server — check your connection and try again."
+          : error.message
+      );
       setBusy(false);
     }
     // On success we stay busy until the navigator swaps this screen out.

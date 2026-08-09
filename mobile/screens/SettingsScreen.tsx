@@ -1,23 +1,36 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useAuth } from "../contexts/AuthContext";
+import { dateFmt } from "../lib/format";
 import { colors } from "../lib/theme";
 
 // Settings tab: account info + sign out + T&C receipt. Grows real settings
 // (notifications, device list, …) in later PRs.
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
 
   const tosVersion = user?.user_metadata?.tos_accepted_version;
   const tosAcceptedAt = user?.user_metadata?.tos_accepted_at;
   const tosDate =
-    typeof tosAcceptedAt === "string"
-      ? new Date(tosAcceptedAt).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        })
-      : null;
+    typeof tosAcceptedAt === "string" ? dateFmt(tosAcceptedAt) : null;
+
+  async function onSignOut() {
+    setBusy(true);
+    try {
+      await signOut();
+    } catch {
+      // Sign-out is best-effort; if the network call fails the auth session
+      // is cleared locally anyway on the next attempt.
+      setBusy(false);
+    }
+  }
 
   return (
     <View style={styles.screen}>
@@ -26,9 +39,14 @@ export default function SettingsScreen() {
         <Text style={styles.email}>{user?.email}</Text>
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonDim]}
-          onPress={signOut}
+          onPress={onSignOut}
+          disabled={busy}
         >
-          <Text style={styles.buttonText}>Sign out</Text>
+          {busy ? (
+            <ActivityIndicator color={colors.foreground} />
+          ) : (
+            <Text style={styles.buttonText}>Sign out</Text>
+          )}
         </Pressable>
         {tosVersion && tosDate && (
           <Text style={styles.footnote}>
@@ -73,8 +91,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingVertical: 11,
+    paddingVertical: 12,
     paddingHorizontal: 24,
+    minHeight: 44,
+    justifyContent: "center",
   },
   buttonDim: {
     opacity: 0.6,

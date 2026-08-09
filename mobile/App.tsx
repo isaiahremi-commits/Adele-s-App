@@ -55,11 +55,22 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 const PtoStackNav = createNativeStackNavigator<PtoStackParamList>();
 const ScheduleStackNav = createNativeStackNavigator<ScheduleStackParamList>();
 
+// One header recipe for every navigator (tabs + both stacks + root cards)
+// so titles can't drift in size/weight between screens.
+const headerOptions = {
+  headerTitleStyle: {
+    color: colors.foreground,
+    fontSize: 17,
+    fontWeight: "600" as const,
+  },
+  headerTintColor: colors.primary,
+};
+
 // Schedule gets its own stack so the tip-declaration screen has a native
 // back header (same pattern as the PTO stack).
 function ScheduleStack() {
   return (
-    <ScheduleStackNav.Navigator>
+    <ScheduleStackNav.Navigator screenOptions={headerOptions}>
       <ScheduleStackNav.Screen
         name="ScheduleList"
         component={ScheduleScreen}
@@ -82,7 +93,7 @@ function ScheduleStack() {
 // PTO gets its own stack so the detail screen has a native back header.
 function PtoStack() {
   return (
-    <PtoStackNav.Navigator>
+    <PtoStackNav.Navigator screenOptions={headerOptions}>
       <PtoStackNav.Screen
         name="PtoList"
         component={PtoScreen}
@@ -125,7 +136,10 @@ function MainTabs() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        headerTitleStyle: { color: colors.foreground },
+        // Explicit lineHeight > fontSize keeps descenders ("Pay", "Approvals")
+        // from clipping on web, where the default label metrics are tighter.
+        tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: "500" },
+        ...headerOptions,
         // The broadcast-inbox bell (PR #11) lives in every header. Tabs
         // with their own stacks (Schedule, PTO) set it on their root
         // screens instead, since their tab header is hidden.
@@ -204,7 +218,7 @@ function RootNavigator() {
   // clears its own user_metadata flag, which re-renders this navigator via the
   // USER_UPDATED auth event and advances to the next screen.
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={headerOptions}>
       {!session ? (
         <Stack.Screen
           name="Login"

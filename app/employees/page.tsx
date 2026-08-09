@@ -39,6 +39,22 @@ type Department = { id: string; name: string };
 type Totals = { total_tips: number; total_sc: number; total_nc: number };
 // From /api/admin/employees/status (service key) — auth-side linkage detail.
 type AuthStatus = { invited_at: string | null; last_sign_in_at: string | null; banned: boolean };
+type StatusKey = "notinvited" | "invited" | "active" | "terminated";
+type SortKey = "name" | "position" | "department" | "hire" | "invite";
+
+// Loose name match: every typed character appears in order ("jsm" hits
+// "Jasmine Smith"), so a couple of skipped letters still finds the person.
+function fuzzyName(query: string, name: string): boolean {
+  const q = query.toLowerCase().replace(/\s+/g, "");
+  const n = name.toLowerCase();
+  if (!q) return true;
+  let i = 0;
+  for (const ch of n) {
+    if (ch === q[i]) i++;
+    if (i === q.length) return true;
+  }
+  return false;
+}
 type ViewMode = "grid" | "list";
 type Role = { id: string; role_name: string; outlet_id: string };
 type Assignment = { outlet_id: string; position_name: string };
@@ -102,6 +118,8 @@ export default function EmployeesPage() {
   const [fDept, setFDept] = useState("");
   const [fOutlet, setFOutlet] = useState("");
   const [fPosition, setFPosition] = useState("");
+  const [fStatus, setFStatus] = useState<"all" | StatusKey>("all");
+  const [sortBy, setSortBy] = useState<SortKey>("name");
   const [missingHireOnly, setMissingHireOnly] = useState(false); // Section 2 backfill banner
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, Totals>>({});
@@ -157,21 +175,23 @@ export default function EmployeesPage() {
   // Linkage status chip. Terminated wins; then employees.auth_user_id says
   // invited-or-not; auth-side detail (actually signed in yet?) needs the
   // admin status route and degrades to plain "Invited" without it.
-  function statusFor(e: Employee): { label: string; color: string } {
+  function statusFor(e: Employee): { key: StatusKey; label: string; color: string } {
     if (e.termination_date) {
       return {
+        key: "terminated",
         label: `Terminated ${new Date(e.termination_date + "T00:00:00").toLocaleDateString()}`,
         color: "var(--danger)",
       };
     }
-    if (!e.auth_user_id) return { label: "Not invited", color: "var(--muted)" };
+    if (!e.auth_user_id) return { key: "notinvited", label: "Not invited", color: "var(--muted)" };
     const s = authStatus[e.auth_user_id];
-    if (s?.last_sign_in_at) return { label: "Active", color: "var(--primary)" };
+    if (s?.last_sign_in_at) return { key: "active", label: "Active", color: "var(--primary)" };
     if (s?.invited_at) {
       const days = Math.max(0, Math.floor((Date.now() - new Date(s.invited_at).getTime()) / 86400000));
-      return { label: `Invite sent (${days === 0 ? "today" : `${days}d ago`})`, color: "var(--amber)" };
+      const ago = days === 0 ? "today" : days === 1 ? "1 day ago" : `${days} days ago`;
+      return { key: "invited", label: `Invited (${ago})`, color: "var(--amber)" };
     }
-    return { label: "Invited", color: "var(--amber)" };
+    return { key: "invited", label: "Invited", color: "var(--amber)" };
   }
 
   async function adminAction(
@@ -331,7 +351,7 @@ export default function EmployeesPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Permanently remove this employee AND their app login? For someone who left, use Terminate instead — it keeps their history.")) return;
+    if (!confirm("This will permanently delete the employee and their login. This cannot be undone.\n\nFor someone who left, use Terminate instead — it keeps their history.")) return;
     await fetch(`/api/employees/${id}`, { method: "DELETE" });
     load();
   }
@@ -436,6 +456,54 @@ export default function EmployeesPage() {
         </div>
       </div>
 
+      {/* Status chips + sort */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {(
+          [
+            ["all", "All"],
+            ["active", "Active"],
+            ["terminated", "Terminated"],
+            ["notinvited", "Not invited"],
+          ] as const
+        ).map(([key, label]) => {
+          const count = key === "all"
+            ? rows.length
+            : rows.filter((e) => statusFor(e).key === key).length;
+          const on = fStatus === key;
+          return (
+            <button
+              key={key}
+              className="text-xs px-3 py-1 rounded-full"
+              onClick={() => setFStatus(key)}
+              style={{
+                background: on ? "var(--primary)" : "var(--surface-2)",
+                color: on ? "var(--primary-on)" : "var(--muted)",
+                fontWeight: on ? 600 : 400,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              {label} ({count})
+            </button>
+          );
+        })}
+        <div className="flex items-center gap-1 ml-auto">
+          <span className="text-xs" style={{ color: "var(--muted)" }}>Sort</span>
+          <select
+            className="input text-xs"
+            style={{ width: 150, paddingTop: 4, paddingBottom: 4 }}
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+          >
+            <option value="name">Name</option>
+            <option value="position">Position</option>
+            <option value="department">Department</option>
+            <option value="hire">Hire date</option>
+            <option value="invite">Invite status</option>
+          </select>
+        </div>
+      </div>
+
       {(() => {
         const filtered = rows.filter((e) => {
           if (missingHireOnly && e.date_of_hire) return false; // Section 2 banner filter
@@ -443,18 +511,46 @@ export default function EmployeesPage() {
           if (fDept && e.department_id !== fDept) return false;
           if (fOutlet && e.home_outlet_id !== fOutlet) return false;
           if (fPosition && (e.home_position ?? e.position) !== fPosition) return false;
+          if (fStatus !== "all" && statusFor(e).key !== fStatus) return false;
           if (!search.trim()) return true;
           const q = search.toLowerCase();
           const dept = departments.find((d) => d.id === e.department_id)?.name ?? e.department ?? "";
           const homeOutlet = outlets.find((o) => o.id === e.home_outlet_id)?.name ?? "";
           return (
-            (e.name ?? "").toLowerCase().includes(q) ||
+            fuzzyName(search, e.name ?? "") ||
             (e.home_position ?? e.position ?? "").toLowerCase().includes(q) ||
             dept.toLowerCase().includes(q) ||
             homeOutlet.toLowerCase().includes(q) ||
             (e.email ?? "").toLowerCase().includes(q) ||
             (e.phone ?? "").toLowerCase().includes(q)
           );
+        });
+
+        // Sort AFTER filtering. Name is the default; invite status surfaces
+        // the people who still need onboarding attention first.
+        const INVITE_ORDER: Record<StatusKey, number> = {
+          notinvited: 0, invited: 1, active: 2, terminated: 3,
+        };
+        const byName = (a: Employee, b: Employee) => (a.name ?? "").localeCompare(b.name ?? "");
+        filtered.sort((a, b) => {
+          if (sortBy === "position") {
+            // "￿" pushes employees missing the field to the end.
+            return (titleCase(a.home_position ?? a.position) || "￿").localeCompare(
+              titleCase(b.home_position ?? b.position) || "￿") || byName(a, b);
+          }
+          if (sortBy === "department") {
+            const dn = (e: Employee) =>
+              departments.find((d) => d.id === e.department_id)?.name ?? e.department ?? "￿";
+            return dn(a).localeCompare(dn(b)) || byName(a, b);
+          }
+          if (sortBy === "hire") {
+            // Most recent hires first — the ones being onboarded now.
+            return (b.date_of_hire ?? "").localeCompare(a.date_of_hire ?? "") || byName(a, b);
+          }
+          if (sortBy === "invite") {
+            return INVITE_ORDER[statusFor(a).key] - INVITE_ORDER[statusFor(b).key] || byName(a, b);
+          }
+          return byName(a, b);
         });
 
         if (filtered.length === 0) {

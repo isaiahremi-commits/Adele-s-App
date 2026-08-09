@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Animated,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -32,6 +33,9 @@ import {
   getMyTimecards,
   getPaySettings,
 } from "../lib/pay";
+import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
+import { hoursFmt, money, timeFromTimestamp } from "../lib/format";
 import { getCurrentEmployee } from "../lib/schedule";
 import { colors } from "../lib/theme";
 import { type TipHistoryEntry, getMyTipHistory } from "../lib/tips";
@@ -48,23 +52,17 @@ const OLDER_PERIOD_CHOICES = 6; // periods 2..7 back, in the Older sheet
 
 function fmtUSD(n: number | null): string {
   if (n === null) return "—";
-  return (
-    "$" +
-    n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return money(n);
 }
 
-/** 7.5 → "7.5h", 8 → "8h", 7.25 → "7.25h" */
+/** 7.42h — shared app-wide format (always 2 decimals). */
 function fmtHours(n: number): string {
-  return `${Number(n.toFixed(2))}h`;
+  return hoursFmt(n);
 }
 
-/** timestamptz ISO → "9:05 AM"; null-safe. */
+/** timestamptz ISO → "9:05am"; null-safe. */
 function fmtClock(iso: string | null): string {
-  return iso ? format(new Date(iso), "h:mm a") : "—";
+  return timeFromTimestamp(iso);
 }
 
 function daysAgoISO(days: number): string {
@@ -164,12 +162,16 @@ export default function PayScreen() {
         }
       } catch (e) {
         if (seq === requestSeq.current) {
-          const message = e instanceof Error ? e.message : "Something went wrong";
+          const raw = e instanceof Error ? e.message : "";
           // raised by pay_breakdown_for_me / employee_pay_settings (008)
-          if (message.includes("No employee record")) {
+          if (raw.includes("No employee record")) {
             setState({ kind: "unlinked" });
+          } else if (mode === "refresh") {
+            // Keep the loaded pay view — a flaky pull-to-refresh shouldn't
+            // wipe it. Mention the failure in passing instead.
+            showToast(friendly(e));
           } else {
-            setState({ kind: "error", message });
+            setState({ kind: "error", message: friendly(e) });
           }
         }
       } finally {
@@ -213,10 +215,11 @@ export default function PayScreen() {
 
         {state.kind === "unlinked" && (
           <View style={styles.card}>
-            <Text style={styles.emptyTitle}>No employee record</Text>
+            <Text style={styles.emptyTitle}>Account not set up yet</Text>
             <Text style={styles.emptyBody}>
-              Your account isn't linked to an employee record yet — contact
-              your manager.
+              Your login isn't connected to the staff list yet, so there's no
+              pay to show. Ask your manager to finish setting up your account,
+              then pull down to refresh.
             </Text>
           </View>
         )}
@@ -591,8 +594,8 @@ function TipHistoryCard({
                     {e.outlet_name ? ` · ${e.outlet_name}` : ""}
                   </Text>
                   <Text style={styles.timecardTimes}>
-                    SC {fmtUSD(e.declared_service_charge ?? 0)} · NC{" "}
-                    {fmtUSD(e.declared_non_cash ?? 0)}
+                    Svc charge {fmtUSD(e.declared_service_charge ?? 0)} · Card
+                    tips {fmtUSD(e.declared_non_cash ?? 0)}
                     {e.declared_large_party
                       ? ` · Party ${fmtUSD(e.declared_large_party)}`
                       : ""}
@@ -613,11 +616,13 @@ function TipHistoryCard({
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === "approved" || status === "posted"
-      ? { bg: "rgba(45, 184, 122, 0.14)", fg: colors.primaryDim }
-      : { bg: "rgba(217, 119, 6, 0.14)", fg: colors.amber };
+      ? { bg: colors.primarySoft, fg: colors.primaryDim }
+      : { bg: colors.amberSoft, fg: colors.amber };
+  // Capitalize the raw status value ("pending" → "Pending").
+  const label = status ? status[0].toUpperCase() + status.slice(1) : status;
   return (
     <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.statusPillText, { color: tone.fg }]}>{status}</Text>
+      <Text style={[styles.statusPillText, { color: tone.fg }]}>{label}</Text>
     </View>
   );
 }
@@ -644,8 +649,10 @@ function StandingCard({
         <Ionicons name="time-outline" size={18} color={colors.muted} />
         <Text style={styles.standingLabel}>Lateness</Text>
         <Text style={styles.standingValue}>
-          {lateness.count} {lateness.count === 1 ? "incident" : "incidents"}
-          {lateness.tier2Count > 0 ? ` (${lateness.tier2Count} tier-2)` : ""}
+          {lateness.count} {lateness.count === 1 ? "time" : "times"}
+          {lateness.tier2Count > 0
+            ? ` (${lateness.tier2Count} seriously late)`
+            : ""}
         </Text>
       </View>
       <View style={styles.standingRow}>
@@ -669,15 +676,16 @@ function SkeletonCards() {
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
+        // No native driver on web — passing true there logs a warning.
         Animated.timing(pulse, {
           toValue: 1,
           duration: 650,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(pulse, {
           toValue: 0.35,
           duration: 650,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ])
     );
@@ -950,12 +958,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   retryButton: {
-    marginTop: 14,
+    marginTop: 12,
     alignSelf: "flex-start",
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   retryButtonText: {
     color: colors.primaryOn,

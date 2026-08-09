@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -9,6 +10,7 @@ import {
 } from "react-native";
 import { format } from "date-fns";
 import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
 import { formatShiftTime, type ScheduleShift } from "../lib/schedule";
 import {
   CALLOUT_NOTES_MAX,
@@ -67,9 +69,10 @@ export default function CalloutModal({
       showToast(
         "Callout submitted. Your manager and eligible teammates have been notified."
       );
+      setSubmitting(false);
       onSubmitted();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
       setConfirming(false);
       setSubmitting(false);
     }
@@ -77,7 +80,12 @@ export default function CalloutModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      {/* Backdrop dismiss is disabled mid-submit — closing while the RPC is
+          in flight would strand the request with no feedback. */}
+      <Pressable
+        style={styles.backdrop}
+        onPress={submitting ? undefined : onClose}
+      >
         <Pressable style={styles.sheet} onPress={() => {}}>
           <Text style={styles.title}>Call out of this shift</Text>
           <Text style={styles.shiftLine}>
@@ -191,7 +199,7 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor: colors.card,
     borderRadius: 12,
-    padding: 18,
+    padding: 16,
   },
   title: {
     fontSize: 17,
@@ -231,7 +239,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(45, 184, 122, 0.12)",
+    backgroundColor: colors.primarySoft,
   },
   chipText: {
     fontSize: 13,
@@ -248,9 +256,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     color: colors.foreground,
     fontSize: 14,
-    padding: 10,
+    padding: 12,
     minHeight: 70,
-    textAlignVertical: "top",
+    // Android-only prop; including it on web prints a deprecation warning.
+    ...(Platform.OS === "android" ? { textAlignVertical: "top" as const } : {}),
   },
   charCount: {
     alignSelf: "flex-end",
@@ -259,8 +268,8 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   confirmBox: {
-    marginTop: 14,
-    backgroundColor: "rgba(217, 119, 6, 0.10)",
+    marginTop: 12,
+    backgroundColor: colors.amberSoft,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(217, 119, 6, 0.35)",
@@ -280,18 +289,20 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   buttonRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 10,
+    gap: 8,
     marginTop: 16,
   },
   cancelButton: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
     borderRadius: 8,
   },
   cancelButtonText: {
@@ -302,8 +313,10 @@ const styles = StyleSheet.create({
   submitButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
   },
   submitDisabled: {
     opacity: 0.5,

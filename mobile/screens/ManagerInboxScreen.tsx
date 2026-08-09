@@ -12,6 +12,8 @@ import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
+import { hoursFmt, money, timeFmt, timeFromTimestamp } from "../lib/format";
 import {
   type InboxCoverage,
   type InboxPto,
@@ -52,23 +54,17 @@ function fmtDay(d: string | null): string {
   return d ? format(new Date(`${d.slice(0, 10)}T00:00:00`), "EEE, MMM d") : "—";
 }
 
-/** "HH:MM:SS" → "10:00", null-safe. */
+/** "HH:MM:SS" → "10:00am", null-safe. */
 function fmtTime(t: string | null): string {
-  return t ? t.slice(0, 5) : "—";
+  return timeFmt(t);
 }
 
 function fmtClock(iso: string | null): string {
-  return iso ? format(new Date(iso), "h:mm a") : "—";
+  return timeFromTimestamp(iso);
 }
 
 function fmtUSD(n: number): string {
-  return (
-    "$" +
-    Number(n).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return money(n);
 }
 
 export default function ManagerInboxScreen() {
@@ -97,10 +93,13 @@ export default function ManagerInboxScreen() {
       }
     } catch (e) {
       if (seq === requestSeq.current) {
-        setState({
-          kind: "error",
-          message: e instanceof Error ? e.message : "Something went wrong",
-        });
+        // Refresh failures (including the auto-reload after an approve)
+        // must not replace a loaded inbox with an error screen.
+        if (mode === "refresh") {
+          showToast(friendly(e));
+        } else {
+          setState({ kind: "error", message: friendly(e) });
+        }
       }
     } finally {
       if (seq === requestSeq.current) setRefreshing(false);
@@ -122,9 +121,14 @@ export default function ManagerInboxScreen() {
     setTargetShifts(null);
     setExpanded((cur) => (cur === rowKey ? null : rowKey));
     if (swap?.needs_target_shift) {
+      // null stays "loading"; [] means "loaded, none". A fetch FAILURE must
+      // not masquerade as "they have no shifts" — that copy advises denying.
       getUpcomingShifts(swap.new_employee_id)
         .then(setTargetShifts)
-        .catch(() => setTargetShifts([]));
+        .catch(() => {
+          showToast("Couldn't load their shifts — close and reopen this row.");
+          setTargetShifts(null);
+        });
     }
   }
 
@@ -176,7 +180,7 @@ export default function ManagerInboxScreen() {
       showToast(toast);
       onDone();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Something went wrong");
+      setActionError(friendly(e));
       setPending(null);
     } finally {
       setBusy(false);
@@ -225,7 +229,7 @@ export default function ManagerInboxScreen() {
                 {state.inbox.total_pending} pending
               </Text>
               <Text style={styles.headerMeta}>
-                refreshed {format(state.refreshedAt, "h:mm a")}
+                refreshed {format(state.refreshedAt, "h:mmaaa")}
               </Text>
             </View>
 
@@ -246,7 +250,7 @@ export default function ManagerInboxScreen() {
                     expanded={expanded}
                     onToggle={() => toggleExpand(`pto:${p.id}`)}
                     title={p.employee_name}
-                    subtitle={`${fmtDay(p.start_date)} – ${fmtDay(p.end_date)} · ${p.reason ?? "—"}${p.total_hours_requested ? ` · ${p.total_hours_requested}h` : ""}`}
+                    subtitle={`${fmtDay(p.start_date)} – ${fmtDay(p.end_date)} · ${p.reason ?? "—"}${p.total_hours_requested ? ` · ${hoursFmt(p.total_hours_requested)}` : ""}`}
                   >
                     <ActionRow
                       error={actionError}
@@ -293,15 +297,15 @@ export default function ManagerInboxScreen() {
                     expanded={expanded}
                     onToggle={() => toggleExpand(`sheet:${s.id}`)}
                     title={`${s.outlet_name ?? "—"} · ${fmtDay(s.date)}`}
-                    subtitle={`${s.status === "pending" ? "Needs compute" : "Ready to post"} · ${s.row_count} ${s.row_count === 1 ? "declaration" : "declarations"} · declared ${fmtUSD(s.declared_total)}${s.large_party_total > 0 ? ` · parties ${fmtUSD(s.large_party_total)}` : ""}`}
+                    subtitle={`${s.status === "pending" ? "Needs totals" : "Ready to post"} · ${s.row_count} ${s.row_count === 1 ? "declaration" : "declarations"} · declared ${fmtUSD(s.declared_total)}${s.large_party_total > 0 ? ` · parties ${fmtUSD(s.large_party_total)}` : ""}`}
                   >
                     <ActionRow
                       error={actionError}
                       busy={busy}
                       note={
                         s.status === "pending"
-                          ? "Computing runs the tip formula and locks employee edits."
-                          : "Posting locks the sheet; the pay engine starts reading it."
+                          ? "Calculating totals splits the tips and locks employee edits."
+                          : "Posting finalizes the sheet — the amounts start counting toward pay."
                       }
                       buttons={[
                         s.status === "pending"
@@ -309,7 +313,7 @@ export default function ManagerInboxScreen() {
                               label: confirmLabel(
                                 `sheet:${s.id}`,
                                 "compute",
-                                "Compute & mark ready"
+                                "Calculate totals"
                               ),
                               primary: true,
                               onPress: () =>
@@ -318,7 +322,7 @@ export default function ManagerInboxScreen() {
                                   "compute",
                                   () => computeTipSheet(s.id),
                                   () => load("refresh"),
-                                  "Tip sheet computed — now ready to post."
+                                  "Totals calculated — now ready to post."
                                 ),
                             }
                           : {
@@ -351,7 +355,7 @@ export default function ManagerInboxScreen() {
                     expanded={expanded}
                     onToggle={() => toggleExpand(`cov:${c.id}`)}
                     title={`${fmtDay(c.shift_date)} · ${fmtTime(c.start_time)}–${fmtTime(c.end_time)}${c.position ? ` · ${c.position}` : ""}`}
-                    subtitle={`${c.caller_out_name} called out · ${c.volunteer_name ?? "?"} volunteered${c.outlet_name ? ` · ${c.outlet_name}` : ""}`}
+                    subtitle={`${c.caller_out_name} called out · ${c.volunteer_name ?? "someone"} volunteered${c.outlet_name ? ` · ${c.outlet_name}` : ""}`}
                   >
                     <ActionRow
                       error={actionError}
@@ -410,7 +414,8 @@ export default function ManagerInboxScreen() {
                             <ActivityIndicator color={colors.primary} />
                           ) : targetShifts.length === 0 ? (
                             <Text style={styles.mutedBody}>
-                              No upcoming shifts to trade — deny this one.
+                              {w.target_name} has no upcoming shifts to trade —
+                              deny this one.
                             </Text>
                           ) : (
                             targetShifts.map((sh) => (
@@ -644,7 +649,10 @@ function ActionRow({
                 b.primary ? styles.primaryButtonText : styles.secondaryButtonText
               }
             >
-              {busy ? "Working..." : b.label}
+              {/* Only the button actually running shows "Working..." — that's
+                  the one whose two-tap confirm is armed (label starts with
+                  "Confirm"), never its neighbor. */}
+              {busy && b.label.startsWith("Confirm") ? "Working..." : b.label}
             </Text>
           </Pressable>
         ))}
@@ -736,9 +744,11 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 9,
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
   primaryButtonText: {
@@ -748,11 +758,13 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     borderRadius: 8,
-    paddingVertical: 9,
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    minHeight: 44,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
   secondaryButtonText: {
@@ -795,7 +807,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
     marginBottom: 8,
   },

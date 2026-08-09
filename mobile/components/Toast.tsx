@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, StyleSheet, Text } from "react-native";
+import { Animated, Platform, StyleSheet, Text } from "react-native";
 import { colors } from "../lib/theme";
+
+// The native driver doesn't exist on react-native-web — passing true there
+// prints a console warning on every toast. Opacity animates fine on the JS
+// driver for web.
+const USE_NATIVE_DRIVER = Platform.OS !== "web";
 
 // Minimal app-wide toast: showToast() can be called from anywhere (including
 // non-component code like the device-session check) and renders through the
@@ -33,13 +38,13 @@ export function ToastHost() {
       Animated.timing(opacity, {
         toValue: 1,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }).start();
       hideTimer.current = setTimeout(() => {
         Animated.timing(opacity, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }).start(() => setMessage(null));
       }, VISIBLE_MS);
     };
@@ -57,7 +62,8 @@ export function ToastHost() {
   if (!message) return null;
 
   return (
-    <Animated.View style={[styles.toast, { opacity }]} pointerEvents="none">
+    // pointerEvents lives in style — the prop form is deprecated on web.
+    <Animated.View style={[styles.toast, { opacity, pointerEvents: "none" }]}>
       <Text style={styles.text}>{message}</Text>
     </Animated.View>
   );

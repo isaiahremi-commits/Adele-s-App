@@ -11,6 +11,9 @@ import { format } from "date-fns";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
+import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
+import { hoursFmt } from "../lib/format";
 import type { PtoStackParamList } from "../lib/navigation";
 import { cancelRequest } from "../lib/pto";
 import { colors } from "../lib/theme";
@@ -40,9 +43,10 @@ export default function PtoDetailScreen() {
     setError(null);
     try {
       await cancelRequest(request.id);
+      showToast("Request canceled.");
       navigation.goBack(); // PtoList refetches on focus
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
       setBusy(false);
       setConfirming(false);
     }
@@ -59,7 +63,7 @@ export default function PtoDetailScreen() {
             <Text style={styles.statusChipText}>{request.status}</Text>
           </View>
           <Text style={styles.hours}>
-            {Number(request.total_hours_requested).toFixed(0)} h
+            {hoursFmt(request.total_hours_requested)}
           </Text>
         </View>
 
@@ -150,6 +154,7 @@ export default function PtoDetailScreen() {
         onClose={() => setEditOpen(false)}
         onSaved={() => {
           setEditOpen(false);
+          showToast("Request updated.");
           navigation.goBack(); // PtoList refetches on focus
         }}
       />
@@ -167,10 +172,10 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function statusChipStyle(status: string) {
-  if (status === "approved") return { backgroundColor: "rgba(45, 184, 122, 0.16)" };
-  if (status === "denied") return { backgroundColor: "rgba(217, 119, 6, 0.16)" };
+  if (status === "approved") return { backgroundColor: colors.primarySoft };
+  if (status === "denied") return { backgroundColor: colors.amberSoft };
   if (status === "canceled") return { backgroundColor: "rgba(107, 114, 128, 0.16)" };
-  return { backgroundColor: "rgba(45, 184, 122, 0.10)" };
+  return { backgroundColor: colors.primarySoft };
 }
 
 const styles = StyleSheet.create({
@@ -232,7 +237,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   primaryButtonText: {
     color: colors.primaryOn,
@@ -245,7 +252,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   secondaryButtonText: {
     color: colors.foreground,
@@ -256,7 +265,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.amber,
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   dangerButtonText: {
     color: colors.primaryOn,
@@ -277,9 +288,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.amberSoft,
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
   },
   errorText: {
     color: colors.amber,

@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { timeFmt } from "./format";
 import { supabase } from "./supabase";
 
 // Schedule queries for the employee-facing Schedule tab.
@@ -53,9 +54,10 @@ function dateParam(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-/** "HH:MM:SS" (or "HH:MM") → "HH:mm" for display; null-safe. */
+/** "HH:MM:SS" (or "HH:MM") → "9:00am" for display; null-safe. Delegates to
+ * the shared formatter so every screen shows the same 12-hour style. */
 export function formatShiftTime(t: string | null): string {
-  return t ? t.slice(0, 5) : "—";
+  return timeFmt(t);
 }
 
 /** The employees row linked to the signed-in auth user; null if unlinked. */

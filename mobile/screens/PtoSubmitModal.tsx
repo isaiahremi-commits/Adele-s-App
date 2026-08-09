@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
+import { friendly } from "../lib/errors";
 import {
   PTO_REASONS,
   type PtoReason,
@@ -64,11 +65,11 @@ export default function PtoSubmitModal({
 
   async function onSubmit() {
     if (!reason) {
-      setError("Pick a reason");
+      setError("Pick a reason so your manager has the context.");
       return;
     }
     if (endDate < startDate) {
-      setError("End date must be on or after the start date");
+      setError("The end date can't be before the start date.");
       return;
     }
     setBusy(true);
@@ -81,7 +82,7 @@ export default function PtoSubmitModal({
       }
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
       setBusy(false);
     }
   }
@@ -215,7 +216,7 @@ function DateField({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: colors.backdrop,
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
@@ -224,8 +225,8 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 380,
     backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
   },
   title: {
     fontSize: 18,
@@ -243,8 +244,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: "center",
   },
   dateButtonText: {
     fontSize: 15,
@@ -275,9 +278,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.amberSoft,
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     marginTop: 12,
   },
   errorText: {
@@ -287,16 +290,18 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 18,
+    gap: 8,
+    marginTop: 16,
   },
   primaryButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     minWidth: 110,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   primaryButtonText: {
     color: colors.primaryOn,
@@ -307,8 +312,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   secondaryButtonText: {
     color: colors.foreground,

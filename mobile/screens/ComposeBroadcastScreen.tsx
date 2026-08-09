@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../App";
 import { showToast } from "../components/Toast";
 import { getAudienceEmployees, send } from "../lib/broadcasts";
+import { friendly } from "../lib/errors";
 import { colors } from "../lib/theme";
 
 // Manager-only: compose a broadcast to everyone or a searched/multi-selected
@@ -35,16 +37,17 @@ export default function ComposeBroadcastScreen() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Separate from the submit `error` so a failed roster load can't read as
+  // a send failure (and vice versa). null = not failed.
+  const [rosterError, setRosterError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (audience === "subset" && employees === null) {
+    if (audience === "subset" && employees === null && rosterError === null) {
       getAudienceEmployees()
         .then(setEmployees)
-        .catch((e) =>
-          setError(e instanceof Error ? e.message : "Couldn't load employees")
-        );
+        .catch((e) => setRosterError(friendly(e)));
     }
-  }, [audience, employees]);
+  }, [audience, employees, rosterError]);
 
   const filtered = useMemo(() => {
     if (!employees) return [];
@@ -69,11 +72,11 @@ export default function ComposeBroadcastScreen() {
   async function onSend() {
     const text = body.trim();
     if (text === "") {
-      setError("Write a message first");
+      setError("Write a message first — the box above is empty.");
       return;
     }
     if (audience === "subset" && picked.size === 0) {
-      setError("Pick at least one recipient");
+      setError("Pick at least one person from the list to send this to.");
       return;
     }
     setBusy(true);
@@ -91,7 +94,7 @@ export default function ComposeBroadcastScreen() {
       );
       navigation.goBack();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(friendly(e));
       setBusy(false);
     }
   }
@@ -148,8 +151,24 @@ export default function ComposeBroadcastScreen() {
               placeholder="Search by name or position"
               placeholderTextColor={colors.muted}
             />
-            {employees === null ? (
+            {rosterError !== null ? (
+              <View>
+                <Text style={styles.errorText}>{rosterError}</Text>
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => setRosterError(null) /* retriggers the load */}
+                >
+                  <Text style={styles.retryLink}>Try again</Text>
+                </Pressable>
+              </View>
+            ) : employees === null ? (
               <ActivityIndicator color={colors.primary} />
+            ) : filtered.length === 0 ? (
+              <Text style={styles.pickMeta}>
+                {employees.length === 0
+                  ? "No teammates found to message yet."
+                  : "Nobody matches that search."}
+              </Text>
             ) : (
               filtered.map((e) => (
                 <Pressable
@@ -226,7 +245,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     padding: 12,
     minHeight: 110,
-    textAlignVertical: "top",
+    // Android-only prop; including it on web prints a deprecation warning.
+    ...(Platform.OS === "android" ? { textAlignVertical: "top" as const } : {}),
   },
   charCount: {
     alignSelf: "flex-end",
@@ -289,15 +309,23 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
+  },
+  retryLink: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
   },
   sendButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
     alignItems: "center",
-    marginTop: 14,
+    justifyContent: "center",
+    marginTop: 12,
   },
   dim: {
     opacity: 0.6,

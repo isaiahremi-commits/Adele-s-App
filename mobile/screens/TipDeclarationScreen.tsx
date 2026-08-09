@@ -14,6 +14,8 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import { showToast } from "../components/Toast";
+import { friendly } from "../lib/errors";
+import { money } from "../lib/format";
 import type { ScheduleStackParamList } from "../lib/navigation";
 import { type TipStatus, getTipStatus, submitTipDeclaration } from "../lib/tips";
 import { colors } from "../lib/theme";
@@ -35,13 +37,7 @@ function parseAmount(s: string): number {
 }
 
 function fmtUSD(n: number): string {
-  return (
-    "$" +
-    n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return money(n);
 }
 
 type LoadState =
@@ -122,7 +118,7 @@ export default function TipDeclarationScreen() {
       showToast(editing ? "Tip declaration updated" : "Tips declared");
       navigation.goBack();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Something went wrong");
+      setFormError(friendly(e));
       setSubmitting(false);
     }
   }
@@ -198,17 +194,20 @@ export default function TipDeclarationScreen() {
               value={sc}
               onChange={setSc}
               autoFocus={!editing}
+              disabled={submitting}
             />
             <AmountField
               label="Non-cash tips (NC)"
               value={nc}
               onChange={setNc}
+              disabled={submitting}
             />
             <AmountField
               label="Large-party revenue"
               hint="Only if you served a large party this shift"
               value={lp}
               onChange={setLp}
+              disabled={submitting}
             />
             {formError && <Text style={styles.formError}>{formError}</Text>}
             <Pressable
@@ -249,9 +248,11 @@ function AmountField({
   value,
   onChange,
   autoFocus,
+  disabled,
 }: {
   label: string;
   hint?: string;
+  disabled?: boolean;
   value: string;
   onChange: (v: string) => void;
   autoFocus?: boolean;
@@ -274,6 +275,7 @@ function AmountField({
           placeholder="0.00"
           placeholderTextColor={colors.muted}
           autoFocus={autoFocus}
+          editable={!disabled}
         />
       </View>
     </View>
@@ -346,7 +348,7 @@ const styles = StyleSheet.create({
   },
   formError: {
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     marginBottom: 10,
     lineHeight: 18,
   },
@@ -354,7 +356,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
   submitDisabled: {

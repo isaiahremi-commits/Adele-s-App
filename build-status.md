@@ -783,6 +783,63 @@ respond with a clear setup message instead.
   prior-PR flows post-015. Root + mobile `tsc --noEmit` clean;
   `next build` clean; `expo export` bundles clean.
 
+### PR #14 — Polish + edge cases (2026-08-09)
+
+No migration — app code only. Full-app polish pass ahead of staff
+onboarding, driven by a three-way audit (UI states/mutations, formatting/
+copy, console-warnings/styles) that catalogued 58 state defects, 106
+formatting/copy violations, and every RN-web warning source.
+
+- **Console cleanup (zero unexplained warnings):** all 8 `useNativeDriver:
+  true` sites guarded with `Platform.OS !== "web"`; both FAB `shadow*`
+  blocks → cross-platform `boxShadow` (and the two FABs unified at 56/28 —
+  they differed); Toast's `pointerEvents` prop moved into style;
+  `textAlignVertical` now Android-only via Platform spread.
+- **Shared foundations (new):** `mobile/lib/format.ts` — money `$1,234.56`,
+  hours `7.42h`, dates `Aug 9, 2026` (weekday variants for schedule
+  contexts), times `9:00am`; replaces 4 duplicated `fmtUSD`s, 2 `fmtClock`s
+  and the 24-hour `formatShiftTime` (one change fixed 10 call sites).
+  `mobile/lib/errors.ts` — `friendly()` translates network/PostgREST/RLS/
+  race errors into plain language; RPC-raised messages (already
+  human-written) pass through. Theme gains danger/primarySoft/amberSoft/
+  backdrop tokens, replacing ~20 scattered hex/rgba literals.
+- **States & feedback:** refresh-failure no longer wipes loaded content on
+  Schedule/Pay/PTO/Inbox/ManagerInbox (toast instead — including the
+  approve-then-auto-refresh path); infinite-spinner-on-failure fixed in
+  Compose (roster) and LargeParty (outlets) with retry/empty copy; the
+  whole PTO flow now toasts on submit/modify/cancel; BroadcastDetail
+  retry visibly loads, empty thread has copy, replies toast; ManagerInbox
+  no longer shows "Working…" on both buttons of a row, and a failed
+  shift-list fetch no longer masquerades as "no shifts to trade — deny";
+  sign-out has busy state on Settings/NoTenant; modal backdrops can't
+  dismiss mid-submit; tip fields lock while submitting.
+- **Copy:** "No tenant assigned" → "Account not set up yet" (+ what to do);
+  "No employee record" likewise; tip-sheet "compute/pay engine" language →
+  "Calculate totals"; "tier-2" → "seriously late"; SC/NC expanded in
+  read-only rows; raw status enums capitalized/humanized everywhere
+  (pending_target can never leak); login/validation errors warmed.
+- **Tap targets & styles:** every real action button ≥44pt (`minHeight: 44`
+  + normalized `paddingVertical: 12`); all 9 bare text-link Pressables got
+  `hitSlop`; modal sheets normalized to padding 16; headers share one
+  title style (17/600) + green tint across all four navigators (the nested
+  Schedule/PTO stacks previously fell back to platform defaults); tab bar
+  labels get explicit lineHeight so "Pay" descenders can't clip.
+  Deliberately NOT done: renumbering ~200 off-scale micro-margins (6/10/14
+  gaps) — sight-unseen churn across every screen the night before a demo;
+  deferred with the audit data in hand.
+- **Web /employees:** fuzzy name search (subsequence match, other fields
+  still substring), status filter chips All/Active/Terminated/Not invited
+  with counts, sort dropdown (Name/Position/Department/Hire date/Invite
+  status), row status wording "Invited (X days ago)", Remove confirm now
+  reads "This will permanently delete the employee and their login. This
+  cannot be undone."
+- Bell padding (Part A1) was verified already correct on main (landed with
+  PR #11's fix).
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles iOS/Android/web; greps confirm zero remaining
+  `useNativeDriver: true`, `shadow*`, prop-`pointerEvents`, raw `#dc2626`,
+  or unguarded `textAlignVertical` in mobile.
+
 ### Upcoming
 
 - Employee-grade RLS for schedule reads (own employees row, shifts,
