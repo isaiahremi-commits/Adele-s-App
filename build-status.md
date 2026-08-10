@@ -826,6 +826,36 @@ before the 3pm follow-up.
   mobile `tsc --noEmit` clean; `next build` clean; `expo export`
   bundles clean.
 
+**Follow-up (same PR): reply privacy + unlinked-caller 400s.**
+⚠ **MIGRATION 016 PENDING — Isaiah to apply via Supabase dashboard**
+(`supabase/016_reply_privacy.sql`, after 013).
+
+- **Bug A — broadcast replies were visible to the whole audience.** 013's
+  visibility piggybacked on the broadcast: any audience member could read
+  everyone's replies, through three outlets — the RLS policy, the
+  broadcast_thread definer RPC, and my_inbox's reply_count. Migration 016
+  closes all three with the DM model: the sender sees all replies;
+  everyone else sees their own plus the sender's (replies carry no
+  addressee, so a manager reply reads as a follow-up — but employees can
+  never see each other's). INSERT policy untouched; manager_full_access
+  (Adèle) retained by design.
+- **Bug B — console 400 floods on unlinked/manager-only logins.** Not the
+  suspected client `.single()` (none exists — wrappers return arrays);
+  the 400s are the RPCs' own `RAISE 'No employee record…'`, hit on every
+  focus/poll. 016 softens the four read-only feeds
+  (coverage_available_for_me, my_callouts_and_coverage, my_swap_requests,
+  my_inbox) to return EMPTY SETS when unlinked — rewritten in place from
+  their live definitions (pg_get_functiondef + single-line replace, so no
+  body is copied to drift). Mutations still raise. Client side:
+  getMyBalance dropped `.maybeSingle()` — a manager's RLS returns every
+  balance row and the object-shaped request 400'd on each PTO load; it now
+  fetches the list and resolves the caller's own row.
+- Verified: fresh PGlite harness (base DDL from db.types.ts + real
+  010→011→013→016, then 016 re-applied) — **23/23**: all five spec'd
+  privacy cases (incl. Bob seeing the manager's reply but never Alice's),
+  unlinked feeds empty with mutations still guarded, idempotent re-run.
+  tsc clean both apps; next build + expo export clean.
+
 ### Upcoming
 
 - Employee-grade RLS for schedule reads (own employees row, shifts,

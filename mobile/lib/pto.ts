@@ -31,16 +31,29 @@ export type PtoRequest = {
 
 /** Balance in hours for the signed-in employee; 0 if no balance row yet. */
 export async function getMyBalance(): Promise<number> {
-  // Own-row RLS means at most one row comes back — no employee_id filter
-  // needed (and none available client-side without an extra query).
+  // NOT .maybeSingle(): an employee's own-row RLS returns 0-or-1 rows, but a
+  // MANAGER's RLS returns every employee's balance — the object-shaped
+  // request then 400s ("multiple rows returned") on each PTO-tab load
+  // (PR #15 Bug B). Fetch the visible rows and resolve the caller's own.
   const { data, error } = await supabase
     .from("pto_balances")
-    .select("balance_hours")
-    .maybeSingle();
+    .select("balance_hours, employee_id");
   if (error) {
     throw new Error(error.message);
   }
-  return data?.balance_hours ?? 0;
+  if (!data || data.length === 0) return 0;
+  if (data.length === 1) return Number(data[0].balance_hours ?? 0);
+  // Multiple rows = manager view; pick the row linked to this login.
+  const uid = (await supabase.auth.getUser()).data.user?.id;
+  if (!uid) return 0;
+  const { data: emp } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("auth_user_id", uid)
+    .limit(1)
+    .maybeSingle();
+  const own = emp ? data.find((r) => r.employee_id === emp.id) : null;
+  return Number(own?.balance_hours ?? 0);
 }
 
 /** Own requests, optionally filtered by status, newest first. */
