@@ -61,11 +61,46 @@ export async function getInbox(): Promise<InboxItem[]> {
   }));
 }
 
-/** Unread count for the bell badge; unavailable (pre-013) reads as 0. */
+/** Unread count for the bell badge; unavailable (pre-013) reads as 0.
+ *
+ * Two components (PR #15 Bug 3):
+ *   - received broadcasts the caller hasn't opened (as before), plus
+ *   - the caller's OWN broadcasts whose newest reply is later than the last
+ *     time they had that thread open (device-local cursor — see threadSeen).
+ * Each conversation counts once, matching how received threads are counted.
+ */
 export async function getUnreadCount(): Promise<number> {
   try {
     const inbox = await getInbox();
-    return inbox.filter((b) => !b.is_read && !b.is_mine).length;
+    let count = inbox.filter((b) => !b.is_read && !b.is_mine).length;
+
+    const mineWithReplies = inbox.filter((b) => b.is_mine && b.reply_count > 0);
+    if (mineWithReplies.length > 0) {
+      const [{ getThreadSeenMap }, { data: replies }] = await Promise.all([
+        import("./threadSeen"),
+        supabase
+          .from("broadcast_replies")
+          .select("broadcast_id, created_at")
+          .in(
+            "broadcast_id",
+            mineWithReplies.map((b) => b.broadcast_id)
+          ),
+      ]);
+      const seen = await getThreadSeenMap();
+      const latest = new Map<string, string>();
+      for (const r of replies ?? []) {
+        if (!r.created_at) continue;
+        const cur = latest.get(r.broadcast_id);
+        if (!cur || r.created_at > cur) latest.set(r.broadcast_id, r.created_at);
+      }
+      for (const b of mineWithReplies) {
+        const newest = latest.get(b.broadcast_id);
+        if (newest && (!seen[b.broadcast_id] || newest > seen[b.broadcast_id])) {
+          count += 1;
+        }
+      }
+    }
+    return count;
   } catch {
     return 0;
   }
