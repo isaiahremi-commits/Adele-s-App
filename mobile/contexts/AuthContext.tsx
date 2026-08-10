@@ -17,6 +17,7 @@ import {
   unregisterDeviceSession,
 } from "../lib/deviceSession";
 import { supabase } from "../lib/supabase";
+import { getMyTippedStatus } from "../lib/tips";
 
 type AuthContextValue = {
   session: Session | null;
@@ -27,6 +28,13 @@ type AuthContextValue = {
   mustChangePassword: boolean;
   /** Gate: user hasn't accepted the current T&C version yet. */
   needsTosAcceptance: boolean;
+  /**
+   * Tip-roster status (employee_is_tipped, migration 017), fetched once per
+   * signed-in user. False hides every tip surface (Adèle's rule for managers
+   * and non-tipped positions); defaults to true until known and stays true
+   * pre-017, so nothing regresses before the migration is applied.
+   */
+  isTipped: boolean;
   /**
    * Tenant from user_metadata.tenant_id. RLS scopes every query by it
    * server-side; null means the account was misprovisioned (App.tsx shows the
@@ -42,6 +50,24 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isTipped, setIsTipped] = useState(true);
+
+  // Tip-roster status: once per signed-in user (not per token refresh —
+  // position changes are rare and a fresh sign-in or app restart refetches).
+  const userId = session?.user?.id ?? null;
+  useEffect(() => {
+    if (!userId) {
+      setIsTipped(true);
+      return;
+    }
+    let cancelled = false;
+    getMyTippedStatus().then((v) => {
+      if (!cancelled) setIsTipped(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -105,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         typeof rawTenantId === "string" && rawTenantId.length > 0
           ? rawTenantId
           : null,
+      isTipped,
       signIn: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -126,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
       },
     };
-  }, [session, loading]);
+  }, [session, loading, isTipped]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

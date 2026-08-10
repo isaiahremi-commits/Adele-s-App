@@ -198,16 +198,25 @@ export async function getReadReceipts(
   }));
 }
 
+export type AudienceEmployee = {
+  id: string;
+  name: string;
+  /** Effective position (home_position falling back to position — the same
+   * precedence the pay/tip engines use). Feeds the PR #16 position filter. */
+  position: string | null;
+  department: string | null;
+};
+
 /**
  * Active-employee list for the compose audience picker (manager RLS grants
- * the read).
+ * the read). Department + position ride along for the audience filter chips.
  */
-export async function getAudienceEmployees(): Promise<
-  { id: string; name: string; position: string | null }[]
-> {
+export async function getAudienceEmployees(): Promise<AudienceEmployee[]> {
   const { data, error } = await supabase
     .from("employees")
-    .select("id, first_name, last_name, position, termination_date")
+    .select(
+      "id, first_name, last_name, position, home_position, department, termination_date"
+    )
     .is("termination_date", null)
     .order("first_name");
   if (error) {
@@ -216,6 +225,7 @@ export async function getAudienceEmployees(): Promise<
   return data.map((e) => ({
     id: e.id,
     name: [e.first_name, e.last_name].filter(Boolean).join(" ").trim(),
-    position: e.position ?? null,
+    position: e.home_position ?? e.position ?? null,
+    department: e.department ?? null,
   }));
 }

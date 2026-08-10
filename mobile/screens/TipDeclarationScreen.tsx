@@ -14,6 +14,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import { showToast } from "../components/Toast";
+import { useAuth } from "../contexts/AuthContext";
 import type { ScheduleStackParamList } from "../lib/navigation";
 import { type TipStatus, getTipStatus, submitTipDeclaration } from "../lib/tips";
 import { colors } from "../lib/theme";
@@ -51,6 +52,7 @@ type LoadState =
 
 export default function TipDeclarationScreen() {
   const navigation = useNavigation<Nav>();
+  const { isTipped } = useAuth();
   const { params } = useRoute<Route>();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [sc, setSc] = useState("");
@@ -131,6 +133,29 @@ export default function TipDeclarationScreen() {
     new Date(`${params.shiftDate}T00:00:00`),
     "EEEE, MMM d, yyyy"
   );
+
+  // Defense in depth (PR #16): the Schedule tab never links here for a
+  // non-tipped user, but a stale navigation state could — show a read-only
+  // note instead of the declaration form.
+  if (!isTipped) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.headerDate}>{dateLabel}</Text>
+          <Text style={styles.headerMeta}>
+            {[params.outletName, params.position].filter(Boolean).join(" · ") ||
+              "Shift"}
+          </Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.errorTitle}>Not on the tip roster</Text>
+          <Text style={styles.mutedBody}>
+            You're not currently on the tip roster — talk to your manager.
+          </Text>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>

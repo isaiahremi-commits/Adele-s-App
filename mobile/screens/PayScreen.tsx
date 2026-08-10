@@ -92,7 +92,7 @@ type LoadState =
     };
 
 export default function PayScreen() {
-  const { user } = useAuth();
+  const { user, isTipped } = useAuth();
   const [periodsBack, setPeriodsBack] = useState(0);
   const [olderOpen, setOlderOpen] = useState(false);
   const [timecardsOpen, setTimecardsOpen] = useState(false);
@@ -139,8 +139,13 @@ export default function PayScreen() {
           getMyPayBreakdown(current.start, current.end, "prediction"),
           getMyLatenessSummary(since, employeeId),
           getMyCalloutSummary(since, employeeId),
-          // graceful pre-009: a missing RPC hides the section, nothing more
-          getMyTipHistory(selected.start, selected.end).catch(() => null),
+          // graceful pre-009: a missing RPC hides the section, nothing more.
+          // Not on the tip roster (PR #16): skip the fetch — the earnings
+          // breakdown still shows any tips actually paid, only the per-day
+          // history collapsible hides.
+          isTipped
+            ? getMyTipHistory(selected.start, selected.end).catch(() => null)
+            : Promise.resolve(null),
           // when viewing the current period, the selected fetch IS the
           // current-actual — skip the duplicate round trip
           periodsBack === 0
@@ -176,7 +181,7 @@ export default function PayScreen() {
         if (seq === requestSeq.current) setRefreshing(false);
       }
     },
-    [user, periodsBack]
+    [user, periodsBack, isTipped]
   );
 
   useEffect(() => {

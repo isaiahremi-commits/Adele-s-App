@@ -4,7 +4,9 @@ import { PREDEFINED_ROLES, OTHER_OPTION } from "@/lib/constants";
 
 type Outlet = { id: string; name: string; department_id?: string | null };
 type Service = { id: string; name: string; outlet_id: string };
-type Role = { id: string; role_name: string; points: number; outlet_id: string };
+// is_tipped is absent until migration 017 lands — the toggle hides itself
+// rather than 400ing against a column that doesn't exist yet.
+type Role = { id: string; role_name: string; points: number; outlet_id: string; is_tipped?: boolean };
 type Department = { id: string; name: string; type?: string; tip_pool_strategy?: string };
 type PayrollConfig = {
   company_name: string;
@@ -240,6 +242,23 @@ export default function SetupPage() {
 
   async function removeRole(id: string) {
     await fetch(`/api/outlet-roles/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  // Tipped-position toggle (PR #16). Non-tipped roles sit out ts_compute's
+  // distribution and their employees see no tip UI on mobile.
+  async function toggleTipped(r: Role) {
+    const res = await fetch(`/api/outlet-roles/${r.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_tipped: !(r.is_tipped ?? true) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setOutletError({ ...outletError, [r.outlet_id]: data.error || `Save failed (${res.status})` });
+      return;
+    }
+    setOutletError({ ...outletError, [r.outlet_id]: "" });
     load();
   }
 
@@ -540,8 +559,19 @@ export default function SetupPage() {
                     <div className="flex flex-wrap gap-2">
                       {oRoles.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>None</span>}
                       {oRoles.map((r) => (
-                        <span key={r.id} className="chip chip-green flex items-center gap-2">
+                        <span key={r.id} className={`chip ${r.is_tipped === false ? "chip-amber" : "chip-green"} flex items-center gap-2`}>
                           {r.role_name} · {r.points}pt
+                          {r.is_tipped !== undefined && (
+                            <button
+                              onClick={() => toggleTipped(r)}
+                              title={r.is_tipped
+                                ? "Tipped position — employees declare tips and join the distribution. Click to mark non-tipped."
+                                : "Non-tipped position — excluded from tip sheets and tip UI. Click to mark tipped."}
+                              style={{ fontSize: 10, textDecoration: "underline", opacity: 0.85 }}
+                            >
+                              {r.is_tipped ? "Tipped" : "Non-tipped"}
+                            </button>
+                          )}
                           <button onClick={() => removeRole(r.id)} style={{ color: "var(--danger)" }}>×</button>
                         </span>
                       ))}

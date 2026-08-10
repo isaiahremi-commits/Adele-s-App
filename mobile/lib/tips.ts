@@ -41,6 +41,21 @@ export function shiftTipKey(outletId: string, date: string): string {
   return `${outletId}|${date}`;
 }
 
+/**
+ * Is the signed-in user on the tip roster? False for managers (Adèle's
+ * rule: no tip UI on her own phone) and for employees whose most recent
+ * shift's position is configured non-tipped (migration 017). Fails OPEN to
+ * true — pre-017 (RPC missing) and transient errors keep today's behavior,
+ * where the tip surfaces themselves degrade gracefully.
+ */
+export async function getMyTippedStatus(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("employee_is_tipped");
+  if (error || typeof data !== "boolean") {
+    return true;
+  }
+  return data;
+}
+
 /** One shift day's declaration status for the signed-in employee. */
 export async function getTipStatus(
   outletId: string,
