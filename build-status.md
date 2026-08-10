@@ -783,6 +783,49 @@ respond with a clear setup message instead.
   prior-PR flows post-015. Root + mobile `tsc --noEmit` clean;
   `next build` clean; `expo export` bundles clean.
 
+### PR #15 — Meeting-day bug fixes (2026-08-09)
+
+No migration — app code only. Three bugs from the live demo, fixed
+before the 3pm follow-up.
+
+- **Bug 1 — admin routes 401 after long sessions.** Empirically ruled
+  out the suspected cookie-less client: a repro harness minted a real
+  session, forged the exact @supabase/ssr cookie, and hit the routes —
+  fresh, client-expired, and reused-refresh-token cases all
+  authenticated correctly (403 for a non-manager, i.e. past the 401
+  gate). The remaining mechanism is a genuinely hour-old access token:
+  NOTHING refreshed the session while a page sat open (middleware runs
+  only on page navigations and skipped /api entirely; no browser
+  Supabase client existed outside /login). Fix is three layers:
+  `<SessionKeepalive />` in the root layout (browser client auto-
+  refresh keeps cookies fresh while any tab is open), the middleware
+  matcher now INCLUDES `/api/admin/*` (stale requests get a server-side
+  refresh before the handler; updateSession never redirects API paths),
+  and `requireManager` retries via `refreshSession()` once before
+  failing with an actionable message ("Your session has expired —
+  refresh the page and sign in again" + the underlying auth error in
+  `detail`). Harness re-verified post-fix; anon data routes confirmed
+  still excluded from middleware.
+- **Bug 2 — Reset password required employees.email.** The login
+  credential is `auth.users.email`; `employees.email` is a secondary
+  contact field (NULL on Adèle's own pre-015 row). The linked branch of
+  resend-invite now looks up the auth email via
+  `admin.getUserById(auth_user_id)` and never touches employees.email;
+  only the UNLINKED branch (which must CREATE a login) still requires
+  it, with copy telling the manager to add an email via Edit first.
+- **Bug 3 — bell doesn't light for replies to the manager's
+  broadcasts.** Two halves: `getUnreadCount()` now also counts the
+  caller's own broadcasts whose newest reply is later than a
+  device-local "thread last seen" cursor (new `mobile/lib/threadSeen.ts`,
+  AsyncStorage; server-side `broadcast_reads` is deliberately
+  first-read-wins so it can't serve as a cursor without a migration),
+  and InboxContext polls every 30s while the app is foregrounded
+  (suspends in background). Opening a thread or replying advances the
+  cursor, so your own replies never light your own bell.
+- Verified: repro harness (403/401 matrix) green post-fix; root +
+  mobile `tsc --noEmit` clean; `next build` clean; `expo export`
+  bundles clean.
+
 ### Upcoming
 
 - Employee-grade RLS for schedule reads (own employees row, shifts,

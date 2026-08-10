@@ -11,8 +11,13 @@ import { useAuth } from "./AuthContext";
 import { getUnreadCount } from "../lib/broadcasts";
 
 // Unread-broadcast count for the header bell. Refreshes on sign-in, on app
-// foreground, and whenever a screen calls refresh() (Inbox focus, after
-// mark-read). Pre-013 the RPC 404s and the count reads 0 — bell stays quiet.
+// foreground, whenever a screen calls refresh() (Inbox focus, after
+// mark-read), and on a 30-second poll while the app is foregrounded (PR #15
+// Bug 3 — replies to a manager's broadcast now light the bell without
+// navigating anywhere). The poll suspends in the background to save battery.
+// Pre-013 the RPC 404s and the count reads 0 — bell stays quiet.
+
+const POLL_MS = 30_000;
 
 type InboxContextValue = {
   unread: number;
@@ -41,11 +46,35 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   }, [session]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (timer) return;
+      timer = setInterval(refresh, POLL_MS);
+    };
+    const stopPolling = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+
     refresh();
+    // AppState is "active" on launch and on web; poll from the start.
+    if (AppState.currentState === "active" || AppState.currentState === "unknown") {
+      startPolling();
+    }
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") refresh();
+      if (state === "active") {
+        refresh();
+        startPolling();
+      } else {
+        stopPolling();
+      }
     });
-    return () => sub.remove();
+    return () => {
+      stopPolling();
+      sub.remove();
+    };
   }, [refresh]);
 
   return (

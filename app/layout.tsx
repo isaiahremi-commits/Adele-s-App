@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import Nav from "@/components/Nav";
+import SessionKeepalive from "@/components/SessionKeepalive";
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
@@ -29,6 +30,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${dmSans.className} antialiased`}>
+        <SessionKeepalive />
         <div className="flex min-h-screen">
           <Nav />
           <main className="flex-1 p-6 overflow-x-auto">{children}</main>

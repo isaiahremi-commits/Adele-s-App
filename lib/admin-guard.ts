@@ -8,11 +8,28 @@ import { createClient } from "@/lib/supabase-server";
 // and a tenant claim to stamp onto anything the route creates.
 export async function requireManager() {
   const supabase = createClient();
-  const {
+  let {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
   if (!user) {
-    return { error: NextResponse.json({ error: "Not signed in" }, { status: 401 }) };
+    // PR #15 Bug 1: a tab that sat open past the access token's lifetime can
+    // arrive here with a stale token (the middleware refresh covers /api/admin
+    // now, but belt-and-braces). One explicit refresh attempt before failing.
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    user = refreshed.user;
+    if (!user) {
+      return {
+        error: NextResponse.json(
+          {
+            error:
+              "Your session has expired — refresh the page and sign in again.",
+            detail: authError?.message ?? null,
+          },
+          { status: 401 }
+        ),
+      };
+    }
   }
   const { data: isManager, error } = await supabase.rpc("am_i_a_manager");
   if (error || isManager !== true) {

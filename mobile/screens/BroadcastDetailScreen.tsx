@@ -27,6 +27,7 @@ import {
 } from "../lib/broadcasts";
 import { isManager } from "../lib/manager";
 import { colors } from "../lib/theme";
+import { markThreadSeen } from "../lib/threadSeen";
 
 // One broadcast: the message, its reply thread, and a composer. Opening it
 // records the read receipt (first read wins). Managers additionally get the
@@ -79,10 +80,12 @@ export default function BroadcastDetailScreen() {
 
   useEffect(() => {
     load();
-    // Opening the message IS the read — record it, then refresh the bell.
-    markRead(params.broadcastId)
-      .then(() => inboxCtx.refresh())
-      .catch(() => {});
+    // Opening the message IS the read — record the receipt AND the local
+    // reply-seen cursor (PR #15 Bug 3), then refresh the bell.
+    Promise.allSettled([
+      markRead(params.broadcastId),
+      markThreadSeen(params.broadcastId),
+    ]).then(() => inboxCtx.refresh());
     // mount-only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.broadcastId]);
@@ -95,6 +98,9 @@ export default function BroadcastDetailScreen() {
     try {
       await reply(params.broadcastId, body);
       setDraft("");
+      // Replying implies having seen the thread up to now — advance the
+      // cursor so your own reply never lights your own bell.
+      await markThreadSeen(params.broadcastId);
       await load();
     } catch (e) {
       setSendError(e instanceof Error ? e.message : "Something went wrong");

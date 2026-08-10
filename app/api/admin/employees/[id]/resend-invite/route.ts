@@ -46,18 +46,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       { status: 409 }
     );
   }
-  const email = (emp.email ?? "").trim().toLowerCase();
-  if (!email) {
-    return NextResponse.json(
-      { error: "Employee has no email on file — add one via Edit first." },
-      { status: 409 }
-    );
-  }
-
   const tempPassword = generateTempPassword();
 
   if (!emp.auth_user_id) {
-    // First invite for a legacy row: create + link.
+    // First invite for a legacy row: create + link. Only THIS path needs an
+    // email on the employees row — it's what the new login gets created with.
+    const email = (emp.email ?? "").trim().toLowerCase();
+    if (!email) {
+      return NextResponse.json(
+        { error: "This employee isn't linked to a login yet and has no email on file — add an email via Edit, then invite them." },
+        { status: 409 }
+      );
+    }
     const { data: created, error: authErr } = await admin.auth.admin.createUser({
       email,
       password: tempPassword,
@@ -91,8 +91,21 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     });
   }
 
-  // Already linked: rotate the password + re-arm the change gate. Metadata
-  // is merged server-side, so tenant_id survives.
+  // Already linked: the login credential is auth.users.email — NOT
+  // employees.email, which is a secondary contact field that may be empty
+  // (PR #15 Bug 2: Adèle's own pre-015 row had none and reset failed).
+  const { data: authUser, error: getUserErr } = await admin.auth.admin.getUserById(
+    emp.auth_user_id
+  );
+  if (getUserErr || !authUser?.user?.email) {
+    return NextResponse.json(
+      { error: "Couldn't look up this employee's login — refresh and try again." },
+      { status: 500 }
+    );
+  }
+
+  // Rotate the password + re-arm the change gate. Metadata is merged
+  // server-side, so tenant_id survives.
   const { error: updErr } = await admin.auth.admin.updateUserById(emp.auth_user_id, {
     password: tempPassword,
     user_metadata: { tenant_id: tenantId, must_change_password: true },
@@ -102,7 +115,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   return NextResponse.json({
     ok: true,
     linked: false,
-    email,
+    email: authUser.user.email,
     temp_password: tempPassword,
   });
 }
