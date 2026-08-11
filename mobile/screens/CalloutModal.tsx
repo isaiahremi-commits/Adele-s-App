@@ -16,6 +16,7 @@ import {
   type CalloutReason,
   submitCallout,
 } from "../lib/coverage";
+import { submitRequest } from "../lib/pto";
 import { colors } from "../lib/theme";
 
 // Call out of one upcoming shift: locked reason chips, optional notes, and
@@ -26,16 +27,23 @@ import { colors } from "../lib/theme";
 export default function CalloutModal({
   visible,
   shift,
+  preload,
   onClose,
   onSubmitted,
 }: {
   visible: boolean;
   shift: ScheduleShift | null;
+  /** PR #18 Home-tab context: PTO balance + 90-day callout count. When set,
+   * the modal also offers a "Use PTO to cover this shift?" toggle — Yes
+   * files a same-day PTO request right after the callout (pto_submit; it
+   * still needs manager approval like any request). */
+  preload?: { ptoBalance: number; callouts90d: number } | null;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
   const [reason, setReason] = useState<CalloutReason | null>(null);
   const [notes, setNotes] = useState("");
+  const [usePto, setUsePto] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +53,7 @@ export default function CalloutModal({
     if (visible) {
       setReason(null);
       setNotes("");
+      setUsePto(false);
       setConfirming(false);
       setSubmitting(false);
       setError(null);
@@ -64,9 +73,25 @@ export default function CalloutModal({
     setError(null);
     try {
       await submitCallout(shift.id, reason, notes);
-      showToast(
-        "Callout submitted. Your manager and eligible teammates have been notified."
-      );
+      let toast =
+        "Callout submitted. Your manager and eligible teammates have been notified.";
+      if (usePto && shift.date) {
+        // Best-effort follow-up: a same-day PTO request (locked Phase 1
+        // reasons — Sick maps through, everything else files as Personal).
+        try {
+          await submitRequest(
+            shift.date,
+            shift.date,
+            reason === "Sick" ? "Sick" : "Personal"
+          );
+          toast =
+            "Callout submitted and a PTO request filed for the day — both go to your manager.";
+        } catch {
+          toast =
+            "Callout submitted — but the PTO request could not be filed. Ask your manager or use the PTO tab.";
+        }
+      }
+      showToast(toast);
       onSubmitted();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -87,6 +112,22 @@ export default function CalloutModal({
             {[shift.position, shift.outlets?.name].filter(Boolean).join(" · ") ||
               "Shift"}
           </Text>
+
+          {preload && (
+            <View style={styles.preloadBox}>
+              <Text style={styles.preloadLine}>
+                PTO balance:{" "}
+                <Text style={styles.preloadStrong}>
+                  {preload.ptoBalance.toFixed(2)}h
+                </Text>
+              </Text>
+              <Text style={styles.preloadLine}>
+                You've called out {preload.callouts90d}{" "}
+                {preload.callouts90d === 1 ? "time" : "times"} in the last 90
+                days.
+              </Text>
+            </View>
+          )}
 
           {!confirming ? (
             <>
@@ -123,6 +164,32 @@ export default function CalloutModal({
               <Text style={styles.charCount}>
                 {notes.length}/{CALLOUT_NOTES_MAX}
               </Text>
+
+              {preload && (
+                <>
+                  <Text style={styles.fieldLabel}>
+                    Use PTO to cover this shift?
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {([true, false] as const).map((v) => (
+                      <Pressable
+                        key={String(v)}
+                        style={[styles.chip, usePto === v && styles.chipActive]}
+                        onPress={() => setUsePto(v)}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            usePto === v && styles.chipTextActive,
+                          ]}
+                        >
+                          {v ? "Yes" : "No"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -214,6 +281,23 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     fontSize: 14,
     fontWeight: "600",
+    color: colors.foreground,
+  },
+  preloadBox: {
+    marginTop: 10,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 10,
+  },
+  preloadLine: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+  },
+  preloadStrong: {
+    fontWeight: "700",
     color: colors.foreground,
   },
   chipRow: {

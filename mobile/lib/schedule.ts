@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { formatTime12 } from "./format";
 import { supabase } from "./supabase";
 
 // Schedule queries for the employee-facing Schedule tab.
@@ -53,9 +54,10 @@ function dateParam(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-/** "HH:MM:SS" (or "HH:MM") → "HH:mm" for display; null-safe. */
+/** Shift time for display — 12-hour since PR #18 ("5:00 pm"); null-safe.
+ * Every screen that shows a shift time funnels through here. */
 export function formatShiftTime(t: string | null): string {
-  return t ? t.slice(0, 5) : "—";
+  return formatTime12(t);
 }
 
 /** The employees row linked to the signed-in auth user; null if unlinked. */

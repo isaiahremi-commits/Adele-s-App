@@ -1034,8 +1034,123 @@ findings), plus the PR #4 KNOWN RLS GAP finally closed:
   send/reply paths untouched — the only data-layer change is the
   read-only audience select gaining the departments embed.
 
+### PR #18 — Adèle redesign: manager mode + dashboards + schedule + EOD + onboarding split (2026-08-11)
+
+**MIGRATION 019 PENDING — Isaiah applies via Supabase dashboard.**
+(`supabase/019_pay_type_and_personal_info.sql` — the Phase 2 019, distinct
+from the legacy `019_tip_compute_case_insensitive.sql`. Apply after 017 +
+018.) Until applied: tip UI keeps 017's position-based behavior, the
+self-onboarding gate never fires (fail-open), Running-late and End-of-day
+report an error on submit, and the web onboarding chips hide. Everything
+else in this PR works immediately.
+
+The full Aug 11 redesign, in seven workstreams:
+
+- **Migration 019 — pay-type-driven tips + personal file + new tables.**
+  - employees gains home_address / emergency_contact_name /
+    emergency_contact_phone / has_completed_self_onboarding (dob, phone,
+    pay_type, annual_salary, shirt_size already live — the spec's
+    tshirt_size REUSES shirt_size rather than duplicating). pay_type gets
+    a CHECK (salary|hourly) with a pre-audit that names offenders; the
+    spec'd inference backfill (annual_salary present or rate missing →
+    salary) runs ONLY on NULL pay_type rows — live values were set
+    deliberately by the wizard since PR #13 and re-inferring would flip
+    hourly staff with unset rates to salary. has_completed_self_onboarding
+    backfills true only when the column is CREATED (a re-run must not flip
+    post-019 hires — proven in the harness).
+  - **employee_is_tipped v2: pay type is the sole driver.** False for
+    salary + managers + unlinked; true for every hourly employee — kitchen
+    included (culinary service charge, Adèle's rule). The 017
+    position-based check is gone; outlet_roles.is_tipped stays for
+    back-compat but nothing consults it.
+  - **ts_compute guard swapped in place** (pg_get_functiondef, the 016/017
+    pattern, targeting ts_compute_unguarded post-014): `orl.is_tipped` →
+    `emp.pay_type <> 'salary'`. Salaried staff zero out of pools and
+    declared bases; hourly staff at previously-non-tipped positions REJOIN
+    the distribution (and need points config again — the engine's
+    missing-points raise is back for them, fail-loud as ever).
+  - employee_self_onboard(dob, phone, address, emergency name/phone,
+    tshirt_size) — runs AS the employee (current_employee_id pins the row;
+    no way to aim it at anyone else), phone + emergency contact required,
+    flips the onboarding flag. late_signals table + running_late_submit
+    (1–480 min, own-shift check, tenant_today date; own-rows + manager
+    RLS). eod_reports table (manager-only RLS, UNIQUE tenant+date — the
+    "day locked" signal). Both new tables carry tenant_id but are not in
+    005's _tenant_tables (the standing re-run caveat).
+  - Verified: **36/36 PGlite checks** on the live-shape chain (tip_sheet →
+    013_sc_nc → 019_case → 014-shim → 017 → 018 → 019 ×2) plus a fresh
+    chain proving the inference path and the DEFAULT/NOT NULL pin. Covers
+    the re-run flag guard (Nina stays un-onboarded), CHECK enforcement,
+    the full employee_is_tipped matrix (hourly cook at a non-tipped
+    position → TRUE), engine math (salaried excluded, 240 split 6:4 among
+    hourly incl. the returning cook), self-onboard validation + isolation,
+    running-late guards + RLS visibility triangle, EOD unique/RLS, anon
+    revocation.
+- **Self-onboarding (mobile).** New gate after T&C in App.tsx:
+  AuthContext.selfOnboardingNeeded reads the own employees row (018 RLS),
+  fail-open false everywhere it can't know (unlinked, pre-018, pre-019).
+  SelfOnboardingScreen: DOB (native picker / DOM date input on web), phone
+  + emergency contact (required), address, shirt-size chips → RPC →
+  refresh → tabs.
+- **Schedule redesign (mobile).** Mon–Sun grid — every day a row, dates
+  left, shifts right ("—" on off days), today highlighted. Tap → new
+  shared ShiftDetailModal: outlet/position/time/type/notes, "Working with
+  you" teammates (018 feed), AND the old cards' tip/callout/swap actions —
+  moved, not lost. Coverage/swaps/callouts sections unchanged below.
+- **12-hour times everywhere (mobile).** formatTime12 in lib/format.ts
+  ("17:00" → "5:00 pm"); formatShiftTime now delegates to it (Schedule,
+  detail modal, CalloutModal, SwapRequestScreen all flip at once);
+  ManagerInbox's local formatter replaced. Pay/Inbox/BroadcastDetail
+  already rendered h:mm a. Web stays 24-hour for now (spec's call).
+- **Home tab (mobile).** Time-of-day greeting; today's-shift card with
+  teammate count → detail modal; quick actions — "Running late" (minutes
+  chips → running_late_submit; honest copy that delivery is in-app until
+  push lands) and "Call out" (the PR #8 modal, now preloaded with PTO
+  balance + 90-day callout count and a "Use PTO to cover this shift?"
+  toggle — Yes files a same-day pto_submit right after the callout, both
+  still manager-approved; no RPC signature change); last 2 broadcasts with
+  See-all → Inbox. Every section fails soft.
+- **Manager Work mode (mobile).** Personal|Work segmented control above
+  the tabs for managers (AsyncStorage-cached; cached "work" honored only
+  once manager status confirms). Personal = the employee 5 tabs
+  (Home/Schedule/PTO/Pay/Settings — the old conditional Approvals tab is
+  gone). Work = Team / Hours / Sales / End of day / Settings:
+  - **Team:** everyone on today (callouts red-tagged), pickup requests
+    with inline approve/deny (coverage RPCs), and an "Approvals →" jump to
+    the full PR #10 inbox, which now rides the root stack — kept reachable
+    by design instead of being a 6th tab.
+  - **Hours:** projected hours per employee (today + week-to-date) from
+    scheduled shift lengths, expandable shift-by-shift. Projections only —
+    punch truth stays in Timecards/EOD.
+  - **Sales:** STOPGAP — Phase 1 has no sales/POS table, so the card shows
+    tip-system revenue (SC + NC + large parties, by outlet) for yesterday
+    and says so. Liquor/beer/wine/food needs a POS feed → Upcoming.
+  - **End of day:** 5-step wizard (Hours → Tips → Sales → Notes → Submit).
+    Approves pending punch-complete timecards (missing punches stay
+    web-fix), inline tip adjustments (declared columns, manager RLS),
+    add-walk-in-to-sheet, ts_compute per pending sheet, party sanity
+    check, notes; Submit posts every ready sheet + writes the eod_reports
+    row. Step + notes survive backgrounding (AsyncStorage per-date);
+    a submitted report renders the locked state.
+- **Web wizard restructure.** 3 steps: Basics (name/email/hire date) →
+  Employment type (Salary: annual salary + dept + outlet; Hourly: rates +
+  dept + outlet + position + additional outlet/position rows) → Review.
+  Personal info REMOVED from the manager's side entirely; employee_number
+  also dropped from the wizard (editable later via Edit — flagging the
+  spec didn't mention it). /employees rows now badge Salary/Hourly and
+  show self-onboarding progress (green ✓ / amber "Pending
+  self-onboarding"; hidden pre-019).
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean (iOS, Android, web).
+
 ### Upcoming
 
+- Deferred from PR #18 (named there): direct-messaging tab (Adèle
+  deciding structure), side nav (bottom nav stays until Adèle's visual
+  designs land), Running-late push delivery (PR #19 push work — the
+  signal records today), My Forms tab, granular manager permissions
+  (HR vs floor — Adèle said "later"), POS sales feed for the Work
+  Sales tab (currently tip-sheet-derived).
 - Employee-grade RLS for schedule reads (own employees row, shifts,
   teammates) — PTO tables are covered by 007, pay/disciplinary by 008,
   tips by 009.

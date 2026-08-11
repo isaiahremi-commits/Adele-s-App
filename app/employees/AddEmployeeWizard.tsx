@@ -4,12 +4,13 @@ import Modal from "@/components/Modal";
 import { PREDEFINED_ROLES, OTHER_OPTION } from "@/lib/constants";
 import { titleCase } from "@/lib/format";
 
-// Four-step onboarding wizard: Basics → Position & outlets → Pay rates →
-// Review & invite. Submits to /api/admin/employees/create, which creates
-// the auth login + linked employees row + outlet assignments atomically,
-// then shows the one-time temp password for Adèle to hand off. The employee
-// signs into the mobile app with it and is forced to set their own password
-// (user_metadata.must_change_password) before anything else.
+// Three-step onboarding wizard (PR #18 restructure): Basics → Employment
+// type → Review & invite. Personal info (DOB, phone, address, emergency
+// contact, t-shirt size) is DELIBERATELY GONE from the manager's side —
+// employees fill their own file on first mobile sign-in
+// (SelfOnboardingScreen + employee_self_onboard, migration 019).
+// Submits to /api/admin/employees/create (unchanged): auth login + linked
+// employees row + outlet assignments, then the one-time temp password.
 
 type Outlet = { id: string; name: string };
 type Department = { id: string; name: string };
@@ -29,18 +30,16 @@ type WizardForm = {
   first_name: string;
   last_name: string;
   email: string;
-  phone: string;
   hire_date: string;
-  department_id: string;
-  home_outlet_id: string;
-  home_position: string;
-  employee_number: string;
   pay_type: "hourly" | "salary";
   annual_salary: string;
   regular_rate: string;
   ot_rate: string;
   pto_rate: string;
   training_rate: string;
+  department_id: string;
+  home_outlet_id: string;
+  home_position: string;
   assignments: Assignment[];
 };
 
@@ -55,24 +54,22 @@ function emptyWizardForm(): WizardForm {
     first_name: "",
     last_name: "",
     email: "",
-    phone: "",
     hire_date: localToday(),
-    department_id: "",
-    home_outlet_id: "",
-    home_position: "",
-    employee_number: "",
     pay_type: "hourly",
     annual_salary: "",
     regular_rate: "",
     ot_rate: "",
     pto_rate: "",
     training_rate: "",
+    department_id: "",
+    home_outlet_id: "",
+    home_position: "",
     assignments: [],
   };
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const STEPS = ["Basics", "Position & outlets", "Pay rates", "Review & invite"];
+const STEPS = ["Basics", "Employment type", "Review & invite"];
 
 export default function AddEmployeeWizard({
   open,
@@ -135,11 +132,11 @@ export default function AddEmployeeWizard({
         return "A valid email is required — it becomes their login.";
       if (!form.hire_date) return "Hire date is required (PTO accrual needs it).";
     }
-    if (s === 2) {
-      if (form.pay_type === "hourly" && !(Number(form.regular_rate) > 0))
-        return "Hourly rate must be greater than 0.";
+    if (s === 1) {
       if (form.pay_type === "salary" && !(Number(form.annual_salary) > 0))
         return "Annual salary must be greater than 0.";
+      if (form.pay_type === "hourly" && !(Number(form.regular_rate) > 0))
+        return "Hourly rate must be greater than 0.";
       for (const [label, v] of [
         ["OT rate", form.ot_rate],
         ["PTO rate", form.pto_rate],
@@ -165,6 +162,7 @@ export default function AddEmployeeWizard({
     setError(null);
     setSubmitting(true);
     try {
+      const salaried = form.pay_type === "salary";
       const res = await fetch("/api/admin/employees/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,19 +170,19 @@ export default function AddEmployeeWizard({
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
           email: form.email.trim().toLowerCase(),
-          phone: form.phone || null,
+          // Personal info intentionally omitted — self-onboarding owns it.
+          phone: null,
           hire_date: form.hire_date,
           department_id: form.department_id || null,
           home_outlet_id: form.home_outlet_id || null,
-          home_position: form.home_position || null,
-          employee_number: form.employee_number || null,
+          home_position: salaried ? null : form.home_position || null,
           pay_type: form.pay_type,
-          annual_salary: form.annual_salary === "" ? null : Number(form.annual_salary),
-          regular_rate: form.regular_rate === "" ? null : Number(form.regular_rate),
-          ot_rate: form.ot_rate === "" ? null : Number(form.ot_rate),
+          annual_salary: salaried ? Number(form.annual_salary) : null,
+          regular_rate: salaried || form.regular_rate === "" ? null : Number(form.regular_rate),
+          ot_rate: salaried || form.ot_rate === "" ? null : Number(form.ot_rate),
           pto_rate: form.pto_rate === "" ? null : Number(form.pto_rate),
-          training_rate: form.training_rate === "" ? null : Number(form.training_rate),
-          assignments: form.assignments.filter((a) => a.outlet_id),
+          training_rate: salaried || form.training_rate === "" ? null : Number(form.training_rate),
+          assignments: salaried ? [] : form.assignments.filter((a) => a.outlet_id),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -236,8 +234,9 @@ export default function AddEmployeeWizard({
             </div>
           </div>
           <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Hand this off in person or by text. It is shown only once and never stored.
-            On first sign-in the app forces them to set their own password.
+            Hand this off in person or by text — it is shown only once. On first
+            sign-in the app makes them set a password and fill in their own
+            personal details (phone, emergency contact, and so on).
           </p>
           <div className="flex justify-end gap-2">
             <button className="btn btn-secondary" onClick={reset}>Add another</button>
@@ -280,194 +279,189 @@ export default function AddEmployeeWizard({
                 <input type="email" className="input mt-1" placeholder="Becomes their app login"
                   value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-sm">Phone
-                  <input className="input mt-1" value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                </label>
-                <label className="text-sm">Hire date <span style={{ color: "var(--danger)" }}>*</span>
-                  <input type="date" className="input mt-1" value={form.hire_date}
-                    onChange={(e) => setForm({ ...form, hire_date: e.target.value })} />
-                </label>
-              </div>
-              <label className="text-sm">Department
-                <select className="input mt-1" value={form.department_id}
-                  onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
-                  <option value="">Select…</option>
-                  {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+              <label className="text-sm">Hire date <span style={{ color: "var(--danger)" }}>*</span>
+                <input type="date" className="input mt-1" value={form.hire_date}
+                  onChange={(e) => setForm({ ...form, hire_date: e.target.value })} />
               </label>
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Phone, birthday, address, emergency contact and shirt size are
+                filled in by the employee on their first sign-in.
+              </p>
             </>
           )}
 
           {step === 1 && (
             <>
+              <div>
+                <div className="text-sm font-medium mb-1">Employment type</div>
+                <div className="flex gap-4">
+                  {(["salary", "hourly"] as const).map((pt) => (
+                    <label key={pt} className="text-sm flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="pay_type"
+                        checked={form.pay_type === pt}
+                        onChange={() => setForm({ ...form, pay_type: pt })}
+                      />
+                      {pt === "salary" ? "Salary" : "Hourly"}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                  {form.pay_type === "salary"
+                    ? "Salaried employees don't appear on tip sheets and see no tip screens."
+                    : "Hourly employees declare tips and join the tip distribution."}
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm">Home Outlet
+                {form.pay_type === "salary" ? (
+                  <label className="text-sm">Annual salary ($) <span style={{ color: "var(--danger)" }}>*</span>
+                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.annual_salary}
+                      onChange={(e) => setForm({ ...form, annual_salary: e.target.value })} />
+                  </label>
+                ) : (
+                  <>
+                    <label className="text-sm">Hourly rate ($) <span style={{ color: "var(--danger)" }}>*</span>
+                      <input type="number" step="0.01" min="0" className="input mt-1" value={form.regular_rate}
+                        onChange={(e) => setForm({ ...form, regular_rate: e.target.value })} />
+                    </label>
+                    <label className="text-sm">OT rate ($)
+                      <input type="number" step="0.01" min="0" className="input mt-1" value={form.ot_rate}
+                        onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} />
+                    </label>
+                    <label className="text-sm">Training rate ($)
+                      <input type="number" step="0.01" min="0" className="input mt-1" value={form.training_rate}
+                        onChange={(e) => setForm({ ...form, training_rate: e.target.value })} />
+                    </label>
+                  </>
+                )}
+                <label className="text-sm">PTO rate ($)
+                  <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
+                    onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
+                </label>
+                <label className="text-sm">Department
+                  <select className="input mt-1" value={form.department_id}
+                    onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
+                    <option value="">Select…</option>
+                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm">Home outlet
                   <select className="input mt-1" value={form.home_outlet_id}
                     onChange={(e) => setForm({ ...form, home_outlet_id: e.target.value, home_position: "" })}>
                     <option value="">Select…</option>
                     {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </label>
-                <label className="text-sm">Home Position
-                  <select className="input mt-1" value={posOther ? OTHER_OPTION : form.home_position}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === OTHER_OPTION) { setPosOther(true); setForm({ ...form, home_position: "" }); }
-                      else { setPosOther(false); setForm({ ...form, home_position: v }); }
-                    }}>
-                    <option value="">{form.home_outlet_id ? "Select…" : "Pick home outlet first"}</option>
-                    {homePosOptions.map((r) => (
-                      <option key={r.name} value={r.name}>{titleCase(r.name)}{tippedSuffix(r.isTipped)}</option>
-                    ))}
-                    <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
-                  </select>
-                  {posOther && (
-                    <input className="input mt-1" placeholder="Custom position"
-                      value={form.home_position}
-                      onChange={(e) => setForm({ ...form, home_position: e.target.value })} />
-                  )}
-                </label>
               </div>
-              <label className="text-sm">Employee ID Number
-                <input className="input mt-1" value={form.employee_number}
-                  onChange={(e) => setForm({ ...form, employee_number: e.target.value })} />
-              </label>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-medium">Additional Outlets & Positions</div>
-                  <button type="button" className="btn btn-secondary text-xs"
-                    onClick={() => setForm((f) => ({ ...f, assignments: [...f.assignments, { outlet_id: "", position_name: "" }] }))}>
-                    + Add
-                  </button>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {form.assignments.length === 0 && (
-                    <div className="text-xs" style={{ color: "var(--muted)" }}>
-                      None — employee only works at their home outlet.
-                    </div>
-                  )}
-                  {form.assignments.map((a, i) => {
-                    const aRoles = a.outlet_id ? rolesForOutlet(a.outlet_id) : [];
-                    return (
-                      <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                        <select className="input" value={a.outlet_id}
-                          onChange={(e) => setForm((f) => {
-                            const next = [...f.assignments];
-                            next[i] = { outlet_id: e.target.value, position_name: "" };
-                            return { ...f, assignments: next };
-                          })}>
-                          <option value="">Outlet…</option>
-                          {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                        </select>
-                        <select className="input" value={a.position_name} disabled={!a.outlet_id}
-                          onChange={(e) => setForm((f) => {
-                            const next = [...f.assignments];
-                            next[i] = { ...next[i], position_name: e.target.value };
-                            return { ...f, assignments: next };
-                          })}>
-                          <option value="">Position…</option>
-                          {aRoles.map((r) => (
-                            <option key={r.id} value={r.role_name}>{titleCase(r.role_name)}{tippedSuffix(r.is_tipped)}</option>
-                          ))}
-                        </select>
-                        <button type="button" className="btn btn-secondary" style={{ color: "var(--danger)" }}
-                          onClick={() => setForm((f) => ({ ...f, assignments: f.assignments.filter((_, idx) => idx !== i) }))}>
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
 
-          {step === 2 && (
-            <>
-              <div>
-                <div className="text-sm font-medium mb-1">Pay Type</div>
-                <div className="inline-flex rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
-                  {(["hourly", "salary"] as const).map((pt) => (
-                    <button key={pt} type="button" onClick={() => setForm({ ...form, pay_type: pt })}
-                      className="text-xs px-4 py-1 rounded-md"
-                      style={{
-                        background: form.pay_type === pt ? "var(--surface)" : "transparent",
-                        color: form.pay_type === pt ? "var(--primary)" : "var(--muted)",
-                        fontWeight: form.pay_type === pt ? 600 : 400, border: "none", cursor: "pointer",
+              {form.pay_type === "hourly" && (
+                <>
+                  <label className="text-sm">Position
+                    <select className="input mt-1" value={posOther ? OTHER_OPTION : form.home_position}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === OTHER_OPTION) { setPosOther(true); setForm({ ...form, home_position: "" }); }
+                        else { setPosOther(false); setForm({ ...form, home_position: v }); }
                       }}>
-                      {pt === "hourly" ? "Hourly" : "Salary"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {form.pay_type === "hourly" ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="text-sm">Hourly rate ($) <span style={{ color: "var(--danger)" }}>*</span>
-                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.regular_rate}
-                      onChange={(e) => setForm({ ...form, regular_rate: e.target.value })} />
+                      <option value="">{form.home_outlet_id ? "Select…" : "Pick home outlet first"}</option>
+                      {homePosOptions.map((r) => (
+                        <option key={r.name} value={r.name}>{titleCase(r.name)}{tippedSuffix(r.isTipped)}</option>
+                      ))}
+                      <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
+                    </select>
+                    {posOther && (
+                      <input className="input mt-1" placeholder="Custom position"
+                        value={form.home_position}
+                        onChange={(e) => setForm({ ...form, home_position: e.target.value })} />
+                    )}
                   </label>
-                  <label className="text-sm">OT rate ($)
-                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.ot_rate}
-                      onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} />
-                  </label>
-                  <label className="text-sm">PTO rate ($)
-                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
-                      onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
-                  </label>
-                  <label className="text-sm">Training rate ($)
-                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.training_rate}
-                      onChange={(e) => setForm({ ...form, training_rate: e.target.value })} />
-                  </label>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="text-sm">Annual salary ($) <span style={{ color: "var(--danger)" }}>*</span>
-                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.annual_salary}
-                      onChange={(e) => setForm({ ...form, annual_salary: e.target.value })} />
-                  </label>
-                  <label className="text-sm">PTO rate ($)
-                    <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
-                      onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
-                  </label>
-                  <p className="text-xs col-span-2" style={{ color: "var(--muted)" }}>
-                    Hourly &amp; OT rates don&rsquo;t apply to salaried employees.
-                  </p>
-                </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-medium">Additional Outlets & Positions</div>
+                      <button type="button" className="btn btn-secondary text-xs"
+                        onClick={() => setForm((f) => ({ ...f, assignments: [...f.assignments, { outlet_id: "", position_name: "" }] }))}>
+                        + Add
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {form.assignments.length === 0 && (
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>
+                          None — employee only works at their home outlet.
+                        </div>
+                      )}
+                      {form.assignments.map((a, i) => {
+                        const aRoles = a.outlet_id ? rolesForOutlet(a.outlet_id) : [];
+                        return (
+                          <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                            <select className="input" value={a.outlet_id}
+                              onChange={(e) => setForm((f) => {
+                                const next = [...f.assignments];
+                                next[i] = { outlet_id: e.target.value, position_name: "" };
+                                return { ...f, assignments: next };
+                              })}>
+                              <option value="">Outlet…</option>
+                              {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                            </select>
+                            <select className="input" value={a.position_name} disabled={!a.outlet_id}
+                              onChange={(e) => setForm((f) => {
+                                const next = [...f.assignments];
+                                next[i] = { ...next[i], position_name: e.target.value };
+                                return { ...f, assignments: next };
+                              })}>
+                              <option value="">Position…</option>
+                              {aRoles.map((r) => (
+                                <option key={r.id} value={r.role_name}>{titleCase(r.role_name)}{tippedSuffix(r.is_tipped)}</option>
+                              ))}
+                            </select>
+                            <button type="button" className="btn btn-secondary" style={{ color: "var(--danger)" }}
+                              onClick={() => setForm((f) => ({ ...f, assignments: f.assignments.filter((_, idx) => idx !== i) }))}>
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               )}
             </>
           )}
 
-          {step === 3 && (
+          {step === 2 && (
             <div className="flex flex-col gap-2 text-sm">
               {([
                 ["Name", `${form.first_name} ${form.last_name}`.trim()],
                 ["Email (login)", form.email.trim().toLowerCase()],
-                ["Phone", form.phone || "—"],
                 ["Hire date", form.hire_date],
+                ["Type", form.pay_type === "salary" ? "Salary" : "Hourly"],
                 ["Department", deptName ?? "—"],
                 ["Home outlet", outletName ?? "—"],
-                ["Position", form.home_position ? titleCase(form.home_position) : "—"],
-                ["Also works at", form.assignments.filter((a) => a.outlet_id).map((a) => {
-                  const o = outlets.find((x) => x.id === a.outlet_id)?.name ?? "?";
-                  return a.position_name ? `${o} (${titleCase(a.position_name)})` : o;
-                }).join(", ") || "—"],
-                ["Pay", form.pay_type === "salary"
-                  ? `Salary $${form.annual_salary}/yr`
-                  : `$${form.regular_rate}/hr` +
-                    (form.ot_rate ? `, OT $${form.ot_rate}` : "") +
-                    (form.pto_rate ? `, PTO $${form.pto_rate}` : "") +
-                    (form.training_rate ? `, Training $${form.training_rate}` : "")],
-              ] as const).map(([k, v]) => (
+                ...(form.pay_type === "salary"
+                  ? ([["Pay", `$${form.annual_salary}/yr`]] as const)
+                  : ([
+                      ["Position", form.home_position ? titleCase(form.home_position) : "—"],
+                      ["Also works at", form.assignments.filter((a) => a.outlet_id).map((a) => {
+                        const o = outlets.find((x) => x.id === a.outlet_id)?.name ?? "?";
+                        return a.position_name ? `${o} (${titleCase(a.position_name)})` : o;
+                      }).join(", ") || "—"],
+                      ["Pay", `$${form.regular_rate}/hr` +
+                        (form.ot_rate ? `, OT $${form.ot_rate}` : "") +
+                        (form.pto_rate ? `, PTO $${form.pto_rate}` : "") +
+                        (form.training_rate ? `, Training $${form.training_rate}` : "")],
+                    ] as const)),
+              ] as readonly (readonly [string, string])[]).map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4">
                   <span style={{ color: "var(--muted)" }}>{k}</span>
                   <span className="text-right">{v}</span>
                 </div>
               ))}
               <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-                Creating generates a one-time temporary password to hand off.
-                The employee is forced to set their own on first sign-in.
+                Creating generates a one-time temporary password. The employee
+                sets their own password and fills in their personal details on
+                first sign-in.
               </p>
             </div>
           )}

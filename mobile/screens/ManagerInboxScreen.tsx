@@ -31,6 +31,7 @@ import {
   getUpcomingShifts,
   postTipSheet,
 } from "../lib/manager";
+import { formatTime12 } from "../lib/format";
 import { colors } from "../lib/theme";
 import LargePartyEntryModal from "./LargePartyEntryModal";
 
@@ -52,10 +53,8 @@ function fmtDay(d: string | null): string {
   return d ? format(new Date(`${d.slice(0, 10)}T00:00:00`), "EEE, MMM d") : "—";
 }
 
-/** "HH:MM:SS" → "10:00", null-safe. */
-function fmtTime(t: string | null): string {
-  return t ? t.slice(0, 5) : "—";
-}
+/** Shift times display 12-hour since PR #18. */
+const fmtTime = formatTime12;
 
 function fmtClock(iso: string | null): string {
   return iso ? format(new Date(iso), "h:mm a") : "—";

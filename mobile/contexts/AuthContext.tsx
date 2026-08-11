@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -29,12 +30,22 @@ type AuthContextValue = {
   /** Gate: user hasn't accepted the current T&C version yet. */
   needsTosAcceptance: boolean;
   /**
-   * Tip-roster status (employee_is_tipped, migration 017), fetched once per
-   * signed-in user. False hides every tip surface (Adèle's rule for managers
-   * and non-tipped positions); defaults to true until known and stays true
-   * pre-017, so nothing regresses before the migration is applied.
+   * Tip-roster status (employee_is_tipped; pay-type driven since 019),
+   * fetched once per signed-in user. False hides every tip surface
+   * (managers + salaried employees); defaults to true until known and stays
+   * true pre-migration, so nothing regresses before it is applied.
    */
   isTipped: boolean;
+  /**
+   * Gate: linked employee whose employees.has_completed_self_onboarding is
+   * false (migration 019) — App.tsx routes them to SelfOnboardingScreen
+   * after the T&C gate. Fail-open false (unlinked, pre-018 RLS, pre-019
+   * column, transient errors) so nobody gets stuck at a gate that can't
+   * clear.
+   */
+  selfOnboardingNeeded: boolean;
+  /** Re-check the flag (call after employee_self_onboard succeeds). */
+  refreshSelfOnboarding: () => Promise<void>;
   /**
    * Tenant from user_metadata.tenant_id. RLS scopes every query by it
    * server-side; null means the account was misprovisioned (App.tsx shows the
@@ -52,8 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isTipped, setIsTipped] = useState(true);
 
+  const [selfOnboardingNeeded, setSelfOnboardingNeeded] = useState(false);
+
   // Tip-roster status: once per signed-in user (not per token refresh —
-  // position changes are rare and a fresh sign-in or app restart refetches).
+  // pay-type changes are rare and a fresh sign-in or app restart refetches).
   const userId = session?.user?.id ?? null;
   useEffect(() => {
     if (!userId) {
@@ -68,6 +81,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [userId]);
+
+  // Self-onboarding gate: reads the caller's own employees row (018's
+  // own-row RLS). Any failure — unlinked, pre-018, pre-019 — reads as "no
+  // gate" rather than trapping the user.
+  const refreshSelfOnboarding = useCallback(async () => {
+    if (!userId) {
+      setSelfOnboardingNeeded(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("employees")
+        .select("has_completed_self_onboarding")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+      setSelfOnboardingNeeded(
+        !error && data !== null && data.has_completed_self_onboarding === false
+      );
+    } catch {
+      setSelfOnboardingNeeded(false);
+    }
+  }, [userId]);
+  useEffect(() => {
+    refreshSelfOnboarding();
+  }, [refreshSelfOnboarding]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -132,6 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ? rawTenantId
           : null,
       isTipped,
+      selfOnboardingNeeded,
+      refreshSelfOnboarding,
       signIn: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -153,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
       },
     };
-  }, [session, loading, isTipped]);
+  }, [session, loading, isTipped, selfOnboardingNeeded, refreshSelfOnboarding]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

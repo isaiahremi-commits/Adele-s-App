@@ -45,14 +45,16 @@ import {
   getTipStatusForShifts,
   shiftTipKey,
 } from "../lib/tips";
+import ShiftDetailModal from "../components/ShiftDetailModal";
+import { titleCase } from "../lib/format";
 import CalloutModal from "./CalloutModal";
 
-// Employee schedule: own shifts for this/next ISO week (Mon–Sun, local time)
-// as day cards, plus a collapsible same-department/same-outlet teammates
-// section. Data flow: employees row for the auth user → own shifts → teammate
-// shifts at my outlets. RLS scopes everything by tenant server-side.
-// Past shifts additionally carry a tip-declaration action row (PR #7), fed by
-// tip_declaration_for_me batched per unique (outlet, day).
+// Employee schedule (PR #18 redesign): a Mon–Sun grid — every day gets a
+// row, dates left, shifts right ("—" on off days). Tapping a shift opens
+// ShiftDetailModal, which carries the old cards' whole surface: detail,
+// "Working with you" teammates, and the tip/callout/swap actions (PR #7–#9
+// — nothing regressed, it just moved). Coverage/swap/callout sections keep
+// living below the grid. RLS scopes everything by tenant server-side.
 
 type WeekTab = "this" | "next";
 
@@ -75,16 +77,6 @@ function isSwappable(s: ScheduleShift): boolean {
   return start.getTime() > Date.now() + 24 * 3600 * 1000;
 }
 
-function fmtUSD(n: number): string {
-  return (
-    "$" +
-    n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
-}
-
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
@@ -105,7 +97,10 @@ export default function ScheduleScreen() {
   const [week, setWeek] = useState<WeekTab>("this");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
-  const [teammatesOpen, setTeammatesOpen] = useState(false);
+  // PR #18: tapping a grid shift opens the detail sheet.
+  const [selectedShift, setSelectedShift] = useState<ScheduleShift | null>(
+    null
+  );
   // null = statuses unavailable (RPC missing pre-009, or a fetch error) —
   // the schedule itself still renders, just without tip action rows.
   const [tipStatuses, setTipStatuses] = useState<Map<string, TipStatus> | null>(
@@ -326,77 +321,65 @@ export default function ScheduleScreen() {
 
         {state.kind === "ready" && (
           <>
-            {state.shifts.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={styles.emptyTitle}>
-                  No shifts scheduled {weekLabel}
-                </Text>
-                <Text style={styles.emptyBody}>
-                  Enjoy the time off! Pull down to refresh.
-                </Text>
-              </View>
-            ) : (
-              days.map((day) => {
+            {/* PR #18 grid: every day of the week gets a row — date on the
+                left, that day's shifts (or a quiet —) on the right. Tap a
+                shift for the detail sheet; the old per-card actions live
+                there now. */}
+            <View style={styles.card}>
+              {days.map((day, i) => {
                 const dayKey = format(day, "yyyy-MM-dd");
                 const dayShifts = state.shifts.filter((s) => s.date === dayKey);
-                if (dayShifts.length === 0) return null;
                 return (
-                  <View key={dayKey} style={styles.card}>
-                    <Text style={styles.dayHeader}>
-                      {format(day, "EEEE, MMM d")}
-                    </Text>
-                    {dayShifts.map((shift) => {
-                      const past = isPastShift(shift, todayKey, nowTime);
-                      const tipStatus =
-                        past && tipStatuses && shift.outlet_id && shift.date
-                          ? tipStatuses.get(
-                              shiftTipKey(shift.outlet_id, shift.date)
-                            )
-                          : undefined;
-                      return (
-                        <ShiftBlock
-                          key={shift.id}
-                          shift={shift}
-                          tipStatus={tipStatus}
-                          notTipped={past && !isTipped}
-                          onDeclareTips={
-                            shift.outlet_id && shift.date
-                              ? () =>
-                                  navigation.navigate("TipDeclaration", {
-                                    outletId: shift.outlet_id!,
-                                    outletName: shift.outlets?.name ?? null,
-                                    shiftDate: shift.date!,
-                                    position: shift.position,
-                                  })
-                              : undefined
-                          }
-                          myCallout={calloutsByShift.get(shift.id)}
-                          onCallOut={
-                            !past && coverage !== null
-                              ? () => setCalloutShift(shift)
-                              : undefined
-                          }
-                          pendingSwap={pendingSwapByShift.get(shift.id)}
-                          onRequestSwap={
-                            !past && swaps !== null && isSwappable(shift)
-                              ? () =>
-                                  navigation.navigate("SwapRequest", {
-                                    shiftId: shift.id,
-                                    shiftDate: shift.date!,
-                                    startTime: shift.start_time,
-                                    endTime: shift.end_time,
-                                    position: shift.position,
-                                    outletName: shift.outlets?.name ?? null,
-                                  })
-                              : undefined
-                          }
-                        />
-                      );
-                    })}
+                  <View
+                    key={dayKey}
+                    style={[styles.gridRow, i > 0 && styles.gridRowBorder]}
+                  >
+                    <View style={styles.gridDateCell}>
+                      <Text
+                        style={[
+                          styles.gridDay,
+                          dayKey === todayKey && styles.gridToday,
+                        ]}
+                      >
+                        {format(day, "EEE")}
+                      </Text>
+                      <Text style={styles.gridDate}>{format(day, "MMM d")}</Text>
+                    </View>
+                    <View style={styles.gridShiftCell}>
+                      {dayShifts.length === 0 ? (
+                        <Text style={styles.gridEmpty}>—</Text>
+                      ) : (
+                        dayShifts.map((shift) => (
+                          <Pressable
+                            key={shift.id}
+                            style={styles.gridShift}
+                            onPress={() => setSelectedShift(shift)}
+                          >
+                            <Text style={styles.gridShiftTitle}>
+                              {[
+                                titleCase(shift.position) || "Shift",
+                                shift.outlets?.name,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </Text>
+                            <Text style={styles.gridShiftTime}>
+                              {formatShiftTime(shift.start_time)} –{" "}
+                              {formatShiftTime(shift.end_time)}
+                            </Text>
+                            {calloutsByShift.get(shift.id) && (
+                              <Text style={styles.gridCalloutTag}>
+                                Called out
+                              </Text>
+                            )}
+                          </Pressable>
+                        ))
+                      )}
+                    </View>
                   </View>
                 );
-              })
-            )}
+              })}
+            </View>
 
             {coverage !== null && (
               <CoverageSection
@@ -417,16 +400,76 @@ export default function ScheduleScreen() {
                 (m) => m.kind === "callout"
               )} />
             )}
-
-            <TeammatesSection
-              teammates={state.teammates}
-              open={teammatesOpen}
-              onToggle={() => setTeammatesOpen((v) => !v)}
-              weekLabel={weekLabel}
-            />
           </>
         )}
       </ScrollView>
+
+      {state.kind === "ready" && selectedShift && (
+        <ShiftDetailModal
+          shift={selectedShift}
+          teammates={state.teammates.filter(
+            (t) =>
+              t.date === selectedShift.date &&
+              t.outlet_id === selectedShift.outlet_id
+          )}
+          tipStatus={
+            isPastShift(selectedShift, todayKey, nowTime) &&
+            tipStatuses &&
+            selectedShift.outlet_id &&
+            selectedShift.date
+              ? tipStatuses.get(
+                  shiftTipKey(selectedShift.outlet_id, selectedShift.date)
+                )
+              : undefined
+          }
+          notTipped={
+            isPastShift(selectedShift, todayKey, nowTime) && !isTipped
+          }
+          myCallout={calloutsByShift.get(selectedShift.id)}
+          pendingSwap={pendingSwapByShift.get(selectedShift.id)}
+          onDeclareTips={
+            selectedShift.outlet_id && selectedShift.date
+              ? () => {
+                  const s = selectedShift;
+                  setSelectedShift(null);
+                  navigation.navigate("TipDeclaration", {
+                    outletId: s.outlet_id!,
+                    outletName: s.outlets?.name ?? null,
+                    shiftDate: s.date!,
+                    position: s.position,
+                  });
+                }
+              : undefined
+          }
+          onCallOut={
+            !isPastShift(selectedShift, todayKey, nowTime) && coverage !== null
+              ? () => {
+                  setCalloutShift(selectedShift);
+                  setSelectedShift(null);
+                }
+              : undefined
+          }
+          onRequestSwap={
+            !isPastShift(selectedShift, todayKey, nowTime) &&
+            swaps !== null &&
+            isSwappable(selectedShift)
+              ? () => {
+                  const s = selectedShift;
+                  setSelectedShift(null);
+                  navigation.navigate("SwapRequest", {
+                    shiftId: s.id,
+                    shiftDate: s.date!,
+                    startTime: s.start_time,
+                    endTime: s.end_time,
+                    position: s.position,
+                    outletName: s.outlets?.name ?? null,
+                  });
+                }
+              : undefined
+          }
+          onClose={() => setSelectedShift(null)}
+        />
+      )}
 
       <CalloutModal
         visible={calloutShift !== null}
@@ -438,125 +481,6 @@ export default function ScheduleScreen() {
         }}
       />
     </View>
-  );
-}
-
-function ShiftBlock({
-  shift,
-  tipStatus,
-  notTipped,
-  onDeclareTips,
-  myCallout,
-  onCallOut,
-  pendingSwap,
-  onRequestSwap,
-}: {
-  shift: ScheduleShift;
-  tipStatus?: TipStatus;
-  /** Past shift of a non-tipped user — neutral note replaces the tip row. */
-  notTipped?: boolean;
-  onDeclareTips?: () => void;
-  myCallout?: MyCalloutOrOffer;
-  onCallOut?: () => void;
-  pendingSwap?: MySwapRequest;
-  onRequestSwap?: () => void;
-}) {
-  return (
-    <View style={styles.shiftBlock}>
-      <View style={styles.shiftHeaderRow}>
-        <Text style={styles.shiftPosition}>{shift.position ?? "Shift"}</Text>
-        {shift.shift_type && (
-          <View style={styles.typePill}>
-            <Text style={styles.typePillText}>{shift.shift_type}</Text>
-          </View>
-        )}
-      </View>
-      {shift.outlets?.name && (
-        <Text style={styles.shiftOutlet}>{shift.outlets.name}</Text>
-      )}
-      <Text style={styles.shiftTime}>
-        {formatShiftTime(shift.start_time)} – {formatShiftTime(shift.end_time)}
-      </Text>
-      {shift.notes ? <Text style={styles.shiftNotes}>{shift.notes}</Text> : null}
-      {notTipped ? (
-        <Text style={styles.tipDim}>Tips not applicable to this position.</Text>
-      ) : (
-        tipStatus && <TipActionRow status={tipStatus} onPress={onDeclareTips} />
-      )}
-      {myCallout ? (
-        <Text style={styles.calledOutNote}>
-          Called out
-          {myCallout.coverage_status === "volunteer_pending" &&
-          myCallout.volunteer_name
-            ? ` — ${myCallout.volunteer_name} offered to cover`
-            : myCallout.coverage_status === "approved"
-              ? " — covered"
-              : " — awaiting coverage"}
-        </Text>
-      ) : (
-        <View style={styles.shiftActionsRow}>
-          {onCallOut && (
-            <Pressable onPress={onCallOut}>
-              <Text style={styles.callOutLink}>Call out</Text>
-            </Pressable>
-          )}
-          {pendingSwap ? (
-            <Text style={styles.swapPendingNote}>
-              Swap requested —{" "}
-              {pendingSwap.status === "pending_target"
-                ? `waiting on ${pendingSwap.counterparty_name}`
-                : "waiting on manager"}
-            </Text>
-          ) : onRequestSwap ? (
-            <Pressable onPress={onRequestSwap}>
-              <Text style={styles.swapLink}>Request swap →</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      )}
-    </View>
-  );
-}
-
-function TipActionRow({
-  status,
-  onPress,
-}: {
-  status: TipStatus;
-  onPress?: () => void;
-}) {
-  if (!status.sheetExists) {
-    return <Text style={styles.tipDim}>Tip sheet not yet open</Text>;
-  }
-  if (status.sheetStatus === "posted") {
-    return (
-      <Text style={styles.tipFinal}>
-        Tips finalized
-        {status.tipAmount !== null ? `: ${fmtUSD(status.tipAmount)}` : ""}
-      </Text>
-    );
-  }
-  if (!status.sheetOpen) {
-    // 'ready' — computed, awaiting manager post; nothing to edit anymore.
-    return (
-      <Text style={styles.tipDim}>
-        {status.rowId
-          ? "Tips declared ✓ — pending manager review"
-          : "Tip sheet closed for review"}
-      </Text>
-    );
-  }
-  if (!status.rowId) {
-    return (
-      <Pressable style={styles.tipDeclareButton} onPress={onPress}>
-        <Text style={styles.tipDeclareButtonText}>Declare tips →</Text>
-      </Pressable>
-    );
-  }
-  return (
-    <Pressable onPress={onPress}>
-      <Text style={styles.tipDeclaredLink}>Tips declared ✓ · Edit</Text>
-    </Pressable>
   );
 }
 
@@ -945,71 +869,6 @@ function MyCalloutsSection({ callouts }: { callouts: MyCalloutOrOffer[] }) {
   );
 }
 
-function TeammatesSection({
-  teammates,
-  open,
-  onToggle,
-  weekLabel,
-}: {
-  teammates: TeammateShift[];
-  open: boolean;
-  onToggle: () => void;
-  weekLabel: string;
-}) {
-  // Group the flat shift rows by teammate, keeping chronological order.
-  const groups = useMemo(() => {
-    const byId = new Map<string, { name: string; shifts: TeammateShift[] }>();
-    for (const t of teammates) {
-      const emp = t.employees;
-      if (!emp) continue;
-      const existing = byId.get(emp.id);
-      if (existing) existing.shifts.push(t);
-      else {
-        byId.set(emp.id, {
-          name: `${emp.first_name} ${emp.last_name}`,
-          shifts: [t],
-        });
-      }
-    }
-    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [teammates]);
-
-  if (groups.length === 0) return null;
-
-  return (
-    <View style={styles.card}>
-      <Pressable style={styles.teammatesHeader} onPress={onToggle}>
-        <Text style={styles.dayHeader}>
-          Teammates {weekLabel} ({groups.length})
-        </Text>
-        <Ionicons
-          name={open ? "chevron-up" : "chevron-down"}
-          size={18}
-          color={colors.muted}
-        />
-      </Pressable>
-      {open &&
-        groups.map((group) => (
-          <View key={group.name} style={styles.teammateGroup}>
-            <Text style={styles.teammateName}>{group.name}</Text>
-            {group.shifts.map((s) => (
-              <Text key={s.id} style={styles.teammateShiftRow}>
-                {[
-                  s.position ?? "Shift",
-                  s.date ? format(new Date(`${s.date}T00:00:00`), "EEE d") : "—",
-                  `${formatShiftTime(s.start_time)}–${formatShiftTime(s.end_time)}`,
-                  s.outlets?.name,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Text>
-            ))}
-          </View>
-        ))}
-    </View>
-  );
-}
-
 function SkeletonCards() {
   const pulse = useRef(new Animated.Value(0.35)).current;
   useEffect(() => {
@@ -1091,119 +950,73 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 16,
   },
+  gridRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+  },
+  gridRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  gridDateCell: {
+    width: 76,
+    paddingRight: 8,
+  },
+  gridDay: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.foreground,
+  },
+  gridToday: {
+    color: colors.primaryDim,
+  },
+  gridDate: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 1,
+  },
+  gridShiftCell: {
+    flex: 1,
+    gap: 8,
+    justifyContent: "center",
+  },
+  gridEmpty: {
+    fontSize: 14,
+    color: colors.border,
+  },
+  gridShift: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  gridShiftTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.foreground,
+  },
+  gridShiftTime: {
+    marginTop: 1,
+    fontSize: 13,
+    color: colors.muted,
+  },
+  gridCalloutTag: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.amber,
+  },
   dayHeader: {
     fontSize: 15,
     fontWeight: "600",
     color: colors.foreground,
   },
-  shiftBlock: {
-    marginTop: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-  },
-  shiftHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  shiftPosition: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.foreground,
-  },
-  typePill: {
-    backgroundColor: "rgba(45, 184, 122, 0.14)",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  typePillText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: colors.primaryDim,
-  },
-  shiftOutlet: {
-    marginTop: 2,
-    fontSize: 13,
-    color: colors.muted,
-  },
-  shiftTime: {
-    marginTop: 6,
-    fontSize: 14,
-    fontWeight: "500",
-    color: colors.foreground,
-  },
-  shiftNotes: {
-    marginTop: 6,
-    fontSize: 13,
-    color: colors.muted,
-    fontStyle: "italic",
-  },
-  tipDim: {
-    marginTop: 8,
-    fontSize: 13,
-    color: colors.muted,
-  },
-  tipFinal: {
-    marginTop: 8,
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.foreground,
-  },
-  tipDeclareButton: {
-    marginTop: 8,
-    alignSelf: "flex-start",
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-  },
-  tipDeclareButtonText: {
-    color: colors.primaryOn,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  tipDeclaredLink: {
-    marginTop: 8,
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.primaryDim,
-  },
-  callOutLink: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.amber,
-  },
-  shiftActionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 16,
-    marginTop: 8,
-  },
-  swapLink: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.primaryDim,
-  },
-  swapPendingNote: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.muted,
-  },
   settledSwapText: {
     fontSize: 13,
     color: colors.muted,
     lineHeight: 18,
-  },
-  calledOutNote: {
-    marginTop: 8,
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.amber,
   },
   coverageRow: {
     marginTop: 12,
@@ -1292,20 +1105,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  teammateGroup: {
-    marginTop: 12,
-  },
-  teammateName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.foreground,
-    marginBottom: 3,
-  },
-  teammateShiftRow: {
-    fontSize: 13,
-    color: colors.muted,
-    marginBottom: 2,
   },
   skeletonLine: {
     height: 14,

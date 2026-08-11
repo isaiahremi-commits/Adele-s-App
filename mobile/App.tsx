@@ -1,10 +1,17 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { InboxProvider } from "./contexts/InboxContext";
 import InboxBell from "./components/InboxBell";
@@ -19,14 +26,20 @@ import type {
 import BroadcastDetailScreen from "./screens/BroadcastDetailScreen";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import ComposeBroadcastScreen from "./screens/ComposeBroadcastScreen";
+import HomeScreen from "./screens/HomeScreen";
 import InboxScreen from "./screens/InboxScreen";
 import LoginScreen from "./screens/LoginScreen";
 import ManagerInboxScreen from "./screens/ManagerInboxScreen";
+import EndOfDayScreen from "./screens/manager/EndOfDayScreen";
+import WorkHoursScreen from "./screens/manager/WorkHoursScreen";
+import WorkSalesScreen from "./screens/manager/WorkSalesScreen";
+import WorkTeamScreen from "./screens/manager/WorkTeamScreen";
 import NoTenantScreen from "./screens/NoTenantScreen";
 import PayScreen from "./screens/PayScreen";
 import PtoDetailScreen from "./screens/PtoDetailScreen";
 import PtoScreen from "./screens/PtoScreen";
 import ScheduleScreen from "./screens/ScheduleScreen";
+import SelfOnboardingScreen from "./screens/SelfOnboardingScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import SwapRequestScreen from "./screens/SwapRequestScreen";
 import TipDeclarationScreen from "./screens/TipDeclarationScreen";
@@ -36,24 +49,39 @@ export type RootStackParamList = {
   NoTenant: undefined;
   ChangePassword: undefined;
   TosAcceptance: undefined;
+  SelfOnboarding: undefined;
   Main: undefined;
   Inbox: undefined;
   BroadcastDetail: { broadcastId: string };
   ComposeBroadcast: undefined;
+  Approvals: undefined;
 };
 
 export type MainTabParamList = {
+  Home: undefined;
   Schedule: undefined;
   Pto: undefined;
   Pay: undefined;
-  Approvals: undefined;
+  Settings: undefined;
+};
+
+export type WorkTabParamList = {
+  Team: undefined;
+  Hours: undefined;
+  Sales: undefined;
+  EndOfDay: undefined;
   Settings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const WorkTab = createBottomTabNavigator<WorkTabParamList>();
 const PtoStackNav = createNativeStackNavigator<PtoStackParamList>();
 const ScheduleStackNav = createNativeStackNavigator<ScheduleStackParamList>();
+
+// Manager Work/Personal mode (PR #18), remembered across launches.
+const MODE_KEY = "manadele_mode";
+type Mode = "personal" | "work";
 
 // Schedule gets its own stack so the tip-declaration screen has a native
 // back header (same pattern as the PTO stack).
@@ -97,41 +125,29 @@ function PtoStack() {
   );
 }
 
-// The signed-in shell: bottom tabs. Tips (and any later tabs) land in
-// future PRs.
-function MainTabs() {
-  const { user } = useAuth();
-  // The Approvals tab renders only for Restaurant Managers. Checked once per
-  // session via am_i_a_manager (cached per user in lib/manager); the RPCs
-  // behind the tab re-verify manager status server-side regardless, so this
-  // gate is purely cosmetic. Pre-012 (RPC missing) reads as false.
-  const [showApprovals, setShowApprovals] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    if (user) {
-      isManager(user.id).then((v) => {
-        if (alive) setShowApprovals(v);
-      });
-    } else {
-      setShowApprovals(false);
-    }
-    return () => {
-      alive = false;
-    };
-  }, [user]);
+const tabScreenOptions = {
+  tabBarActiveTintColor: colors.primary,
+  tabBarInactiveTintColor: colors.muted,
+  headerTitleStyle: { color: colors.foreground },
+  // The broadcast-inbox bell (PR #11) lives in every header. Tabs with
+  // their own stacks (Schedule, PTO) set it on their root screens instead.
+  headerRight: () => <InboxBell />,
+};
 
+// Personal mode (every employee, and managers on the Personal side):
+// Home / Schedule / PTO / Pay / Settings (PR #18 order).
+function PersonalTabs() {
   return (
-    <Tab.Navigator
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
-        headerTitleStyle: { color: colors.foreground },
-        // The broadcast-inbox bell (PR #11) lives in every header. Tabs
-        // with their own stacks (Schedule, PTO) set it on their root
-        // screens instead, since their tab header is hidden.
-        headerRight: () => <InboxBell />,
-      }}
-    >
+    <Tab.Navigator screenOptions={tabScreenOptions}>
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
       <Tab.Screen
         name="Schedule"
         component={ScheduleStack}
@@ -162,17 +178,6 @@ function MainTabs() {
           ),
         }}
       />
-      {showApprovals && (
-        <Tab.Screen
-          name="Approvals"
-          component={ManagerInboxScreen}
-          options={{
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="checkmark-done-outline" size={size} color={color} />
-            ),
-          }}
-        />
-      )}
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
@@ -186,9 +191,140 @@ function MainTabs() {
   );
 }
 
+// Work mode (managers only): Team / Hours / Sales / End of day / Settings.
+// The full Approvals inbox (PR #10) rides the root stack, reached from the
+// Team screen — deliberately not a 6th tab.
+function WorkTabs() {
+  return (
+    <WorkTab.Navigator screenOptions={tabScreenOptions}>
+      <WorkTab.Screen
+        name="Team"
+        component={WorkTeamScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <WorkTab.Screen
+        name="Hours"
+        component={WorkHoursScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="time-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <WorkTab.Screen
+        name="Sales"
+        component={WorkSalesScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <WorkTab.Screen
+        name="EndOfDay"
+        component={EndOfDayScreen}
+        options={{
+          title: "End of day",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="moon-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <WorkTab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings-outline" size={size} color={color} />
+          ),
+        }}
+      />
+    </WorkTab.Navigator>
+  );
+}
+
+// The signed-in shell. Managers get a sticky Personal|Work segmented
+// control above the tabs; the last mode is remembered (AsyncStorage) and a
+// cached "work" is honored only once manager status confirms.
+function MainShell() {
+  const { user } = useAuth();
+  const [isMgr, setIsMgr] = useState(false);
+  const [mode, setMode] = useState<Mode>("personal");
+
+  useEffect(() => {
+    let alive = true;
+    if (user) {
+      isManager(user.id).then((v) => {
+        if (alive) setIsMgr(v);
+      });
+    } else {
+      setIsMgr(false);
+    }
+    AsyncStorage.getItem(MODE_KEY)
+      .then((v) => {
+        if (alive && v === "work") setMode("work");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [user]);
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    AsyncStorage.setItem(MODE_KEY, next).catch(() => {});
+  }
+
+  const working = isMgr && mode === "work";
+
+  return (
+    <View style={styles.shell}>
+      {isMgr && (
+        <View style={styles.modeBar}>
+          {(
+            [
+              { key: "personal", label: "Personal" },
+              { key: "work", label: "Work" },
+            ] as const
+          ).map((opt) => (
+            <Pressable
+              key={opt.key}
+              style={[
+                styles.modeChip,
+                mode === opt.key && styles.modeChipActive,
+              ]}
+              onPress={() => switchMode(opt.key)}
+            >
+              <Text
+                style={[
+                  styles.modeChipText,
+                  mode === opt.key && styles.modeChipTextActive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {working ? <WorkTabs /> : <PersonalTabs />}
+    </View>
+  );
+}
+
 function RootNavigator() {
-  const { session, loading, mustChangePassword, needsTosAcceptance, tenantId } =
-    useAuth();
+  const {
+    session,
+    loading,
+    mustChangePassword,
+    needsTosAcceptance,
+    selfOnboardingNeeded,
+    tenantId,
+  } = useAuth();
 
   // Restoring the persisted session on boot — hold on a spinner so we never
   // flash Login for an already-signed-in user.
@@ -200,9 +336,10 @@ function RootNavigator() {
     );
   }
 
-  // Gate order matters: password change first, then T&C, then Home. Each gate
-  // clears its own user_metadata flag, which re-renders this navigator via the
-  // USER_UPDATED auth event and advances to the next screen.
+  // Gate order matters: password change, then T&C, then self-onboarding
+  // (PR #18 — the employee's own personal file), then the tabs. The first
+  // two clear user_metadata flags (USER_UPDATED re-renders this navigator);
+  // self-onboarding clears via refreshSelfOnboarding after its RPC.
   return (
     <Stack.Navigator>
       {!session ? (
@@ -213,8 +350,7 @@ function RootNavigator() {
         />
       ) : !tenantId ? (
         // Misprovisioned account (no user_metadata.tenant_id) — RLS returns
-        // zero rows for it, so nothing downstream would work. Dead-ends here
-        // with a sign-out; shouldn't happen once invites stamp the tenant.
+        // zero rows for it, so nothing downstream would work.
         <Stack.Screen
           name="NoTenant"
           component={NoTenantScreen}
@@ -232,16 +368,22 @@ function RootNavigator() {
           component={TosAcceptanceModal}
           options={{ headerShown: false }}
         />
+      ) : selfOnboardingNeeded ? (
+        <Stack.Screen
+          name="SelfOnboarding"
+          component={SelfOnboardingScreen}
+          options={{ headerShown: false }}
+        />
       ) : (
         <Stack.Group>
           <Stack.Screen
             name="Main"
-            component={MainTabs}
+            component={MainShell}
             options={{ headerShown: false }}
           />
-          {/* Broadcast inbox rides ABOVE the tabs, opened from the header
-              bell. Plain card pushes (not native modals): a pushed card
-              keeps its back button on every platform incl. web. */}
+          {/* Broadcast inbox + approvals ride ABOVE the tabs as pushed
+              cards (not native modals — a pushed card keeps its back
+              button on every platform incl. web). */}
           <Stack.Screen
             name="Inbox"
             component={InboxScreen}
@@ -256,6 +398,11 @@ function RootNavigator() {
             name="ComposeBroadcast"
             component={ComposeBroadcastScreen}
             options={{ title: "New Broadcast" }}
+          />
+          <Stack.Screen
+            name="Approvals"
+            component={ManagerInboxScreen}
+            options={{ title: "Approvals" }}
           />
         </Stack.Group>
       )}
@@ -283,5 +430,40 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
+  },
+  shell: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modeBar: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 8,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modeChip: {
+    flex: 1,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingVertical: 7,
+    backgroundColor: colors.card,
+  },
+  modeChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(45, 184, 122, 0.12)",
+  },
+  modeChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  modeChipTextActive: {
+    color: colors.primaryDim,
   },
 });
