@@ -682,8 +682,11 @@ export type Database = {
         ]
       }
       outlet_roles: {
+        // is_tipped (pending 017, Phase 2 tipped positions) HAND-ADDED —
+        // regen after that migration is applied.
         Row: {
           id: string
+          is_tipped: boolean
           outlet_id: string | null
           points: number
           pool_id: string | null
@@ -694,6 +697,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          is_tipped?: boolean
           outlet_id?: string | null
           points?: number
           pool_id?: string | null
@@ -704,6 +708,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          is_tipped?: boolean
           outlet_id?: string | null
           points?: number
           pool_id?: string | null
@@ -1804,6 +1809,9 @@ export type Database = {
       // (employee_terminate, employee_reactivate,
       // employee_reset_password_needed; also employee_outlets.tenant_id in
       // Tables above) — same caveat.
+      // HAND-ADDED likewise for pending migration 017_tipped_positions.sql
+      // (employee_is_tipped; also outlet_roles.is_tipped in Tables above)
+      // — same caveat.
       am_i_a_manager: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1893,6 +1901,10 @@ export type Database = {
       }
       employee_eligible_for_swap: {
         Args: { p_candidate_id: string; p_shift_id: string }
+        Returns: boolean
+      }
+      employee_is_tipped: {
+        Args: { p_employee_id?: string }
         Returns: boolean
       }
       employee_pay_settings: {

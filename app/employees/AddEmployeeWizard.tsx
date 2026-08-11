@@ -13,8 +13,17 @@ import { titleCase } from "@/lib/format";
 
 type Outlet = { id: string; name: string };
 type Department = { id: string; name: string };
-type Role = { id: string; role_name: string; outlet_id: string };
+// is_tipped is absent until migration 017 lands — options just skip the badge.
+type Role = { id: string; role_name: string; outlet_id: string; is_tipped?: boolean };
 type Assignment = { outlet_id: string; position_name: string };
+type PosOption = { name: string; isTipped?: boolean };
+
+/** "(tipped)" / "(non-tipped)" option badge; nothing pre-017 or for
+ * PREDEFINED_ROLES fallbacks, where tipped-ness isn't configured. */
+function tippedSuffix(isTipped: boolean | undefined): string {
+  if (isTipped === undefined) return "";
+  return isTipped ? " (tipped)" : " (non-tipped)";
+}
 
 type WizardForm = {
   first_name: string;
@@ -92,10 +101,17 @@ export default function AddEmployeeWizard({
     return roles.filter((r) => r.outlet_id === outletId);
   }
   const homeRoles = form.home_outlet_id ? rolesForOutlet(form.home_outlet_id) : [];
-  const homePosOptions: string[] =
+  const homePosOptions: PosOption[] =
     form.home_outlet_id && homeRoles.length > 0
-      ? Array.from(new Map(homeRoles.map((r) => [r.role_name.toLowerCase(), r.role_name])).values())
-      : [...PREDEFINED_ROLES];
+      ? Array.from(
+          new Map(
+            homeRoles.map((r) => [
+              r.role_name.toLowerCase(),
+              { name: r.role_name, isTipped: r.is_tipped } as PosOption,
+            ])
+          ).values()
+        )
+      : PREDEFINED_ROLES.map((name) => ({ name }));
 
   function reset() {
     setStep(0);
@@ -302,7 +318,9 @@ export default function AddEmployeeWizard({
                       else { setPosOther(false); setForm({ ...form, home_position: v }); }
                     }}>
                     <option value="">{form.home_outlet_id ? "Select…" : "Pick home outlet first"}</option>
-                    {homePosOptions.map((r) => <option key={r} value={r}>{titleCase(r)}</option>)}
+                    {homePosOptions.map((r) => (
+                      <option key={r.name} value={r.name}>{titleCase(r.name)}{tippedSuffix(r.isTipped)}</option>
+                    ))}
                     <option value={OTHER_OPTION}>{OTHER_OPTION}</option>
                   </select>
                   {posOther && (
@@ -350,7 +368,9 @@ export default function AddEmployeeWizard({
                             return { ...f, assignments: next };
                           })}>
                           <option value="">Position…</option>
-                          {aRoles.map((r) => <option key={r.id} value={r.role_name}>{titleCase(r.role_name)}</option>)}
+                          {aRoles.map((r) => (
+                            <option key={r.id} value={r.role_name}>{titleCase(r.role_name)}{tippedSuffix(r.is_tipped)}</option>
+                          ))}
                         </select>
                         <button type="button" className="btn btn-secondary" style={{ color: "var(--danger)" }}
                           onClick={() => setForm((f) => ({ ...f, assignments: f.assignments.filter((_, idx) => idx !== i) }))}>

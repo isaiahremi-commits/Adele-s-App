@@ -856,6 +856,88 @@ before the 3pm follow-up.
   unlinked feeds empty with mutations still guarded, idempotent re-run.
   tsc clean both apps; next build + expo export clean.
 
+### PR #16 — Tipped positions + broadcast audience filters (2026-08-10)
+
+**MIGRATION 017 PENDING — Isaiah to apply via Supabase dashboard before
+tipped-position filtering works end-to-end.**
+(`supabase/017_tipped_positions.sql` — the Phase 2 series 017; distinct
+from the legacy Phase 1 `017_pay_breakdown_salary.sql`. Apply after the
+whole applied chain: it patches the LIVE tip engine in place.) Until then
+everything degrades to today's behavior: the Setup toggle hides itself,
+mobile shows tip UI for everyone (`employee_is_tipped` 404 fails OPEN to
+true), sheets distribute exactly as before. The broadcast composer filters
+(second feature) need no migration and work immediately.
+
+Two features straight from Adèle's Aug 10 meeting, for the 3pm follow-up.
+
+- **Migration 017** (`supabase/017_tipped_positions.sql`):
+  - `outlet_roles.is_tipped BOOLEAN NOT NULL DEFAULT true` — existing rows
+    backfill tipped (nothing regresses); Adèle toggles prep/kitchen off in
+    Setup afterwards.
+  - ts_compute excludes rows whose matched outlet role is non-tipped:
+    patched IN PLACE from the live definition (016's pg_get_functiondef +
+    single-anchor replace — no body copied to drift), targeting
+    `ts_compute_unguarded` post-014 (the guard shim is untouched) with a
+    `ts_compute` fallback for pre-014 chains. The guard lands in the
+    `_ts_elig` WHERE clause: a non-tipped employee contributes nothing to
+    and receives nothing from a pool, keeps/feeds nothing in individual
+    mode, and no longer trips the missing-points raise; their sheet row
+    stays but is zeroed by the engine's blanket reset (row population is
+    upstream and untouched). Unmatched positions keep pre-017 behavior
+    (`coalesce(is_tipped, true)` + the Missing-points raise).
+  - `employee_is_tipped(p_employee_id DEFAULT current_employee_id())` —
+    mobile's UI gate. false when unlinked/NULL, cross-tenant, title =
+    'Restaurant Manager' (Adèle: no tip UI on her own phone), or the MOST
+    RECENT shift's position (latest date incl. future schedule; fallback
+    shift.position → home_position → position; case-insensitive per 019)
+    maps to a non-tipped role. true otherwise (no shifts / unconfigured
+    position = default tipped, mirroring the engine). Fail-safe posture:
+    returns false rather than raising (016's no-400s rule), non-managers
+    asking about anyone but themselves get false; anon revoked.
+- **Mobile:** `AuthContext.isTipped` — fetched once per signed-in user via
+  `getMyTippedStatus()` (lib/tips.ts), fail-open true pre-017. When false:
+  Schedule past-shift cards show "Tips not applicable to this position."
+  instead of the tip action row (status RPCs skipped entirely); Pay hides
+  the Tip-history collapsible (fetch skipped) while the earnings breakdown
+  still shows any tips actually paid; TipDeclarationScreen shows a
+  read-only "You're not currently on the tip roster — talk to your
+  manager" state (defense in depth — nothing links there anymore).
+- **Web:** Setup role chips get a Tipped/Non-tipped toggle (amber chip when
+  non-tipped; PATCHes `is_tipped` through the existing /api/outlet-roles
+  route — zero API changes, `select *` + patch-passthrough already carry
+  the column; the toggle hides itself pre-017). Add-Employee wizard
+  position dropdowns show "(tipped)/(non-tipped)" suffixes (omitted for
+  PREDEFINED_ROLES fallbacks, where tipped-ness isn't configured).
+  /employees rows get a subtle "Non-tipped" chip — position matched against
+  outlet_roles (home outlet first, else any outlet with the name; flagged
+  only when every match is non-tipped).
+- **Broadcast composer filters:** two horizontal multi-select chip rows
+  (Department / Position) above the audience picker — "All" or any
+  combination; departments AND positions AND search intersect. Values
+  derive from the employees read (department text; effective position =
+  home_position ?? position, the pay/tip-engine precedence) — no new RPC;
+  broadcast_send still receives explicit ids. "All shown (N)" toggle adds
+  (or removes) every currently-filtered employee; "Sending to N employees"
+  updates live. Filter/selection state lives in the screen: survives
+  scrolling, resets on close (unmount). Non-managers still can't compose —
+  the FAB stays manager-only and broadcast_send re-verifies server-side.
+- `shared/db.types.ts`: `outlet_roles.is_tipped` + `employee_is_tipped`
+  hand-added (regen after 017).
+- Verified: 017 executed end-to-end in PGlite — **40/40** across a
+  live-shape chain (base DDL from db.types.ts + mocked auth/roles + real
+  tip_sheet.sql → 013_separate_sc_nc → 019 → a faithful 014 rename+shim
+  for ts_compute → 017 ×2) AND a pre-014 chain proving the fallback
+  target. Covers: idempotent re-apply, backfill default, exact pool
+  re-weighting both directions of the toggle (295/100 split at 6-4-2
+  hours: excluded cook → 0, others 6/8 & 2/8), individual-mode exclusion
+  (non-tipped declared base out of servers_base and mini-pool), unmatched
+  position still raises, 014 guard + ACLs survive the patch (employee →
+  'Managers only', unguarded uncallable), and the full 20-case
+  employee_is_tipped matrix (manager/self/cross-tenant/service_role/
+  most-recent-shift/case-insensitivity/home_position fallback/anon
+  revoked). Root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean (iOS, Android, web).
+
 ### Upcoming
 
 - Employee-grade RLS for schedule reads (own employees row, shifts,

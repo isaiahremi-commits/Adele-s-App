@@ -97,7 +97,7 @@ type LoadState =
     };
 
 export default function ScheduleScreen() {
-  const { user } = useAuth();
+  const { user, isTipped } = useAuth();
   const navigation =
     useNavigation<
       NativeStackNavigationProp<ScheduleStackParamList, "ScheduleList">
@@ -179,28 +179,37 @@ export default function ScheduleScreen() {
   // ready/week-change and again whenever the screen regains focus, so coming
   // back from TipDeclarationScreen shows the fresh badge. Failures (e.g. the
   // 009 RPCs not applied yet) just hide the tip rows — never the schedule.
-  const loadTipStatuses = useCallback(async (shifts: ScheduleShift[]) => {
-    const now = new Date();
-    const todayKey = format(now, "yyyy-MM-dd");
-    const nowTime = format(now, "HH:mm:ss");
-    const pairs = shifts
-      .filter(
-        (s): s is ScheduleShift & { date: string; outlet_id: string } =>
-          s.date !== null &&
-          s.outlet_id !== null &&
-          isPastShift(s, todayKey, nowTime)
-      )
-      .map((s) => ({ outletId: s.outlet_id, date: s.date }));
-    if (pairs.length === 0) {
-      setTipStatuses(new Map());
-      return;
-    }
-    try {
-      setTipStatuses(await getTipStatusForShifts(pairs));
-    } catch {
-      setTipStatuses(null);
-    }
-  }, []);
+  const loadTipStatuses = useCallback(
+    async (shifts: ScheduleShift[]) => {
+      // Not on the tip roster (manager / non-tipped position, PR #16): past
+      // shifts render a neutral note instead — skip the status RPCs entirely.
+      if (!isTipped) {
+        setTipStatuses(new Map());
+        return;
+      }
+      const now = new Date();
+      const todayKey = format(now, "yyyy-MM-dd");
+      const nowTime = format(now, "HH:mm:ss");
+      const pairs = shifts
+        .filter(
+          (s): s is ScheduleShift & { date: string; outlet_id: string } =>
+            s.date !== null &&
+            s.outlet_id !== null &&
+            isPastShift(s, todayKey, nowTime)
+        )
+        .map((s) => ({ outletId: s.outlet_id, date: s.date }));
+      if (pairs.length === 0) {
+        setTipStatuses(new Map());
+        return;
+      }
+      try {
+        setTipStatuses(await getTipStatusForShifts(pairs));
+      } catch {
+        setTipStatuses(null);
+      }
+    },
+    [isTipped]
+  );
 
   // Callout/coverage data (PR #8) — same graceful-degrade contract as tips.
   const loadCoverage = useCallback(async () => {
@@ -357,6 +366,7 @@ export default function ScheduleScreen() {
                           key={shift.id}
                           shift={shift}
                           tipStatus={tipStatus}
+                          notTipped={past && !isTipped}
                           onDeclareTips={
                             shift.outlet_id && shift.date
                               ? () =>
@@ -442,6 +452,7 @@ export default function ScheduleScreen() {
 function ShiftBlock({
   shift,
   tipStatus,
+  notTipped,
   onDeclareTips,
   myCallout,
   onCallOut,
@@ -450,6 +461,8 @@ function ShiftBlock({
 }: {
   shift: ScheduleShift;
   tipStatus?: TipStatus;
+  /** Past shift of a non-tipped user — neutral note replaces the tip row. */
+  notTipped?: boolean;
   onDeclareTips?: () => void;
   myCallout?: MyCalloutOrOffer;
   onCallOut?: () => void;
@@ -473,8 +486,10 @@ function ShiftBlock({
         {formatShiftTime(shift.start_time)} – {formatShiftTime(shift.end_time)}
       </Text>
       {shift.notes ? <Text style={styles.shiftNotes}>{shift.notes}</Text> : null}
-      {tipStatus && (
-        <TipActionRow status={tipStatus} onPress={onDeclareTips} />
+      {notTipped ? (
+        <Text style={styles.tipDim}>Tips not applicable to this position.</Text>
+      ) : (
+        tipStatus && <TipActionRow status={tipStatus} onPress={onDeclareTips} />
       )}
       {myCallout ? (
         <Text style={styles.calledOutNote}>

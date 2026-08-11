@@ -40,7 +40,9 @@ type Totals = { total_tips: number; total_sc: number; total_nc: number };
 // From /api/admin/employees/status (service key) — auth-side linkage detail.
 type AuthStatus = { invited_at: string | null; last_sign_in_at: string | null; banned: boolean };
 type ViewMode = "grid" | "list";
-type Role = { id: string; role_name: string; outlet_id: string };
+// is_tipped is absent until migration 017 lands — the Non-tipped chip just
+// doesn't render.
+type Role = { id: string; role_name: string; outlet_id: string; is_tipped?: boolean };
 type Assignment = { outlet_id: string; position_name: string };
 
 type Form = {
@@ -149,6 +151,19 @@ export default function EmployeesPage() {
 
   function rolesForOutlet(outletId: string) {
     return roles.filter((r) => r.outlet_id === outletId);
+  }
+
+  // PR #16: "Non-tipped" row chip — position matched against outlet_roles
+  // config (home outlet first, else any outlet carrying the name; flagged
+  // only when every match is non-tipped). Default-tipped when unmatched,
+  // mirroring employee_is_tipped / ts_compute.
+  function isNonTippedPosition(e: Employee): boolean {
+    const pos = (e.home_position || e.position || "").trim().toLowerCase();
+    if (!pos) return false;
+    const byName = roles.filter((r) => r.role_name.trim().toLowerCase() === pos);
+    const atHome = e.home_outlet_id ? byName.filter((r) => r.outlet_id === e.home_outlet_id) : [];
+    const scope = atHome.length > 0 ? atHome : byName;
+    return scope.length > 0 && scope.every((r) => r.is_tipped === false);
   }
 
   // "+ Add Employee" now opens the onboarding wizard (auth login + linked
@@ -484,7 +499,7 @@ export default function EmployeesPage() {
                         {e.name?.[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{e.name}{e.pay_type === "salary" && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Salaried</span>}</h3>
+                        <h3 className="font-semibold truncate">{e.name}{e.pay_type === "salary" && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Salaried</span>}{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
                             const pos = titleCase(e.home_position || e.position);
