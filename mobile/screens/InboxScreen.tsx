@@ -150,7 +150,13 @@ export default function InboxScreen() {
             {state.received.map((b) => (
               <Pressable
                 key={b.broadcast_id}
-                style={styles.card}
+                // PR #17: ONE unread affordance — the primary-green left
+                // border (replaces the old bold-text + dot combo, which was
+                // too subtle in the demo). Read cards keep the plain look.
+                style={[
+                  styles.card,
+                  !b.is_read && !b.is_mine && styles.unreadCard,
+                ]}
                 onPress={() =>
                   navigation.navigate("BroadcastDetail", {
                     broadcastId: b.broadcast_id,
@@ -158,23 +164,12 @@ export default function InboxScreen() {
                 }
               >
                 <View style={styles.rowTop}>
-                  <Text
-                    style={[
-                      styles.sender,
-                      !b.is_read && !b.is_mine && styles.unreadText,
-                    ]}
-                  >
+                  <Text style={styles.sender}>
                     {b.is_mine ? "You" : b.sender_name}
                   </Text>
-                  <View style={styles.rowMetaWrap}>
-                    {!b.is_read && !b.is_mine && <View style={styles.unreadDot} />}
-                    <Text style={styles.rowMeta}>{when(b.created_at)}</Text>
-                  </View>
+                  <Text style={styles.rowMeta}>{when(b.created_at)}</Text>
                 </View>
-                <Text
-                  style={[styles.body, !b.is_read && !b.is_mine && styles.unreadText]}
-                  numberOfLines={2}
-                >
+                <Text style={styles.body} numberOfLines={2}>
                   {b.body}
                 </Text>
                 {b.reply_count > 0 && (
@@ -277,30 +272,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 14,
   },
+  unreadCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
   rowTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 3,
   },
-  rowMetaWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
   sender: {
     fontSize: 14,
     fontWeight: "600",
     color: colors.foreground,
-  },
-  unreadText: {
-    fontWeight: "700",
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
   },
   rowMeta: {
     fontSize: 12,

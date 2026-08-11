@@ -210,12 +210,19 @@ export type AudienceEmployee = {
 /**
  * Active-employee list for the compose audience picker (manager RLS grants
  * the read). Department + position ride along for the audience filter chips.
+ *
+ * Department comes from the departments TABLE via department_id (the column
+ * the Add-Employee wizard actually writes), falling back to the legacy
+ * employees.department text column. PR #16 read only the text column, which
+ * is NULL on wizard-created employees — so the Department chip row, which
+ * hides itself when it has no values, never appeared (the PR #17 audit
+ * finding).
  */
 export async function getAudienceEmployees(): Promise<AudienceEmployee[]> {
   const { data, error } = await supabase
     .from("employees")
     .select(
-      "id, first_name, last_name, position, home_position, department, termination_date"
+      "id, first_name, last_name, position, home_position, department, dept:departments(name), termination_date"
     )
     .is("termination_date", null)
     .order("first_name");
@@ -226,6 +233,6 @@ export async function getAudienceEmployees(): Promise<AudienceEmployee[]> {
     id: e.id,
     name: [e.first_name, e.last_name].filter(Boolean).join(" ").trim(),
     position: e.home_position ?? e.position ?? null,
-    department: e.department ?? null,
+    department: e.dept?.name ?? e.department ?? null,
   }));
 }
