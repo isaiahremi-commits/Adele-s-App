@@ -1110,9 +1110,14 @@ The full Aug 11 redesign, in seven workstreams:
   toggle — Yes files a same-day pto_submit right after the callout, both
   still manager-approved; no RPC signature change); last 2 broadcasts with
   See-all → Inbox. Every section fails soft.
-- **Manager Work mode (mobile).** Personal|Work segmented control above
-  the tabs for managers (AsyncStorage-cached; cached "work" honored only
-  once manager status confirms). Personal = the employee 5 tabs
+- **Manager Work mode (mobile).** Personal|Work segmented control INLINE
+  in every header's left slot — one standard-height navbar row of
+  [toggle] [title] [bell], via headerLeft on the tab headers and the
+  Schedule/PTO stack roots (a first cut stacked a padded bar above the
+  headers and pushed content ~100px down; fixed same night). Mode is
+  AsyncStorage-cached; a cached "work" is honored only once manager
+  status confirms; non-managers render no toggle and keep their headers
+  untouched. Personal = the employee 5 tabs
   (Home/Schedule/PTO/Pay/Settings — the old conditional Approvals tab is
   gone). Work = Team / Hours / Sales / End of day / Settings:
   - **Team:** everyone on today (callouts red-tagged), pickup requests

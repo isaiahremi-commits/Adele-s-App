@@ -4,7 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -79,9 +79,53 @@ const WorkTab = createBottomTabNavigator<WorkTabParamList>();
 const PtoStackNav = createNativeStackNavigator<PtoStackParamList>();
 const ScheduleStackNav = createNativeStackNavigator<ScheduleStackParamList>();
 
-// Manager Work/Personal mode (PR #18), remembered across launches.
+// Manager Work/Personal mode (PR #18), remembered across launches. The
+// toggle renders INLINE in each header's left slot (one standard-height
+// navbar row: [toggle] [title] [bell]) — a context carries the mode state
+// down so the nested Schedule/PTO stack headers can host it too.
 const MODE_KEY = "manadele_mode";
 type Mode = "personal" | "work";
+
+const ModeContext = createContext<{
+  isMgr: boolean;
+  mode: Mode;
+  switchMode: (m: Mode) => void;
+}>({ isMgr: false, mode: "personal", switchMode: () => {} });
+
+/** Compact Personal|Work segmented control for header-left. Renders
+ * nothing for non-managers, so their headers are untouched. */
+function ModeToggle() {
+  const { isMgr, mode, switchMode } = useContext(ModeContext);
+  if (!isMgr) return null;
+  return (
+    <View style={styles.modeToggle}>
+      {(
+        [
+          { key: "personal", label: "Personal" },
+          { key: "work", label: "Work" },
+        ] as const
+      ).map((opt) => (
+        <Pressable
+          key={opt.key}
+          style={[
+            styles.modeSegment,
+            mode === opt.key && styles.modeSegmentActive,
+          ]}
+          onPress={() => switchMode(opt.key)}
+        >
+          <Text
+            style={[
+              styles.modeSegmentText,
+              mode === opt.key && styles.modeSegmentTextActive,
+            ]}
+          >
+            {opt.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
 
 // Schedule gets its own stack so the tip-declaration screen has a native
 // back header (same pattern as the PTO stack).
@@ -91,7 +135,12 @@ function ScheduleStack() {
       <ScheduleStackNav.Screen
         name="ScheduleList"
         component={ScheduleScreen}
-        options={{ title: "Schedule", headerRight: () => <InboxBell /> }}
+        options={{
+          title: "Schedule",
+          headerTitleAlign: "center",
+          headerLeft: () => <ModeToggle />,
+          headerRight: () => <InboxBell />,
+        }}
       />
       <ScheduleStackNav.Screen
         name="TipDeclaration"
@@ -114,7 +163,12 @@ function PtoStack() {
       <PtoStackNav.Screen
         name="PtoList"
         component={PtoScreen}
-        options={{ title: "PTO", headerRight: () => <InboxBell /> }}
+        options={{
+          title: "PTO",
+          headerTitleAlign: "center",
+          headerLeft: () => <ModeToggle />,
+          headerRight: () => <InboxBell />,
+        }}
       />
       <PtoStackNav.Screen
         name="PtoDetail"
@@ -129,8 +183,12 @@ const tabScreenOptions = {
   tabBarActiveTintColor: colors.primary,
   tabBarInactiveTintColor: colors.muted,
   headerTitleStyle: { color: colors.foreground },
-  // The broadcast-inbox bell (PR #11) lives in every header. Tabs with
-  // their own stacks (Schedule, PTO) set it on their root screens instead.
+  headerTitleAlign: "center" as const,
+  // One navbar row: [Personal|Work toggle] [title] [bell]. The toggle is a
+  // no-op render for non-managers; the bell (PR #11) lives in every
+  // header. Tabs with their own stacks (Schedule, PTO) set the same trio
+  // on their root screens instead.
+  headerLeft: () => <ModeToggle />,
   headerRight: () => <InboxBell />,
 };
 
@@ -247,9 +305,10 @@ function WorkTabs() {
   );
 }
 
-// The signed-in shell. Managers get a sticky Personal|Work segmented
-// control above the tabs; the last mode is remembered (AsyncStorage) and a
-// cached "work" is honored only once manager status confirms.
+// The signed-in shell. The Personal|Work toggle lives INSIDE each header
+// (headerLeft, standard navbar height — no extra bar above the tabs); the
+// last mode is remembered (AsyncStorage) and a cached "work" is honored
+// only once manager status confirms.
 function MainShell() {
   const { user } = useAuth();
   const [isMgr, setIsMgr] = useState(false);
@@ -282,37 +341,9 @@ function MainShell() {
   const working = isMgr && mode === "work";
 
   return (
-    <View style={styles.shell}>
-      {isMgr && (
-        <View style={styles.modeBar}>
-          {(
-            [
-              { key: "personal", label: "Personal" },
-              { key: "work", label: "Work" },
-            ] as const
-          ).map((opt) => (
-            <Pressable
-              key={opt.key}
-              style={[
-                styles.modeChip,
-                mode === opt.key && styles.modeChipActive,
-              ]}
-              onPress={() => switchMode(opt.key)}
-            >
-              <Text
-                style={[
-                  styles.modeChipText,
-                  mode === opt.key && styles.modeChipTextActive,
-                ]}
-              >
-                {opt.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
+    <ModeContext.Provider value={{ isMgr, mode, switchMode }}>
       {working ? <WorkTabs /> : <PersonalTabs />}
-    </View>
+    </ModeContext.Provider>
   );
 }
 
@@ -431,39 +462,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  shell: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modeBar: {
+  // Header-left segmented control — compact enough for a ~50pt navbar.
+  modeToggle: {
     flexDirection: "row",
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 8,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modeChip: {
-    flex: 1,
-    alignItems: "center",
+    marginLeft: 12,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 999,
-    paddingVertical: 7,
-    backgroundColor: colors.card,
+    backgroundColor: colors.background,
+    overflow: "hidden",
   },
-  modeChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: "rgba(45, 184, 122, 0.12)",
+  modeSegment: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  modeChipText: {
-    fontSize: 13,
+  modeSegmentActive: {
+    backgroundColor: "rgba(45, 184, 122, 0.14)",
+  },
+  modeSegmentText: {
+    fontSize: 12,
     fontWeight: "600",
     color: colors.muted,
   },
-  modeChipTextActive: {
+  modeSegmentTextActive: {
     color: colors.primaryDim,
   },
 });
