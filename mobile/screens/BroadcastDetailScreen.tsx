@@ -26,6 +26,7 @@ import {
   reply,
 } from "../lib/broadcasts";
 import { isManager } from "../lib/manager";
+import { titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 import { markThreadSeen } from "../lib/threadSeen";
 
@@ -145,7 +146,7 @@ export default function BroadcastDetailScreen() {
               ]}
             >
               <View style={styles.itemTop}>
-                <Text style={styles.itemSender}>{item.sender_name}</Text>
+                <Text style={styles.itemSender}>{titleCase(item.sender_name)}</Text>
                 <Text style={styles.itemMeta}>{when(item.created_at)}</Text>
               </View>
               <Text style={styles.itemBody}>{item.body}</Text>
@@ -170,7 +171,7 @@ export default function BroadcastDetailScreen() {
             {receiptsOpen &&
               state.receipts.map((r) => (
                 <View key={r.employee_id} style={styles.receiptRow}>
-                  <Text style={styles.receiptName}>{r.employee_name}</Text>
+                  <Text style={styles.receiptName}>{titleCase(r.employee_name)}</Text>
                   <Text
                     style={[
                       styles.itemMeta,

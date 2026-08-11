@@ -33,6 +33,7 @@ import {
   updateDeclared,
 } from "../../lib/manager";
 import { getCurrentEmployee } from "../../lib/schedule";
+import { titleCase } from "../../lib/format";
 import { colors } from "../../lib/theme";
 
 // End-of-day wizard (PR #18): Hours → Tips → Sales → Notes → Submit.
@@ -390,7 +391,7 @@ export default function EndOfDayScreen() {
                   key={t.id}
                   style={[styles.dataRow, i > 0 && styles.rowBorder]}
                 >
-                  <Text style={styles.dataName}>{t.name}</Text>
+                  <Text style={styles.dataName}>{titleCase(t.name)}</Text>
                   <Text style={styles.dataMeta}>
                     {t.missing_punch
                       ? "⚠ missing punch"
@@ -441,7 +442,7 @@ export default function EndOfDayScreen() {
                     .filter((r) => r.sheet_id === sheet.id)
                     .map((r) => (
                       <View key={r.row_id} style={styles.dataRow}>
-                        <Text style={styles.dataName}>{r.name}</Text>
+                        <Text style={styles.dataName}>{titleCase(r.name)}</Text>
                         <Text style={styles.dataMeta}>
                           SC {fmtUSD(r.declared_sc)} · NC{" "}
                           {fmtUSD(r.declared_nc)}
@@ -478,7 +479,7 @@ export default function EndOfDayScreen() {
                             disabled={busy}
                             onPress={() => addMember(e.id)}
                           >
-                            <Text style={styles.pickerRow}>{e.name}</Text>
+                            <Text style={styles.pickerRow}>{titleCase(e.name)}</Text>
                           </Pressable>
                         ))}
                       <Pressable onPress={() => setAdding(null)}>

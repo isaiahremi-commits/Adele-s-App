@@ -501,7 +501,7 @@ export default function EmployeesPage() {
                         {e.name?.[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{e.name}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}</h3>
+                        <h3 className="font-semibold truncate">{titleCase(e.name)}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
                             const pos = titleCase(e.home_position || e.position);

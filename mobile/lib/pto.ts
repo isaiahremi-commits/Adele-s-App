@@ -44,7 +44,11 @@ export async function getMyBalance(): Promise<number> {
   if (!data || data.length === 0) return 0;
   if (data.length === 1) return Number(data[0].balance_hours ?? 0);
   // Multiple rows = manager view; pick the row linked to this login.
-  const uid = (await supabase.auth.getUser()).data.user?.id;
+  // getSession() (local, instant) — NOT getUser(), which is a network
+  // round-trip to the auth server and was the longest pole in the manager
+  // Home hang (PR #19 bug 1): fetch has no timeout on RN/web, so one
+  // stalled auth call wedged the whole screen.
+  const uid = (await supabase.auth.getSession()).data.session?.user.id;
   if (!uid) return 0;
   const { data: emp } = await supabase
     .from("employees")

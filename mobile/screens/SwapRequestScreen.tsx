@@ -20,6 +20,7 @@ import {
   getEligibleTeammates,
   submitSwapRequest,
 } from "../lib/swaps";
+import { titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 
 // Request a 1-to-1 swap for one of MY shifts: pick an eligible teammate
@@ -87,7 +88,7 @@ export default function SwapRequestScreen() {
         shiftChoice === ANY_SHIFT ? undefined : shiftChoice
       );
       showToast(
-        `Swap request sent to ${selected.employee_name} — manager approval follows.`
+        `Swap request sent to ${titleCase(selected.employee_name)} — manager approval follows.`
       );
       navigation.goBack();
     } catch (e) {
@@ -103,7 +104,7 @@ export default function SwapRequestScreen() {
         <Text style={styles.headerMeta}>
           {`${formatShiftTime(params.startTime)} – ${formatShiftTime(params.endTime)}`}
           {[params.position, params.outletName].filter(Boolean).length > 0
-            ? ` · ${[params.position, params.outletName].filter(Boolean).join(" · ")}`
+            ? ` · ${[titleCase(params.position), params.outletName].filter(Boolean).join(" · ")}`
             : ""}
         </Text>
         <Text style={styles.headerHint}>
@@ -153,7 +154,7 @@ export default function SwapRequestScreen() {
                   }}
                 >
                   <View style={styles.teammateInfo}>
-                    <Text style={styles.teammateName}>{t.employee_name}</Text>
+                    <Text style={styles.teammateName}>{titleCase(t.employee_name)}</Text>
                     <Text style={styles.teammateMeta}>
                       {t.employee_position ?? "—"} ·{" "}
                       {t.shifts.length === 0
@@ -185,7 +186,7 @@ export default function SwapRequestScreen() {
                       <Choice
                         key={s.shift_id}
                         label={`${fmtDay(s.shift_date)} · ${formatShiftTime(s.start_time)}–${formatShiftTime(s.end_time)}`}
-                        sub={[s.shift_position, s.outlet_name]
+                        sub={[titleCase(s.shift_position), s.outlet_name]
                           .filter(Boolean)
                           .join(" · ")}
                         active={shiftChoice === s.shift_id}
@@ -208,9 +209,9 @@ export default function SwapRequestScreen() {
             {formatShiftTime(params.startTime)}–{formatShiftTime(params.endTime)}
             ) for{" "}
             {selectedShift
-              ? `${selected.employee_name}'s ${fmtDay(selectedShift.shift_date)} shift (${formatShiftTime(selectedShift.start_time)}–${formatShiftTime(selectedShift.end_time)})`
-              : `any of ${selected.employee_name}'s shifts`}
-            , pending {selected.employee_name}'s and your manager's approval.
+              ? `${titleCase(selected.employee_name)}'s ${fmtDay(selectedShift.shift_date)} shift (${formatShiftTime(selectedShift.start_time)}–${formatShiftTime(selectedShift.end_time)})`
+              : `any of ${titleCase(selected.employee_name)}'s shifts`}
+            , pending {titleCase(selected.employee_name)}'s and your manager's approval.
           </Text>
           {formError && <Text style={styles.errorText}>{formError}</Text>}
           <Pressable

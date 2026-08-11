@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { showToast } from "../../components/Toast";
+import { useAuth } from "../../contexts/AuthContext";
 import type { RootStackParamList } from "../../App";
 import { formatTime12, titleCase } from "../../lib/format";
 import {
@@ -37,6 +38,7 @@ type LoadState =
 
 export default function WorkTeamScreen() {
   const navigation = useNavigation<Nav>();
+  const { user } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -52,7 +54,9 @@ export default function WorkTeamScreen() {
       else setRefreshing(true);
       try {
         const [team, inbox] = await Promise.all([
-          getTeamForDate(todayKey),
+          // caller filtered out server-shape-side (PR #19: Adèle never
+          // sees herself in her own team list)
+          getTeamForDate(todayKey, user?.id),
           getInbox().catch(() => null),
         ]);
         if (seq === requestSeq.current) {
@@ -73,7 +77,7 @@ export default function WorkTeamScreen() {
         if (seq === requestSeq.current) setRefreshing(false);
       }
     },
-    [todayKey]
+    [todayKey, user?.id]
   );
 
   useFocusEffect(
@@ -116,10 +120,9 @@ export default function WorkTeamScreen() {
         />
       }
     >
+      {/* Date lives in the navigation title now ("Team today · Tue, Aug 12") */}
       <View style={styles.headerRow}>
-        <Text style={styles.header}>
-          Team today · {format(new Date(), "EEE, MMM d")}
-        </Text>
+        <Text style={styles.subGreeting}>Here's who's on today.</Text>
         <Pressable onPress={() => navigation.navigate("Approvals")}>
           <Text style={styles.approvalsLink}>Approvals →</Text>
         </Pressable>
@@ -164,7 +167,7 @@ export default function WorkTeamScreen() {
                     <Text
                       style={[styles.name, t.called_out && styles.nameOut]}
                     >
-                      {t.first_name}
+                      {titleCase(t.first_name)}
                       {t.called_out ? "  " : ""}
                       {t.called_out && (
                         <Text style={styles.calledOutTag}>Called out</Text>
@@ -200,7 +203,7 @@ export default function WorkTeamScreen() {
                   style={[styles.pickupRow, i > 0 && styles.rowBorder]}
                 >
                   <Text style={styles.name}>
-                    {c.volunteer_name ?? "?"} → {c.caller_out_name}'s shift
+                    {titleCase(c.volunteer_name) || "?"} → {titleCase(c.caller_out_name)}'s shift
                   </Text>
                   <Text style={styles.meta}>
                     {[
@@ -272,10 +275,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  header: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.foreground,
+  subGreeting: {
+    fontSize: 14,
+    color: colors.muted,
   },
   approvalsLink: {
     fontSize: 14,

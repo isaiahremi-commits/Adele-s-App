@@ -21,6 +21,7 @@ import {
   getSentBroadcasts,
 } from "../lib/broadcasts";
 import { isManager } from "../lib/manager";
+import { titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 
 // Broadcast inbox, opened from the header bell. Everyone gets Received;
@@ -165,7 +166,7 @@ export default function InboxScreen() {
               >
                 <View style={styles.rowTop}>
                   <Text style={styles.sender}>
-                    {b.is_mine ? "You" : b.sender_name}
+                    {b.is_mine ? "You" : titleCase(b.sender_name)}
                   </Text>
                   <Text style={styles.rowMeta}>{when(b.created_at)}</Text>
                 </View>

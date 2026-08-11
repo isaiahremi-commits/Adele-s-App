@@ -31,7 +31,7 @@ import {
   getUpcomingShifts,
   postTipSheet,
 } from "../lib/manager";
-import { formatTime12 } from "../lib/format";
+import { formatTime12, titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 import LargePartyEntryModal from "./LargePartyEntryModal";
 
@@ -244,7 +244,7 @@ export default function ManagerInboxScreen() {
                     rowKey={`pto:${p.id}`}
                     expanded={expanded}
                     onToggle={() => toggleExpand(`pto:${p.id}`)}
-                    title={p.employee_name}
+                    title={titleCase(p.employee_name)}
                     subtitle={`${fmtDay(p.start_date)} – ${fmtDay(p.end_date)} · ${p.reason ?? "—"}${p.total_hours_requested ? ` · ${p.total_hours_requested}h` : ""}`}
                   >
                     <ActionRow
@@ -349,8 +349,8 @@ export default function ManagerInboxScreen() {
                     rowKey={`cov:${c.id}`}
                     expanded={expanded}
                     onToggle={() => toggleExpand(`cov:${c.id}`)}
-                    title={`${fmtDay(c.shift_date)} · ${fmtTime(c.start_time)}–${fmtTime(c.end_time)}${c.position ? ` · ${c.position}` : ""}`}
-                    subtitle={`${c.caller_out_name} called out · ${c.volunteer_name ?? "?"} volunteered${c.outlet_name ? ` · ${c.outlet_name}` : ""}`}
+                    title={`${fmtDay(c.shift_date)} · ${fmtTime(c.start_time)}–${fmtTime(c.end_time)}${c.position ? ` · ${titleCase(c.position)}` : ""}`}
+                    subtitle={`${titleCase(c.caller_out_name)} called out · ${titleCase(c.volunteer_name) || "?"} volunteered${c.outlet_name ? ` · ${c.outlet_name}` : ""}`}
                   >
                     <ActionRow
                       error={actionError}
@@ -395,15 +395,15 @@ export default function ManagerInboxScreen() {
                     rowKey={`swap:${w.id}`}
                     expanded={expanded}
                     onToggle={() => toggleExpand(`swap:${w.id}`, w)}
-                    title={`${w.initiator_name} ⇄ ${w.target_name}`}
+                    title={`${titleCase(w.initiator_name)} ⇄ ${titleCase(w.target_name)}`}
                     subtitle={`Gives ${fmtDay(w.requested_shift_date)} ${fmtTime(w.requested_start_time)}–${fmtTime(w.requested_end_time)} · takes ${w.needs_target_shift ? "any of their shifts" : `${fmtDay(w.offered_shift_date)} ${fmtTime(w.offered_start_time)}–${fmtTime(w.offered_end_time)}`}`}
                   >
                     <>
                       {w.needs_target_shift && (
                         <View style={styles.pickerBlock}>
                           <Text style={styles.pickerLabel}>
-                            Pick which of {w.target_name}'s shifts goes to{" "}
-                            {w.initiator_name}:
+                            Pick which of {titleCase(w.target_name)}'s shifts goes to{" "}
+                            {titleCase(w.initiator_name)}:
                           </Text>
                           {targetShifts === null ? (
                             <ActivityIndicator color={colors.primary} />
@@ -434,7 +434,7 @@ export default function ManagerInboxScreen() {
                                 <Text style={styles.pickRowText}>
                                   {fmtDay(sh.date)} · {fmtTime(sh.start_time)}–
                                   {fmtTime(sh.end_time)}
-                                  {sh.position ? ` · ${sh.position}` : ""}
+                                  {sh.position ? ` · ${titleCase(sh.position)}` : ""}
                                 </Text>
                               </Pressable>
                             ))
@@ -493,7 +493,7 @@ export default function ManagerInboxScreen() {
                     rowKey={`tc:${t.id}`}
                     expanded={expanded}
                     onToggle={() => toggleExpand(`tc:${t.id}`)}
-                    title={`${t.employee_name} · ${fmtDay(t.date)}`}
+                    title={`${titleCase(t.employee_name)} · ${fmtDay(t.date)}`}
                     subtitle={
                       t.missing_punch
                         ? `⚠ Missing clock in/out · in ${fmtClock(t.clock_in)} · out ${fmtClock(t.clock_out)}`

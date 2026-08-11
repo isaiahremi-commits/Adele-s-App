@@ -1148,6 +1148,71 @@ The full Aug 11 redesign, in seven workstreams:
 - Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
   `expo export` bundles clean (iOS, Android, web).
 
+### PR #19 — Pre-demo fixes + polish sweep (2026-08-11, for the Aug 12 demo)
+
+**MIGRATION 020 PENDING — Isaiah applies via Supabase dashboard** (after
+the applied chain; `supabase/020_feed_rpc_soft_returns.sql`). Until then
+the console 400s continue for tenant-less/unlinked edge callers; nothing
+else in this PR depends on it. Pre-demo data-cleanup SQL is in the PR
+description for Isaiah to copy-paste — no code depends on it.
+
+- **CRITICAL — manager Home stuck on "Loading…" (bug 1).** Root cause:
+  Home gated its FIRST PAINT on a five-way Promise.all, and fetch has no
+  timeout on RN/web — one stalled request froze the spinner forever. The
+  manager path had the longest poles: getMyBalance takes the multi-row
+  branch (manager RLS returns every balance) and made a nested
+  `auth.getUser()` NETWORK round-trip that can wedge against an in-flight
+  token refresh. Fixed three ways: getMyBalance now uses `getSession()`
+  (local, instant); Home paints as soon as the two critical reads land
+  (both watchdogged at 8s → worst case is the friendly retry state, never
+  an infinite spinner); the four side sections (teammates, broadcasts,
+  PTO balance, callout count) hydrate independently and fail soft to
+  their defaults.
+- **RPC 400s (bug 2) — root-caused and closed by Migration 020.** 016
+  softened the feeds' unlinked raise but every polled feed STILL raises
+  'No tenant on your session' — any signed-in caller whose JWT lacks the
+  tenant claim (token minted pre-stamp, poll racing a refresh) 400s on
+  every cycle; my_inbox polls every 30s. 020 patches the four polled
+  feeds in place (coverage_available_for_me, my_callouts_and_coverage,
+  my_swap_requests, my_inbox — the 016 pg_get_functiondef mechanism) and
+  BACKSTOPS 016's unlinked softening wherever it might be missing.
+  my_teammate_shifts (018) was already soft — asserted, not patched;
+  mutations and broadcast_thread keep raising by design. Verified
+  **18/18** in PGlite on the real 010→011→013→016→018→020 chain:
+  tenant-less and unlinked callers get empty sets from all five feeds,
+  linked callers still get data, callout_submit/broadcast_thread still
+  guard, idempotent re-run.
+- **Bell padding (bug 3): verified already correct** — InboxBell has
+  carried `paddingRight: 16` since PR #12's trailing-inset fix, and every
+  header in both modes renders this one component. No change needed.
+- **Toggle inline (item 4): shipped ahead** on main (389d21b, Aug 11
+  night) — headerLeft toggle, one standard-height row of
+  [Personal|Work] [title] [bell]. Verified present on this branch.
+- **Work → Team header:** the navigation title is now the greeting —
+  "Team today · Tue, Aug 12" — with a warm "Here's who's on today."
+  subtitle in the body (date no longer duplicated in-screen).
+- **Tab label clipping** ("Pay" → "Pav", "Settings" → "Settina"):
+  `tabBarLabelStyle { fontSize: 11, lineHeight: 16 }` on both tab bars —
+  descenders get room.
+- **Team list hygiene:** the caller is filtered out (Adèle never sees
+  herself), Restaurant Managers are excluded unless their shift carries a
+  position (operational shift), and rows dedupe defensively on
+  (auth_user_id, time slot) — duplicate employees rows linked to one
+  login are a data problem for cleanup, but the list stays right
+  meanwhile.
+- **Title Case display sweep (positions + names, display-only — data
+  untouched):** ManagerInbox (PTO/coverage/swap/timecard rows + shift
+  picker), SwapRequestScreen, TipDeclarationScreen, CalloutModal,
+  ScheduleScreen's coverage/swap/callout sections, Inbox +
+  BroadcastDetail sender/receipt names, Home greeting + broadcast
+  senders, ComposeBroadcast picker names, Work Team/Hours/EndOfDay
+  names, web /employees row names. (Chips, grid, detail modal, wizard
+  badges were already covered by PRs #16–#18.)
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean (iOS, Android, web). Diff audit: PTO
+  submit, callout, broadcast send/reply paths untouched beyond the
+  display-only casing wraps.
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle

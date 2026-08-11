@@ -316,13 +316,25 @@ export type TeamShift = {
   called_out: boolean;
 };
 
-/** Everyone scheduled on a date, with called-out flags (Team tab). */
-export async function getTeamForDate(date: string): Promise<TeamShift[]> {
+/**
+ * Everyone scheduled on a date, with called-out flags (Team tab).
+ * PR #19 hygiene:
+ *   - the CALLER never appears (Adèle shouldn't see herself);
+ *   - Restaurant Managers are excluded UNLESS the shift carries a position
+ *     (a manager working an operational shift stays visible);
+ *   - defensive dedupe on (auth_user_id, time slot) — duplicate employees
+ *     rows linked to one login are a data problem, but the list shouldn't
+ *     show the same person twice while it exists.
+ */
+export async function getTeamForDate(
+  date: string,
+  callerAuthId?: string
+): Promise<TeamShift[]> {
   const [{ data, error }, calloutsRes] = await Promise.all([
     supabase
       .from("shifts")
       .select(
-        "id, employee_id, start_time, end_time, position, outlets(name), employees!inner(first_name, last_name)"
+        "id, employee_id, start_time, end_time, position, outlets(name), employees!inner(first_name, last_name, title, auth_user_id)"
       )
       .eq("date", date)
       .order("start_time"),
@@ -334,17 +346,28 @@ export async function getTeamForDate(date: string): Promise<TeamShift[]> {
   const calledOut = new Set(
     (calloutsRes.data ?? []).map((c) => c.employee_id)
   );
-  return (data ?? []).map((s) => ({
-    shift_id: s.id,
-    employee_id: s.employee_id ?? "",
-    first_name: s.employees?.first_name ?? "?",
-    last_name: s.employees?.last_name ?? "",
-    position: s.position ?? null,
-    start_time: s.start_time ?? null,
-    end_time: s.end_time ?? null,
-    outlet_name: s.outlets?.name ?? null,
-    called_out: s.employee_id !== null && calledOut.has(s.employee_id),
-  }));
+  const seen = new Set<string>();
+  const out: TeamShift[] = [];
+  for (const s of data ?? []) {
+    if (callerAuthId && s.employees?.auth_user_id === callerAuthId) continue;
+    if (s.employees?.title === "Restaurant Manager" && !s.position) continue;
+    const person = s.employees?.auth_user_id ?? s.employee_id ?? s.id;
+    const key = `${person}|${s.start_time ?? ""}|${s.end_time ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      shift_id: s.id,
+      employee_id: s.employee_id ?? "",
+      first_name: s.employees?.first_name ?? "?",
+      last_name: s.employees?.last_name ?? "",
+      position: s.position ?? null,
+      start_time: s.start_time ?? null,
+      end_time: s.end_time ?? null,
+      outlet_name: s.outlets?.name ?? null,
+      called_out: s.employee_id !== null && calledOut.has(s.employee_id),
+    });
+  }
+  return out;
 }
 
 export type RangeShift = {

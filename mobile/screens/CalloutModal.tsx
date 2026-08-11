@@ -17,6 +17,7 @@ import {
   submitCallout,
 } from "../lib/coverage";
 import { submitRequest } from "../lib/pto";
+import { titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 
 // Call out of one upcoming shift: locked reason chips, optional notes, and
@@ -109,7 +110,7 @@ export default function CalloutModal({
             {[dateLabel, timeLabel].join(" · ")}
           </Text>
           <Text style={styles.shiftMeta}>
-            {[shift.position, shift.outlets?.name].filter(Boolean).join(" · ") ||
+            {[titleCase(shift.position), shift.outlets?.name].filter(Boolean).join(" · ") ||
               "Shift"}
           </Text>
 
