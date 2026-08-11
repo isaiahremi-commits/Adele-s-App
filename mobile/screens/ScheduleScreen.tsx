@@ -141,18 +141,10 @@ export default function ScheduleScreen() {
           return;
         }
         const shifts = await getShiftsForWeek(employee.id, weekStart, weekEnd);
-        const outletIds = [
-          ...new Set(
-            shifts
-              .map((s) => s.outlet_id)
-              .filter((id): id is string => id !== null)
-          ),
-        ];
-        const teammates = await getTeammatesForWeek(
-          employee,
-          weekStart,
-          weekEnd,
-          outletIds
+        // Teammates come from the 018 RPC; fail-soft (like tips/coverage/
+        // swaps) so a pre-018 DB just hides the section, never the schedule.
+        const teammates = await getTeammatesForWeek(weekStart, weekEnd).catch(
+          () => []
         );
         if (seq === requestSeq.current) {
           setState({ kind: "ready", employee, shifts, teammates });
