@@ -442,6 +442,8 @@ export type Database = {
         ]
       }
       employees: {
+        // home_address / emergency_contact_* / has_completed_self_onboarding
+        // (pending 019, Phase 2) HAND-ADDED — regen after apply.
         Row: {
           annual_salary: number | null
           auth_user_id: string | null
@@ -451,8 +453,12 @@ export type Database = {
           department: string | null
           department_id: string | null
           email: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
           employee_number: string | null
           first_name: string
+          has_completed_self_onboarding: boolean
+          home_address: string | null
           home_outlet_id: string | null
           home_position: string | null
           id: string
@@ -481,8 +487,12 @@ export type Database = {
           department?: string | null
           department_id?: string | null
           email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           employee_number?: string | null
           first_name: string
+          has_completed_self_onboarding?: boolean
+          home_address?: string | null
           home_outlet_id?: string | null
           home_position?: string | null
           id?: string
@@ -511,8 +521,12 @@ export type Database = {
           department?: string | null
           department_id?: string | null
           email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           employee_number?: string | null
           first_name?: string
+          has_completed_self_onboarding?: boolean
+          home_address?: string | null
           home_outlet_id?: string | null
           home_position?: string | null
           id?: string
@@ -549,6 +563,49 @@ export type Database = {
           },
           {
             foreignKeyName: "employees_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eod_reports: {
+        // Whole table pending 019 (Phase 2) — HAND-ADDED, regen after apply.
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          report_date: string
+          submitted_by: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          report_date: string
+          submitted_by?: string | null
+          tenant_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          report_date?: string
+          submitted_by?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eod_reports_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eod_reports_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -618,6 +675,59 @@ export type Database = {
             columns: ["tip_sheet_id"]
             isOneToOne: false
             referencedRelation: "tip_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      late_signals: {
+        // Whole table pending 019 (Phase 2) — HAND-ADDED, regen after apply.
+        Row: {
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          minutes_late: number
+          shift_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          employee_id: string
+          id?: string
+          minutes_late: number
+          shift_id?: string | null
+          tenant_id?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          minutes_late?: number
+          shift_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "late_signals_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "late_signals_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "late_signals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1814,6 +1924,10 @@ export type Database = {
       // — same caveat.
       // HAND-ADDED likewise for pending migration 018_employee_schedule_rls.sql
       // (my_teammate_shifts, employee_sees_team_shift) — same caveat.
+      // HAND-ADDED likewise for pending migration
+      // 019_pay_type_and_personal_info.sql (employee_self_onboard,
+      // running_late_submit; also employees personal columns +
+      // late_signals + eod_reports tables above) — same caveat.
       am_i_a_manager: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1929,6 +2043,17 @@ export type Database = {
       employee_sees_team_shift: {
         Args: { p_outlet_id: string; p_owner_id: string }
         Returns: boolean
+      }
+      employee_self_onboard: {
+        Args: {
+          p_address?: string
+          p_dob?: string
+          p_emergency_name?: string
+          p_emergency_phone?: string
+          p_phone?: string
+          p_tshirt_size?: string
+        }
+        Returns: Json
       }
       employee_terminate: {
         Args: { p_employee_id: string; p_termination_date?: string }
@@ -2155,6 +2280,10 @@ export type Database = {
         Returns: string
       }
       pto_summary: { Args: { p_employee_id: string }; Returns: Json }
+      running_late_submit: {
+        Args: { p_minutes: number; p_shift_id?: string }
+        Returns: string
+      }
       pto_unapprove: { Args: { p_request_id: string }; Returns: Json }
       shift_start_ts: {
         Args: { p_date: string; p_start: string }

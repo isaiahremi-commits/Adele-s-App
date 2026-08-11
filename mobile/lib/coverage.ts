@@ -69,6 +69,23 @@ export async function submitCallout(
 }
 
 /** Open coverage requests the signed-in employee is eligible to cover. */
+/**
+ * "Running late" signal (PR #18, migration 019). Recording only — until
+ * push lands (PR #19), Adèle sees these in the DB / hears via broadcast.
+ */
+export async function submitRunningLate(
+  minutes: number,
+  shiftId?: string
+): Promise<void> {
+  const { error } = await supabase.rpc("running_late_submit", {
+    p_minutes: minutes,
+    ...(shiftId ? { p_shift_id: shiftId } : {}),
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function getCoverageAvailable(): Promise<CoverageOpportunity[]> {
   const { data, error } = await supabase.rpc("coverage_available_for_me");
   if (error) {

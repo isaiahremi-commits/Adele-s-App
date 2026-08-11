@@ -32,6 +32,8 @@ type Employee = {
   sms_opt_in?: boolean;
   sms_opt_in_pending?: boolean;
   sms_opted_in_at?: string | null;
+  // absent until migration 019 — the indicator hides itself pre-apply
+  has_completed_self_onboarding?: boolean;
 };
 
 type Outlet = { id: string; name: string };
@@ -499,7 +501,7 @@ export default function EmployeesPage() {
                         {e.name?.[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{e.name}{e.pay_type === "salary" && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Salaried</span>}{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}</h3>
+                        <h3 className="font-semibold truncate">{e.name}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
                             const pos = titleCase(e.home_position || e.position);
@@ -517,6 +519,18 @@ export default function EmployeesPage() {
                             </div>
                           );
                         })()}
+                        {/* PR #18: self-onboarding progress (column lands with
+                            migration 019; hidden before then) */}
+                        {e.has_completed_self_onboarding === false && !e.termination_date && (
+                          <div className="text-xs mt-1 ml-1 inline-block px-2 py-0.5 rounded-md"
+                            style={{ color: "var(--amber)", border: "1px solid var(--amber)", opacity: 0.9 }}>
+                            Pending self-onboarding
+                          </div>
+                        )}
+                        {e.has_completed_self_onboarding === true && !e.termination_date && (
+                          <span className="text-xs ml-1" title="Self-onboarding complete"
+                            style={{ color: "var(--primary)" }}>✓</span>
+                        )}
                       </div>
                     </div>
                     <span className="text-xs" style={{ color: "var(--muted)" }}>
