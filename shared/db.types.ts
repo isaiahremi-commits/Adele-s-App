@@ -1812,6 +1812,8 @@ export type Database = {
       // HAND-ADDED likewise for pending migration 017_tipped_positions.sql
       // (employee_is_tipped; also outlet_roles.is_tipped in Tables above)
       // — same caveat.
+      // HAND-ADDED likewise for pending migration 018_employee_schedule_rls.sql
+      // (my_teammate_shifts, employee_sees_team_shift) — same caveat.
       am_i_a_manager: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1924,6 +1926,10 @@ export type Database = {
         Args: { p_employee_id: string }
         Returns: Json
       }
+      employee_sees_team_shift: {
+        Args: { p_outlet_id: string; p_owner_id: string }
+        Returns: boolean
+      }
       employee_terminate: {
         Args: { p_employee_id: string; p_termination_date?: string }
         Returns: Json
@@ -2019,6 +2025,23 @@ export type Database = {
           status: string
           swap_id: string
           target_accepted_at: string
+        }[]
+      }
+      my_teammate_shifts: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          employee_id: string
+          end_time: string
+          first_name: string
+          last_name: string
+          notes: string
+          outlet_id: string
+          outlet_name: string
+          shift_date: string
+          shift_id: string
+          shift_position: string
+          shift_type: string
+          start_time: string
         }[]
       }
       pay_breakdown: {

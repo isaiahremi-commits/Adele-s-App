@@ -938,6 +938,102 @@ Two features straight from Adèle's Aug 10 meeting, for the 3pm follow-up.
   revoked). Root + mobile `tsc --noEmit` clean; `next build` clean;
   `expo export` bundles clean (iOS, Android, web).
 
+### PR #17 — Demo-day polish + employee schedule RLS (2026-08-11)
+
+**MIGRATION 018 PENDING — Isaiah to apply via Supabase dashboard before
+employees see their schedule.** (`supabase/018_employee_schedule_rls.sql`,
+after 005/007.) Until then employees keep seeing the "isn't linked" state
+they see today, and the teammates section fail-softs to hidden for
+everyone; nothing else changes. The six polish items below need no
+migration.
+
+Six cosmetic items from the Aug 11 UI audit (PR #14's polish branch was
+closed and dropped; these are the highest-signal survivors plus new
+findings), plus the PR #4 KNOWN RLS GAP finally closed:
+
+- **Migration 018 — employee-grade RLS for the Schedule tab.** The gap:
+  employees/shifts/outlets carried only manager_full_access, so a
+  non-manager saw zero rows and the Schedule tab showed "isn't linked to
+  an employee record" even for linked staff. Additive SELECT policies
+  (writes + manager visibility untouched): employees.own_rows_select
+  (auth_user_id = auth.uid(), tenant-scoped — getCurrentEmployee now
+  resolves), shifts.own_rows_select (the 007/008 shape),
+  shifts.teammate_shifts_select (same-DEPARTMENT teammates' shifts at MY
+  outlets — membership by 010's triple: home_outlet_id, employee_outlets,
+  or any shift there; departments compare case-insensitively per the 019
+  lesson) via SECURITY DEFINER employee_sees_team_shift shared by policy
+  AND feed so they can't drift, and outlets.tenant_member_select (outlet
+  names for the embeds).
+- **Deliberate design: teammate NAMES flow through a definer RPC, not
+  employees RLS.** The old client query embedded employees!inner, which
+  only works if teammates' employees ROWS are readable — and RLS has no
+  column granularity, so that policy would have exposed pay rates, DOB
+  and phone to any direct query. Instead `my_teammate_shifts(p_start,
+  p_end)` returns exactly the safe columns (shift fields + first/last
+  name + outlet name), narrowed to outlets the caller is scheduled at in
+  the range (the exact old client behavior); empty set for unlinked
+  callers (016 posture — it's a focus-polled feed). getTeammatesForWeek
+  now calls it (server owns the filters); ScheduleScreen fail-softs
+  teammates to hidden pre-018 instead of erroring the tab.
+  `shared/db.types.ts`: my_teammate_shifts + employee_sees_team_shift
+  hand-added (regen after 018).
+- Verified (018): 28-check PGlite persona matrix on a live-shape chain
+  (mocked auth + 004b/005-shape manager policies + real 018 ×2), driven
+  by the EXACT mobile query shapes: damien resolves his own employees
+  row and week shifts with outlet names; **leak check — a full
+  employees select returns ONLY his own row (teammate rates sealed)**;
+  direct shifts reads include same-dept teammates at his outlets
+  (lowercase-department match, employee_outlets membership) and exclude
+  other-department same-outlet, same-department other-outlet,
+  cross-tenant; the feed returns Billy + Bella with names, narrowed to
+  scheduled-this-range outlets, never self; manager visibility
+  unchanged (all rows); unlinked → empty everywhere without errors;
+  employee INSERT/UPDATE on shifts still blocked; anon fully revoked.
+
+- **Manager Inbox copy de-jargoned:** tip-sheet rows now read "Needs
+  totals" / "Ready for pay" (were "Needs compute" / "Ready to post");
+  buttons "Run totals" / "Send to pay" (were "Compute & mark ready" /
+  "Post sheet") with matching toasts and plain-language notes ("these
+  amounts go into paychecks", no more "the pay engine starts reading
+  it"); timecard rows say "Missing clock in/out" instead of "Missing
+  punch". Audited the whole screen — no raw status enums render; the
+  remaining copy (coverage/swap/PTO) was already plain.
+- **Position chips display Title Case** in the broadcast composer via a
+  new `mobile/lib/format.ts` `titleCase` (exact mirror of the web
+  `lib/format.ts` helper — "bar back" → "Bar Back", "Barback" stays
+  "Barback"). Display-only: chips carry a `display` transform while the
+  raw stored value keeps doing the filtering; the per-row position meta
+  is title-cased too. Underlying data untouched (Adèle owns that
+  cleanup).
+- **Department filter row fixed (the PR #16 gap):** the row existed but
+  hid itself — `FilterChipRow` renders nothing when it has no options,
+  and options came from the legacy `employees.department` TEXT column,
+  which the Add-Employee wizard never writes (it sets `department_id`).
+  `getAudienceEmployees` now embeds `departments(name)` via
+  department_id with the text column as fallback, so the row populates
+  for wizard-created staff. Department + position + search still
+  intersect; department chip labels stay verbatim (admin-entered proper
+  names).
+- **Settings tab anchored top** (was a lone vertically-centered card,
+  floaty on tall screens) with the other tabs' padding/gap rhythm.
+  Account card keeps email + sign-out at its bottom; below it a settings
+  list: Notifications and Contact-your-manager placeholder rows
+  (chevron, "coming soon" toast) and an About Manadele row showing
+  Version (read from app.json) + the relocated "Terms accepted" line.
+- **Pay tab empty state:** projected gross renders "$0.00" with a "No
+  earnings recorded yet." subtitle when null/zero — never the em-dash,
+  which read as a loading failure. The em-dash still (correctly) marks
+  missing-rate cells in the earnings breakdown.
+- **Inbox unread affordance consolidated:** unread received broadcasts
+  get a 3px primary-green left border on the card — ONE clear signal,
+  replacing the old bold-text + dot combo that was too subtle in the
+  demo. Read cards keep the plain treatment.
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean (iOS, Android, web). Regression
+  spot-check by diff audit: sign-in, PTO, callout, and broadcast
+  send/reply paths untouched — the only data-layer change is the
+  read-only audience select gaining the departments embed.
+
 ### Upcoming
 
 - Employee-grade RLS for schedule reads (own employees row, shifts,

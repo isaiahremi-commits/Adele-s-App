@@ -18,6 +18,7 @@ import {
   getAudienceEmployees,
   send,
 } from "../lib/broadcasts";
+import { titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 
 // Manager-only: compose a broadcast to everyone or a searched/multi-selected
@@ -237,6 +238,9 @@ export default function ComposeBroadcastScreen() {
                   options={positions}
                   selected={posFilter}
                   onToggle={(v) => toggleFilter(setPosFilter, v)}
+                  // Stored casing is mixed ("bar back", "Bartender") —
+                  // display Title Case, filter on the raw value.
+                  display={titleCase}
                 />
 
                 {filtered.length > 0 && (
@@ -272,7 +276,7 @@ export default function ComposeBroadcastScreen() {
                         <Text style={styles.pickName}>{e.name}</Text>
                         {(e.position || e.department) && (
                           <Text style={styles.pickMeta}>
-                            {[e.position, e.department]
+                            {[titleCase(e.position), e.department]
                               .filter(Boolean)
                               .join(" · ")}
                           </Text>
@@ -312,12 +316,15 @@ function FilterChipRow({
   options,
   selected,
   onToggle,
+  display,
 }: {
   label: string;
   options: string[];
   /** Lowercased selected values; empty = "All". */
   selected: Set<string>;
   onToggle: (value: string | null) => void;
+  /** Display-only label transform (e.g. titleCase); raw value still filters. */
+  display?: (value: string) => string;
 }) {
   if (options.length === 0) return null;
   const allActive = selected.size === 0;
@@ -350,7 +357,7 @@ function FilterChipRow({
               <Text
                 style={[styles.filterChipText, active && styles.chipTextActive]}
               >
-                {opt}
+                {display ? display(opt) : opt}
               </Text>
             </Pressable>
           );

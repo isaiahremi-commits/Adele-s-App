@@ -94,33 +94,42 @@ export async function getShiftsForWeek(
 }
 
 /**
- * Same-department teammates working at any of the given outlets during the
- * week (my own shifts excluded). `myOutletIds` comes from the caller's
- * already-fetched shifts — passing it in avoids re-querying them here.
+ * Same-department teammates working at my outlets during the week (own
+ * shifts excluded), via the my_teammate_shifts RPC (migration 018).
+ *
+ * Why an RPC and not the old employees!inner embed: the embed needs
+ * teammates' employees ROWS to be RLS-readable, and a policy there would
+ * expose their whole row (pay rates, DOB, phone) to any direct query — RLS
+ * has no column granularity. The SECURITY DEFINER feed returns exactly the
+ * safe columns and applies the same-department / my-scheduled-outlets /
+ * week-range filters server-side, so the old client-side filters are gone.
  */
 export async function getTeammatesForWeek(
-  myEmployee: CurrentEmployee,
   weekStart: Date,
-  weekEnd: Date,
-  myOutletIds: string[]
+  weekEnd: Date
 ): Promise<TeammateShift[]> {
-  if (!myEmployee.department || myOutletIds.length === 0) {
-    return [];
-  }
-  const { data, error } = await supabase
-    .from("shifts")
-    .select(
-      `${SHIFT_COLUMNS}, employee_id, employees!inner ( id, first_name, last_name, department )`
-    )
-    .neq("employee_id", myEmployee.id)
-    .eq("employees.department", myEmployee.department)
-    .in("outlet_id", myOutletIds)
-    .gte("date", dateParam(weekStart))
-    .lte("date", dateParam(weekEnd))
-    .order("date", { ascending: true })
-    .order("start_time", { ascending: true });
+  const { data, error } = await supabase.rpc("my_teammate_shifts", {
+    p_start: dateParam(weekStart),
+    p_end: dateParam(weekEnd),
+  });
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  return (data ?? []).map((r) => ({
+    id: r.shift_id,
+    date: r.shift_date ?? null,
+    start_time: r.start_time ?? null,
+    end_time: r.end_time ?? null,
+    shift_type: r.shift_type ?? null,
+    notes: r.notes ?? null,
+    position: r.shift_position ?? null,
+    outlet_id: r.outlet_id ?? null,
+    outlets: r.outlet_name ? { name: r.outlet_name } : null,
+    employee_id: r.employee_id,
+    employees: {
+      id: r.employee_id,
+      first_name: r.first_name,
+      last_name: r.last_name,
+    },
+  }));
 }

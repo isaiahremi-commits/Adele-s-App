@@ -280,12 +280,18 @@ function CurrentEstimateCard({
     ? actual.regular_hours + actual.ot_hours + actual.training_hours
     : 0;
   const projected = state.currentPrediction?.gross_pay ?? null;
+  // PR #17: an empty period reads "$0.00 · No earnings recorded yet", never
+  // the em-dash (which looked like a loading failure in the demo).
+  const empty = projected === null || projected === 0;
   return (
     <View style={[styles.card, styles.estimateCard]}>
       <Text style={styles.estimateLabel}>Current pay period</Text>
       <Text style={styles.estimatePeriod}>{formatPeriod(state.current)}</Text>
-      <Text style={styles.estimateValue}>{fmtUSD(projected)}</Text>
+      <Text style={styles.estimateValue}>{fmtUSD(projected ?? 0)}</Text>
       <Text style={styles.estimateHint}>projected gross</Text>
+      {empty && (
+        <Text style={styles.estimateEmpty}>No earnings recorded yet.</Text>
+      )}
       <Text style={styles.estimateHours}>
         {fmtHours(hoursSoFar)} worked so far this period
       </Text>
@@ -750,6 +756,11 @@ const styles = StyleSheet.create({
     color: colors.foreground,
   },
   estimateHint: {
+    fontSize: 13,
+    color: colors.muted,
+  },
+  estimateEmpty: {
+    marginTop: 4,
     fontSize: 13,
     color: colors.muted,
   },

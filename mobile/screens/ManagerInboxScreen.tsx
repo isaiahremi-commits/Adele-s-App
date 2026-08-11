@@ -293,15 +293,15 @@ export default function ManagerInboxScreen() {
                     expanded={expanded}
                     onToggle={() => toggleExpand(`sheet:${s.id}`)}
                     title={`${s.outlet_name ?? "—"} · ${fmtDay(s.date)}`}
-                    subtitle={`${s.status === "pending" ? "Needs compute" : "Ready to post"} · ${s.row_count} ${s.row_count === 1 ? "declaration" : "declarations"} · declared ${fmtUSD(s.declared_total)}${s.large_party_total > 0 ? ` · parties ${fmtUSD(s.large_party_total)}` : ""}`}
+                    subtitle={`${s.status === "pending" ? "Needs totals" : "Ready for pay"} · ${s.row_count} ${s.row_count === 1 ? "declaration" : "declarations"} · declared ${fmtUSD(s.declared_total)}${s.large_party_total > 0 ? ` · parties ${fmtUSD(s.large_party_total)}` : ""}`}
                   >
                     <ActionRow
                       error={actionError}
                       busy={busy}
                       note={
                         s.status === "pending"
-                          ? "Computing runs the tip formula and locks employee edits."
-                          : "Posting locks the sheet; the pay engine starts reading it."
+                          ? "Running totals applies your tip formula and locks employee edits."
+                          : "Sending to pay locks the sheet — these amounts go into paychecks."
                       }
                       buttons={[
                         s.status === "pending"
@@ -309,7 +309,7 @@ export default function ManagerInboxScreen() {
                               label: confirmLabel(
                                 `sheet:${s.id}`,
                                 "compute",
-                                "Compute & mark ready"
+                                "Run totals"
                               ),
                               primary: true,
                               onPress: () =>
@@ -318,11 +318,11 @@ export default function ManagerInboxScreen() {
                                   "compute",
                                   () => computeTipSheet(s.id),
                                   () => load("refresh"),
-                                  "Tip sheet computed — now ready to post."
+                                  "Totals ready — review, then send to pay."
                                 ),
                             }
                           : {
-                              label: confirmLabel(`sheet:${s.id}`, "post", "Post sheet"),
+                              label: confirmLabel(`sheet:${s.id}`, "post", "Send to pay"),
                               primary: true,
                               onPress: () =>
                                 run(
@@ -330,7 +330,7 @@ export default function ManagerInboxScreen() {
                                   "post",
                                   () => postTipSheet(s.id),
                                   () => removeRow("tip_sheets", s.id),
-                                  "Tip sheet posted."
+                                  "Tip sheet sent to pay."
                                 ),
                             },
                       ]}
@@ -497,15 +497,15 @@ export default function ManagerInboxScreen() {
                     title={`${t.employee_name} · ${fmtDay(t.date)}`}
                     subtitle={
                       t.missing_punch
-                        ? `⚠ Missing punch · in ${fmtClock(t.clock_in)} · out ${fmtClock(t.clock_out)}`
+                        ? `⚠ Missing clock in/out · in ${fmtClock(t.clock_in)} · out ${fmtClock(t.clock_out)}`
                         : `in ${fmtClock(t.clock_in)} · out ${fmtClock(t.clock_out)} · ${t.break_minutes}m break`
                     }
                   >
                     {t.missing_punch ? (
                       <Text style={styles.mutedBody}>
-                        This timecard is missing a punch — fix it on the web
-                        Timecards page (approval requires both clock in and
-                        clock out).
+                        This timecard is missing a clock in or clock out — fix
+                        it on the web Timecards page first (approval needs
+                        both).
                       </Text>
                     ) : (
                       <ActionRow
