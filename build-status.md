@@ -1325,6 +1325,54 @@ Closes three July-30 scope items:
 - The moment credentials exist, the dev IPA is:
   `npx eas build --platform ios --profile development`.
 
+### PR #24 — Brand system integration (2026-08-12)
+
+- Full re-theme of BOTH apps to the Manadele Brand Guidelines V1: cream
+  (braunvieh milk `#F7F2E1`) canvas, white cards with 8%-chocolate
+  hairlines, swiss chocolate `#3A1F1A` text, apricot `#E8825A` primary,
+  pear success fills, gruyère warning fills, berries informational
+  pills. **All hex values are visual estimates** — the brand book
+  shipped with "Hex Code" placeholder text under every swatch; Adèle
+  confirms/adjusts after seeing them on-device.
+- **Elms Sans is FREE** — it's on Google Fonts under the OFL (no Inter
+  fallback needed). Mobile loads it via `@expo-google-fonts/elms-sans`
+  (+ Crimson Text); web self-hosts the woff2s (`app/fonts/` + OFL.txt)
+  via `next/font/local` because Next 14.2's `next/font/google` list
+  predates the font. Crimson Text (serif) is the supporting voice —
+  login taglines, used sparingly.
+- Source of truth: `shared/theme.ts` (brand + semantic tokens).
+  Mobile's `lib/theme.ts` imports it; web's `app/globals.css` mirrors
+  it (comment-linked, update in lockstep).
+- Mobile: `components/Text.tsx` wraps RN `Text`/`TextInput` and maps
+  each style's `fontWeight` to the right Elms Sans family (native
+  doesn't synthesize custom-font weights) — 29 files codemodded to
+  import it; ~65 hardcoded literals (21× `#dc2626`, 39× rgba tints,
+  scrims, shadows) swept to semantic tokens; React Navigation now gets
+  a brand `theme` (cream canvas — no white flashes) + white tab
+  bar/headers, chocolate titles in Elms semibold, apricot active /
+  60%-chocolate inactive tints; StatusBar pinned dark; login shows the
+  real logotype; native splash configured (cream + mark) via
+  expo-splash-screen.
+- Web: single light brand theme in `globals.css` — **the old green
+  dark mode + its toggle are retired** (the brand book defines no dark
+  palette; a brand-worthy one is a future design task). Manager
+  sidebar is now swiss chocolate with the cream/pear logotype, cream
+  links, apricot active states (brand-book cover treatment). Global
+  `:focus-visible` ring added (there was none), `tbody tr:hover` tints
+  braunvieh milk, favicon replaced with the mark (`app/icon.png`),
+  metadata title "Adele's" → "Manadele".
+- Logo: the m-arch mark + logotype were **recreated as parametric
+  SVG** from the brand book (PDF vectors not cleanly extractable) —
+  `public/brand/*.svg`, mobile icons/splash/wordmark PNGs generated
+  from the same geometry (chocolate tile + pear/cream mark per the "In
+  Situ" page). Android adaptive icon: chocolate bg + mark foreground +
+  white monochrome.
+- Contrast flags for Adèle (kept per spec, worth a look): white text
+  on apricot buttons ≈ 2.4:1 (chocolate-on-apricot would pass AA);
+  50%-chocolate muted text is ~3.2:1 on cream at small sizes.
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean.
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle

@@ -4,10 +4,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "./Text";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { showToast } from "./Toast";
@@ -204,7 +203,7 @@ function TimeField({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: colors.scrim,
     justifyContent: "center",
     padding: 24,
   },
@@ -276,7 +275,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   buttonRow: {

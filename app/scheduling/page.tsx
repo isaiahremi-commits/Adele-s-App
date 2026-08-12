@@ -744,7 +744,7 @@ export default function SchedulingPage() {
             className="chip"
             style={{
               background: deptFilter === "" ? "var(--primary)" : "var(--surface-2)",
-              color: deptFilter === "" ? "white" : "var(--foreground)",
+              color: deptFilter === "" ? "var(--primary-on)" : "var(--foreground)",
               cursor: "pointer",
               border: "1px solid var(--border)",
             }}
@@ -758,7 +758,7 @@ export default function SchedulingPage() {
               className="chip"
               style={{
                 background: deptFilter === d.id ? "var(--primary)" : "var(--surface-2)",
-                color: deptFilter === d.id ? "white" : "var(--foreground)",
+                color: deptFilter === d.id ? "var(--primary-on)" : "var(--foreground)",
                 cursor: "pointer",
                 border: "1px solid var(--border)",
               }}
@@ -783,7 +783,7 @@ export default function SchedulingPage() {
 
       {/* Day-4 item 2: read-only / per-outlet approval banner */}
       {(isPastWeek || approvedOutlets.length > 0) && (
-        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: "rgba(239,159,39,0.12)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
+        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: "var(--warning-bg)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
           {isPastWeek ? (
             "Viewing past schedule — read-only."
           ) : (
@@ -804,7 +804,7 @@ export default function SchedulingPage() {
         <div
           className="mb-4 p-3 rounded-md text-sm"
           style={{
-            background: toast.kind === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,90,90,0.15)",
+            background: toast.kind === "success" ? "var(--success-bg)" : "var(--danger-bg)",
             color: toast.kind === "success" ? "var(--primary)" : "var(--danger)",
             border: `1px solid ${toast.kind === "success" ? "var(--primary)" : "var(--danger)"}`,
           }}
@@ -864,7 +864,7 @@ export default function SchedulingPage() {
                         <div className="flex flex-col gap-1">
                           {pto && (
                             <div className="rounded-md text-xs px-2 py-1" title={`Approved PTO: ${pto.name} (${pto.reason})`}
-                              style={{ background: "rgba(239,159,39,0.18)", border: "1px dashed var(--amber)", color: "var(--amber)" }}>
+                              style={{ background: "var(--warning-border)", border: "1px dashed var(--amber)", color: "var(--amber)" }}>
                               PTO · {pto.reason}
                             </div>
                           )}
@@ -1053,7 +1053,7 @@ export default function SchedulingPage() {
           )}
 
           {formError && (
-            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+            <div className="text-sm p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
               {formError}
             </div>
           )}
@@ -1114,7 +1114,7 @@ export default function SchedulingPage() {
                   {departments.map((d) => {
                     const checked = copyForm.department_ids.includes(d.id);
                     return (
-                      <label key={d.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
+                      <label key={d.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "var(--primary-on)" : "var(--foreground)" }}>
                         <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, department_ids: toggle(copyForm.department_ids, d.id), positions: [], employee_ids: [] })} style={{ display: "none" }} />
                         {d.name}
                       </label>
@@ -1135,7 +1135,7 @@ export default function SchedulingPage() {
                   {filteredPositions.map((p) => {
                     const checked = copyForm.positions.includes(p);
                     return (
-                      <label key={p} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
+                      <label key={p} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "var(--primary-on)" : "var(--foreground)" }}>
                         <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, positions: toggle(copyForm.positions, p), employee_ids: [] })} style={{ display: "none" }} />
                         {titleCase(p)}
                       </label>
@@ -1156,7 +1156,7 @@ export default function SchedulingPage() {
                   {filteredEmps.map((e) => {
                     const checked = copyForm.employee_ids.includes(e.id);
                     return (
-                      <label key={e.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "white" : "var(--foreground)" }}>
+                      <label key={e.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "var(--primary-on)" : "var(--foreground)" }}>
                         <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, employee_ids: toggle(copyForm.employee_ids, e.id) })} style={{ display: "none" }} />
                         {e.name}
                       </label>

@@ -5,9 +5,9 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../components/Text";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -405,7 +405,7 @@ export default function HomeScreen() {
                 <Ionicons
                   name="alert-circle-outline"
                   size={20}
-                  color="#dc2626"
+                  color={colors.danger}
                 />
                 <Text style={styles.actionText}>Call out</Text>
               </Pressable>
@@ -567,9 +567,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   termBanner: {
-    backgroundColor: "rgba(217, 119, 6, 0.10)",
+    backgroundColor: colors.warningSoft,
     borderWidth: 1,
-    borderColor: "rgba(217, 119, 6, 0.4)",
+    borderColor: colors.warningBorder,
     borderRadius: 10,
     padding: 12,
   },
@@ -586,9 +586,9 @@ const styles = StyleSheet.create({
   },
   mgrPill: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(220, 38, 38, 0.10)",
+    backgroundColor: colors.dangerSoft,
     borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.4)",
+    borderColor: colors.dangerBorder,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
   mgrPillText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#dc2626",
+    color: colors.danger,
   },
   mgrAlertRow: {
     fontSize: 13,
@@ -604,9 +604,9 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
   },
   mpBanner: {
-    backgroundColor: "rgba(220, 38, 38, 0.08)",
+    backgroundColor: colors.dangerSoft,
     borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.45)",
+    borderColor: colors.dangerBorder,
     borderRadius: 10,
     padding: 12,
   },
@@ -625,13 +625,13 @@ const styles = StyleSheet.create({
   mpButton: {
     marginTop: 10,
     alignSelf: "flex-start",
-    backgroundColor: "#dc2626",
+    backgroundColor: colors.danger,
     borderRadius: 8,
     paddingVertical: 9,
     paddingHorizontal: 14,
   },
   mpButtonText: {
-    color: "#ffffff",
+    color: colors.primaryOn,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -746,7 +746,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: colors.scrim,
     justifyContent: "center",
     padding: 24,
   },
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(45, 184, 122, 0.12)",
+    backgroundColor: colors.primarySoft,
   },
   chipText: {
     fontSize: 13,

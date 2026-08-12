@@ -5,10 +5,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "../components/Text";
 import { supabase } from "../lib/supabase";
 import { colors } from "../lib/theme";
 
@@ -163,7 +162,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     padding: 10,
     marginBottom: 6,

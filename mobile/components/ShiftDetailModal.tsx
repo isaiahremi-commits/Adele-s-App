@@ -1,5 +1,6 @@
 import React from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "./Text";
 import { format } from "date-fns";
 import { titleCase } from "../lib/format";
 import {
@@ -225,7 +226,7 @@ function TipActionRow({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: colors.scrim,
     justifyContent: "center",
     padding: 20,
   },
@@ -248,7 +249,7 @@ const styles = StyleSheet.create({
     color: colors.foreground,
   },
   typePill: {
-    backgroundColor: "rgba(45, 184, 122, 0.14)",
+    backgroundColor: colors.infoSoft,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -256,7 +257,7 @@ const styles = StyleSheet.create({
   typePillText: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.primaryDim,
+    color: colors.infoText,
   },
   positionLine: {
     marginTop: 4,

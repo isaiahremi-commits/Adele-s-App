@@ -87,7 +87,7 @@ export default function SwapsPage() {
 
       {toast && (
         <div className="fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm z-50"
-          style={{ background: toast.kind === "success" ? "var(--primary)" : "var(--danger)", color: toast.kind === "success" ? "var(--primary-on)" : "#fff" }}>{toast.text}</div>
+          style={{ background: toast.kind === "success" ? "var(--primary)" : "var(--danger)", color: toast.kind === "success" ? "var(--primary-on)" : "var(--danger-on)" }}>{toast.text}</div>
       )}
     </div>
   );

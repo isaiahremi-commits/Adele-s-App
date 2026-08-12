@@ -6,10 +6,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "../components/Text";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute } from "@react-navigation/native";
@@ -311,7 +310,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   sendError: {
-    color: "#dc2626",
+    color: colors.danger,
     fontSize: 13,
     paddingHorizontal: 16,
     paddingBottom: 4,

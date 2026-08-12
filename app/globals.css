@@ -2,42 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Manadele brand palette — mirrors shared/theme.ts (Brand Guidelines V1).
+   Hex values are visual estimates: the brand book shipped with "Hex Code"
+   placeholders, so Adèle confirms/adjusts after seeing them on-device.
+   Single light theme — the old green dark mode retired with the re-brand
+   (a brand-worthy dark palette is a future design task). */
 :root {
-  --background: #0b0f0d;
-  --surface: #121815;
-  --surface-2: #1a2320;
-  --border: #243029;
-  --foreground: #e8efeb;
-  --muted: #8ba39a;
-  --primary: #4ecb94;
-  --primary-dim: #3aa578;
-  --amber: #ef9f27;
-  --danger: #ef5a5a;
-  --primary-on: #05100b;
-}
-
-html[data-theme="light"] {
-  --background: #f8f9fa;
-  --surface: #ffffff;
-  --surface-2: #f1f3f5;
-  --border: #e2e6ea;
-  --foreground: #1a1a1a;
-  --muted: #6b7280;
-  --primary: #2db87a;
-  --primary-dim: #229966;
-  --amber: #d97706;
-  --danger: #dc2626;
+  --background: #f7f2e1; /* braunvieh milk */
+  --surface: #ffffff; /* white cards on cream */
+  --surface-2: #f7f2e1; /* inputs / inactive segments — cream on white */
+  --border: rgba(58, 31, 26, 0.08); /* 8% swiss chocolate hairline */
+  --foreground: #3a1f1a; /* swiss chocolate */
+  --muted: rgba(58, 31, 26, 0.5); /* 50% swiss chocolate */
+  --primary: #e8825a; /* apricot */
+  --primary-dim: #c9663f;
+  --primary-soft: rgba(232, 130, 90, 0.14);
   --primary-on: #ffffff;
+  --amber: #8a6a15; /* deep gruyère — legible warning text on cream */
+  --warning-bg: rgba(240, 214, 119, 0.32); /* gruyère fill */
+  --warning-border: rgba(138, 106, 21, 0.4);
+  --success: #6f7423; /* darkened pear — legible on cream */
+  --success-bg: rgba(196, 200, 102, 0.3); /* pear fill */
+  --danger: #c24545;
+  --danger-bg: rgba(194, 69, 69, 0.09);
+  --danger-on: #ffffff;
+  --scrim: rgba(58, 31, 26, 0.5);
+  /* Manager sidebar — swiss chocolate with cream/apricot accents. */
+  --sidebar: #3a1f1a;
+  --sidebar-fg: rgba(247, 242, 225, 0.92);
+  --sidebar-muted: rgba(247, 242, 225, 0.55);
+  --sidebar-border: rgba(247, 242, 225, 0.14);
+  --sidebar-active: rgba(232, 130, 90, 0.18);
 }
 
 html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
   min-height: 100vh;
 }
 
 * { box-sizing: border-box; }
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
 @layer components {
   .card {
@@ -70,8 +80,8 @@ html, body {
   .btn-primary:hover { background: var(--primary-dim); }
   .btn-secondary { background: var(--surface-2); color: var(--foreground); border-color: var(--border); }
   .btn-secondary:hover { background: var(--border); }
-  .btn-amber { background: var(--amber); color: #1a1000; }
-  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-amber { background: #f0d677; color: #3a1f1a; } /* gruyère */
+  .btn-danger { background: var(--danger); color: var(--danger-on); }
   .chip {
     display: inline-flex;
     align-items: center;
@@ -80,10 +90,13 @@ html, body {
     font-size: 12px;
     font-weight: 500;
   }
-  .chip-green { background: rgba(78,203,148,0.15); color: var(--primary); }
-  .chip-amber { background: rgba(239,159,39,0.15); color: var(--amber); }
-  .chip-muted { background: rgba(139,163,154,0.15); color: var(--muted); }
+  .chip-green { background: var(--success-bg); color: var(--success); }
+  .chip-amber { background: var(--warning-bg); color: var(--amber); }
+  .chip-muted { background: rgba(58, 31, 26, 0.08); color: var(--muted); }
 }
+
+/* Brand table affordance: rows tint braunvieh milk on hover. */
+tbody tr:hover { background: var(--background); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--background); }
