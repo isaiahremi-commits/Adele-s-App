@@ -32,8 +32,9 @@ function LoginForm() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4" style={{ background: "var(--background)" }}>
       <div className="card p-8 w-full" style={{ maxWidth: 380 }}>
-        <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--primary)" }}>manadele</h1>
-        <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>Sign in to continue</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/manadele-logo.svg" alt="manadele" className="h-9 w-auto mb-2" />
+        <p className="text-[15px] font-serif italic mb-6" style={{ color: "var(--muted)" }}>Sign in to continue</p>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <label className="text-sm">
             <span style={{ color: "var(--muted)" }}>Email</span>
@@ -46,7 +47,7 @@ function LoginForm() {
               value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           {error && (
-            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,159,39,0.15)", color: "var(--amber)" }}>
+            <div className="text-sm p-2 rounded-md" style={{ background: "var(--warning-bg)", color: "var(--amber)" }}>
               {error}
             </div>
           )}

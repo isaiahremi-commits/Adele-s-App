@@ -467,7 +467,7 @@ export default function AddEmployeeWizard({
           )}
 
           {error && (
-            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+            <div className="text-sm p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
               {error}
             </div>
           )}

@@ -311,7 +311,7 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div
                       className="rounded-md p-2"
-                      style={{ background: "rgba(34,197,94,0.12)" }}
+                      style={{ background: "var(--success-bg)" }}
                     >
                       <div className="text-xs" style={{ color: "var(--primary)" }}>Approved</div>
                       <div className="text-sm font-semibold">{money(o.approved_total)}</div>
@@ -321,7 +321,7 @@ export default function DashboardPage() {
                     </div>
                     <div
                       className="rounded-md p-2"
-                      style={{ background: "rgba(245,158,11,0.15)" }}
+                      style={{ background: "var(--warning-bg)" }}
                     >
                       <div className="text-xs" style={{ color: "var(--amber)" }}>Pending</div>
                       <div className="text-sm font-semibold">{money(o.pending_total)}</div>

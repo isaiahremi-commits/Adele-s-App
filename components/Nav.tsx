@@ -18,26 +18,14 @@ const links = [
   { href: "/setup", label: "Setup", icon: "⚙" },
 ];
 
-type Theme = "light" | "dark";
-
-function applyTheme(theme: Theme) {
-  if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-theme", theme);
-  }
-}
-
 export default function Nav() {
   const pathname = usePathname();
   // The login screen renders standalone (no sidebar).
   const hidden = pathname === "/login";
-  const [theme, setTheme] = useState<Theme>("light");
   const [companyName, setCompanyName] = useState<string>("Loading...");
   const [collapsed, setCollapsed] = useState(false); // Item 16
 
   useEffect(() => {
-    const saved = (typeof window !== "undefined" && (localStorage.getItem("theme") as Theme | null)) || "light";
-    setTheme(saved);
-    applyTheme(saved);
     if (typeof window !== "undefined") {
       const c = localStorage.getItem("sidebar_collapsed") === "true";
       setCollapsed(c);
@@ -53,13 +41,6 @@ export default function Nav() {
       .catch(() => setCompanyName("My Restaurant"));
   }, []);
 
-  function toggleTheme() {
-    const next: Theme = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    applyTheme(next);
-    if (typeof window !== "undefined") localStorage.setItem("theme", next);
-  }
-
   function setCollapsedState(v: boolean) {
     setCollapsed(v);
     if (typeof window !== "undefined") {
@@ -71,30 +52,37 @@ export default function Nav() {
   if (hidden) return null;
 
   // Item 16: icons-only mini-rail when collapsed; labels hide, icons + tooltips stay.
-  const btnStyle = { background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--foreground)" } as const;
+  // Brand book cover treatment: swiss-chocolate sidebar, cream text, apricot
+  // active states, pear/cream logotype.
+  const btnStyle = {
+    background: "rgba(247, 242, 225, 0.08)",
+    border: "1px solid var(--sidebar-border)",
+    color: "var(--sidebar-fg)",
+  } as const;
   return (
     <aside
       className={`${collapsed ? "w-16 p-2" : "w-60 p-5"} shrink-0 border-r flex flex-col gap-1`}
-      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+      style={{ borderColor: "var(--sidebar-border)", background: "var(--sidebar)" }}
     >
       <div className={`flex ${collapsed ? "flex-col items-center" : "items-start justify-between"} px-1 py-3 mb-2 gap-2`}>
-        {!collapsed && (
+        {collapsed ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src="/brand/manadele-mark-dark.svg" alt="manadele" className="w-9 h-auto" />
+        ) : (
           <div className="min-w-0 flex-1 pr-2">
-            <h1 className="text-xl font-bold truncate" style={{ color: "var(--primary)" }}>{companyName}</h1>
-            <p className="text-xs" style={{ color: "var(--muted)" }}>manadele</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/manadele-logo-dark.svg" alt="manadele" className="h-8 w-auto mb-2" />
+            <p className="text-sm font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>
+              {companyName}
+            </p>
           </div>
         )}
         <div className={`flex ${collapsed ? "flex-col" : "items-center"} gap-1 shrink-0`}>
-          <button onClick={toggleTheme} aria-label="Toggle theme"
-            title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-sm" style={btnStyle}>
-            {theme === "light" ? "\u263E" : "\u2600"}
-          </button>
           <button onClick={() => setCollapsedState(!collapsed)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             className="w-8 h-8 rounded-md flex items-center justify-center text-sm" style={btnStyle}>
-            {collapsed ? "\u27E9" : "\u27E8"}
+            {collapsed ? "⟩" : "⟨"}
           </button>
         </div>
       </div>
@@ -107,8 +95,8 @@ export default function Nav() {
             title={collapsed ? link.label : undefined}
             className={`flex items-center ${collapsed ? "justify-center" : "gap-3"} px-3 py-2 rounded-lg text-sm transition-colors`}
             style={{
-              background: active ? "var(--surface-2)" : "transparent",
-              color: active ? "var(--primary)" : "var(--foreground)",
+              background: active ? "var(--sidebar-active)" : "transparent",
+              color: active ? "var(--primary)" : "var(--sidebar-fg)",
             }}
           >
             <span className="w-5 text-center">{link.icon}</span>
@@ -118,10 +106,10 @@ export default function Nav() {
       })}
       {!collapsed && (
         <div className="mt-auto pt-6 px-2">
-          <div className="pb-3 mb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="pb-3 mb-3" style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
             <SignOutButton />
           </div>
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
+          <p className="text-xs" style={{ color: "var(--sidebar-muted)" }}>
             Powered by <span style={{ color: "var(--primary)" }}>manadele</span>
           </p>
         </div>

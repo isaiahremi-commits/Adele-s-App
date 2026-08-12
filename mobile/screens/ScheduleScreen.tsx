@@ -5,9 +5,9 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../components/Text";
 import { addDays, addWeeks, endOfISOWeek, format, startOfISOWeek } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -1119,7 +1119,7 @@ const styles = StyleSheet.create({
   coverageError: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   volunteerButton: {

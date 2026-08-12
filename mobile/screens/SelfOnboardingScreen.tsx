@@ -4,10 +4,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "../components/Text";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { showToast } from "../components/Toast";
@@ -254,7 +253,7 @@ const styles = StyleSheet.create({
     color: colors.foreground,
   },
   required: {
-    color: "#dc2626",
+    color: colors.danger,
   },
   input: {
     borderWidth: 1,
@@ -285,7 +284,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(45, 184, 122, 0.12)",
+    backgroundColor: colors.primarySoft,
   },
   chipText: {
     fontSize: 13,
@@ -298,7 +297,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 12,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   submitButton: {

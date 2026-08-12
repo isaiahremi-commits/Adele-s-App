@@ -6,9 +6,9 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../components/Text";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -624,8 +624,8 @@ function TipHistoryCard({
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === "approved" || status === "posted"
-      ? { bg: "rgba(45, 184, 122, 0.14)", fg: colors.primaryDim }
-      : { bg: "rgba(217, 119, 6, 0.14)", fg: colors.amber };
+      ? { bg: colors.successSoft, fg: colors.successText }
+      : { bg: colors.warningSoft, fg: colors.amber };
   return (
     <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
       <Text style={[styles.statusPillText, { color: tone.fg }]}>{status}</Text>
@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: colors.scrim,
     justifyContent: "center",
     padding: 24,
   },

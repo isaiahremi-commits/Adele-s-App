@@ -443,7 +443,7 @@ export default function SetupPage() {
           <button className="btn btn-primary" type="submit">Add Department</button>
         </form>
         {deptError && (
-          <div className="text-sm mb-3 p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+          <div className="text-sm mb-3 p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
             {deptError}
           </div>
         )}
@@ -506,7 +506,7 @@ export default function SetupPage() {
                   <button className="text-xs" onClick={() => removeOutlet(o.id)} style={{ color: "var(--danger)" }}>Remove outlet</button>
                 </div>
                 {outletError[o.id] && (
-                  <div className="text-xs mb-3 p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+                  <div className="text-xs mb-3 p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
                     {outletError[o.id]}
                   </div>
                 )}

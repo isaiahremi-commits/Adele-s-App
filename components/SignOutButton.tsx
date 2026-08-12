@@ -6,7 +6,7 @@ export default function SignOutButton() {
       <button
         type="submit"
         className="text-xs w-full text-left"
-        style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+        style={{ color: "var(--sidebar-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
       >
         Sign out
       </button>

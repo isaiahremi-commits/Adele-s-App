@@ -4,9 +4,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../components/Text";
 import { format } from "date-fns";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -167,10 +167,10 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function statusChipStyle(status: string) {
-  if (status === "approved") return { backgroundColor: "rgba(45, 184, 122, 0.16)" };
-  if (status === "denied") return { backgroundColor: "rgba(217, 119, 6, 0.16)" };
-  if (status === "canceled") return { backgroundColor: "rgba(107, 114, 128, 0.16)" };
-  return { backgroundColor: "rgba(45, 184, 122, 0.10)" };
+  if (status === "approved") return { backgroundColor: colors.successSoft };
+  if (status === "denied") return { backgroundColor: colors.warningSoft };
+  if (status === "canceled") return { backgroundColor: colors.neutralSoft };
+  return { backgroundColor: colors.warningSoft };
 }
 
 const styles = StyleSheet.create({
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     padding: 10,
   },

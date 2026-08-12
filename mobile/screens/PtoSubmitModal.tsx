@@ -5,9 +5,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../components/Text";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import {
@@ -215,7 +215,7 @@ function DateField({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: colors.scrim,
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     padding: 10,
     marginTop: 12,

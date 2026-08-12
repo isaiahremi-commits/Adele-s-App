@@ -12,5 +12,9 @@ export const config = {
   // caller's session, so updateSession must refresh a stale token and forward
   // the fresh one to the handler (updateSession never redirects /api paths;
   // it only refreshes cookies). Everything else under /api stays excluded.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api(?!/admin)|login).*)"],
+  // PR #24: /brand (public logo SVGs) and /icon.png (favicon) excluded — the
+  // login page renders them pre-auth, and a 307 here broke the logo there.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|brand/|api(?!/admin)|login).*)",
+  ],
 };
