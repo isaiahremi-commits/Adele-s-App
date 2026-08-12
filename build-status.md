@@ -1271,6 +1271,22 @@ Closes three July-30 scope items:
   requests section in the manager Approvals inbox with approve/deny +
   optional deny reason (header count includes them).
 - shared/db.types.ts: both tables + 4 RPCs hand-added (regen after).
+- **REV 2 (post-apply fix):** rev 1 failed on live with `operator does
+  not exist: date + text` — live shifts.start_time/end_time are TEXT,
+  not TIME (the PR #11 REV 2 drift class; the harness had inherited the
+  stale TIME columns again). The scan now casts `start_time::time`
+  (valid from either column type) behind a strict HH:MM[:SS] format
+  guard so one garbage value can never poison the cron sweep. The audit
+  also caught that 018's my_teammate_shifts declares TIME columns in
+  its RETURNS TABLE — on live it raises a type mismatch at call time,
+  silently masked by the client's fail-soft catch (the teammates
+  section just looked empty). 022 REV 2 redefines it with TEXT columns
+  + explicit casts (wire shape unchanged — clients always saw strings).
+  FLAGGED, not fixed here: 014's shift_start_at(date, TIME) parameter
+  has the same exposure for the swap 24h-cutoff path — follow-up
+  migration candidate. Harness now uses text time columns (matching
+  live), applies real 018 in the chain, and adds poison-row +
+  feed-callable checks: 42/42.
 - Verified: **40/40 PGlite checks** — real 015 → 021 ×2 → 022 ×2 on a
   live-shape base with a mocked cron schema (job-table upsert; 021's
   extension block takes the skip path, exactly a live re-run) and a

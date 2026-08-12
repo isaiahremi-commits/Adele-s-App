@@ -1,5 +1,10 @@
 -- =========================================================================
 -- Migration 021 (Phase 2) — missed-punch auto-alerts at 25 minutes.
+-- REV 2: live shifts.start_time is TEXT, not TIME (the PR #11 REV 2 drift
+-- class — rev 1 failed at apply with "operator does not exist: date +
+-- text"). The scan now casts explicitly (start_time::time works from both
+-- text and time columns) behind a format guard, so one garbage value can
+-- never poison the cron sweep.
 -- Run in the Supabase SQL editor AFTER the applied chain (needs 005/007
 -- helpers + 014's setup.timezone). REQUIRES the pg_cron extension —
 -- enable it first (Dashboard → Database → Extensions → pg_cron) if the
@@ -90,9 +95,12 @@ BEGIN
   LEFT JOIN setup st ON st.tenant_id = s.tenant_id
   WHERE s.date IS NOT NULL
     AND s.start_time IS NOT NULL
+    -- REV 2: live start_time is TEXT — validate the shape, then cast
+    -- (::time is correct from either a text or a time column).
+    AND s.start_time::text ~ '^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
     AND e.termination_date IS NULL
     AND s.date = (now() AT TIME ZONE coalesce(st.timezone, 'America/Los_Angeles'))::date
-    AND ((s.date + s.start_time) AT TIME ZONE coalesce(st.timezone, 'America/Los_Angeles'))
+    AND ((s.date + s.start_time::time) AT TIME ZONE coalesce(st.timezone, 'America/Los_Angeles'))
         + interval '25 minutes' <= now()
     AND NOT EXISTS (
       SELECT 1 FROM timecards tc

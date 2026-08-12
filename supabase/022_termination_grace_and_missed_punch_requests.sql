@@ -22,6 +22,11 @@
 --     column and termination_date has been the live signal since PR #11
 --     REV 2; not adding a second source of truth.
 --
+-- REV 2: also redefines 018's my_teammate_shifts with TEXT time columns —
+-- live shifts.start_time/end_time are text (the same drift that broke
+-- 021 rev 1), so the feed's time-typed RETURNS TABLE raised at call time
+-- behind the client's fail-soft catch. Section 6.
+--
 -- ITEM 3 — missed-punch requests, employee-initiated and manager-decided.
 --   Approval UPSERTS the timecard's punches (timecards.clock_in/out are
 --   ISO-text on live) and leaves the timecard in the normal 'pending'
@@ -49,6 +54,10 @@ BEGIN
   END IF;
   IF to_regclass('public.timecards') IS NULL THEN
     RAISE EXCEPTION 'PREREQ FAILED — timecards missing';
+  END IF;
+  -- REV 2: section 6 redefines 018's teammates feed around its helper.
+  IF to_regprocedure('public.employee_sees_team_shift(uuid, uuid)') IS NULL THEN
+    RAISE EXCEPTION 'PREREQ FAILED — apply 018 first';
   END IF;
 END $$;
 
@@ -326,7 +335,67 @@ $$;
 REVOKE ALL ON FUNCTION employee_reactivate(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION employee_reactivate(uuid) TO authenticated;
 
--- ── 6. Assertions ────────────────────────────────────────────────────────
+-- ── 6. my_teammate_shifts — live-type fix (REV 2) ────────────────────────
+-- 018 declared start_time/end_time as TIME in the RETURNS TABLE; live
+-- shifts store them as TEXT, so the feed raised "structure of query does
+-- not match" at call time (masked by the client's fail-soft catch — the
+-- teammates section simply looked empty). Redefined with text columns +
+-- explicit ::text casts, correct from either column type. Return-type
+-- change requires DROP + CREATE; grants restored below.
+DROP FUNCTION IF EXISTS public.my_teammate_shifts(date, date);
+CREATE FUNCTION public.my_teammate_shifts(
+  p_start date,
+  p_end   date
+) RETURNS TABLE (
+  shift_id uuid,
+  shift_date date,
+  start_time text,
+  end_time text,
+  shift_type text,
+  notes text,
+  shift_position text,
+  outlet_id uuid,
+  outlet_name text,
+  employee_id uuid,
+  first_name text,
+  last_name text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_emp uuid := public.current_employee_id();
+BEGIN
+  -- Unlinked / no-tenant callers get an empty feed, never a 400 (016/020).
+  IF v_emp IS NULL OR public.current_tenant_id() IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT s.id, s.date, s.start_time::text, s.end_time::text, s.shift_type,
+         s.notes, s.position, s.outlet_id, o.name, s.employee_id,
+         e.first_name, e.last_name
+  FROM shifts s
+  JOIN employees e ON e.id = s.employee_id
+  LEFT JOIN outlets o ON o.id = s.outlet_id
+  WHERE s.tenant_id = public.current_tenant_id()
+    AND s.date BETWEEN p_start AND p_end
+    AND public.employee_sees_team_shift(s.employee_id, s.outlet_id)
+    AND s.outlet_id IN (
+      SELECT ms.outlet_id FROM shifts ms
+      WHERE ms.employee_id = v_emp
+        AND ms.date BETWEEN p_start AND p_end
+        AND ms.outlet_id IS NOT NULL
+    )
+  ORDER BY s.date ASC, s.start_time ASC;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.my_teammate_shifts(date, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_teammate_shifts(date, date) TO authenticated;
+
+-- ── 7. Assertions ────────────────────────────────────────────────────────
 DO $$
 DECLARE v_def text;
 BEGIN
@@ -354,6 +423,11 @@ BEGIN
   v_def := pg_get_functiondef(to_regprocedure('public.employee_terminate(uuid, date)'));
   IF v_def LIKE '%banned_until%' THEN
     RAISE EXCEPTION 'ASSERTION FAILED — employee_terminate must NOT ban (grace period)';
+  END IF;
+  -- REV 2: the teammates feed is text-typed for the live schema.
+  v_def := pg_get_functiondef(to_regprocedure('public.my_teammate_shifts(date, date)'));
+  IF v_def NOT LIKE '%start_time::text%' THEN
+    RAISE EXCEPTION 'ASSERTION FAILED — my_teammate_shifts not live-type safe';
   END IF;
 END $$;
 
