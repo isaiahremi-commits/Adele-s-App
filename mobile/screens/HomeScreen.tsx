@@ -77,53 +77,81 @@ export default function HomeScreen() {
   const [lateBusy, setLateBusy] = useState(false);
   const requestSeq = useRef(0);
 
+  // PR #19 bug 1 (Adèle's Home stuck on "Loading…"): fetch has NO timeout
+  // on RN/web, so gating first paint on a five-way Promise.all meant one
+  // stalled request froze the spinner forever — and the manager data path
+  // had the longest poles (multi-row balance resolve + a nested auth
+  // round-trip). Restructured: paint the core card as soon as the two
+  // critical reads land (watchdogged — worst case is the retry state, never
+  // an infinite spinner), then hydrate each side section independently;
+  // a section that fails or stalls just keeps its default.
   const load = useCallback(
     async (mode: "initial" | "refresh") => {
       if (!user) return;
       const seq = ++requestSeq.current;
       if (mode === "initial") setState({ kind: "loading" });
       else setRefreshing(true);
+
+      const timeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error("Request timed out")), ms)
+          ),
+        ]);
+      const current = () => seq === requestSeq.current;
+      const patch = (partial: Partial<Extract<LoadState, { kind: "ready" }>>) =>
+        setState((cur) =>
+          cur.kind === "ready" && current() ? { ...cur, ...partial } : cur
+        );
+
       try {
-        const employee = await getCurrentEmployee(user.id).catch(() => null);
+        const employee = await timeout(getCurrentEmployee(user.id), 8000);
         if (!employee) {
-          if (seq === requestSeq.current) setState({ kind: "unlinked" });
+          if (current()) setState({ kind: "unlinked" });
           return;
         }
         const today = new Date();
-        const [todayShifts, teammates, broadcasts, ptoBalance, callouts] =
-          await Promise.all([
-            getShiftsForWeek(employee.id, today, today).catch(() => []),
-            getTeammatesForWeek(today, today).catch(() => []),
-            getInbox().catch(() => []),
-            getMyBalance().catch(() => 0),
-            getMyCalloutSummary(
-              format(
-                new Date(Date.now() - 90 * 86400000),
-                "yyyy-MM-dd"
-              ),
-              employee.id
-            ).catch(() => ({ count: 0, dates: [] })),
-          ]);
-        if (seq === requestSeq.current) {
-          setState({
-            kind: "ready",
-            employee,
-            todayShifts,
-            teammates,
-            broadcasts: broadcasts.slice(0, 2),
-            ptoBalance,
-            callouts90d: callouts.count,
-          });
-        }
+        const todayShifts = await timeout(
+          getShiftsForWeek(employee.id, today, today),
+          8000
+        ).catch(() => [] as ScheduleShift[]);
+        if (!current()) return;
+        setState({
+          kind: "ready",
+          employee,
+          todayShifts,
+          teammates: [],
+          broadcasts: [],
+          ptoBalance: 0,
+          callouts90d: 0,
+        });
+
+        // Background hydration — independent, fail-soft, never blocks paint.
+        getTeammatesForWeek(today, today)
+          .then((teammates) => patch({ teammates }))
+          .catch(() => {});
+        getInbox()
+          .then((all) => patch({ broadcasts: all.slice(0, 2) }))
+          .catch(() => {});
+        getMyBalance()
+          .then((ptoBalance) => patch({ ptoBalance }))
+          .catch(() => {});
+        getMyCalloutSummary(
+          format(new Date(Date.now() - 90 * 86400000), "yyyy-MM-dd"),
+          employee.id
+        )
+          .then((c) => patch({ callouts90d: c.count }))
+          .catch(() => {});
       } catch (e) {
-        if (seq === requestSeq.current) {
+        if (current()) {
           setState({
             kind: "error",
             message: e instanceof Error ? e.message : "Something went wrong",
           });
         }
       } finally {
-        if (seq === requestSeq.current) setRefreshing(false);
+        if (current()) setRefreshing(false);
       }
     },
     [user]
@@ -211,7 +239,7 @@ export default function HomeScreen() {
         {state.kind === "ready" && (
           <>
             <Text style={styles.greeting}>
-              {greeting(now)}, {state.employee.first_name}
+              {greeting(now)}, {titleCase(state.employee.first_name)}
             </Text>
 
             {/* Today's shift */}
@@ -300,7 +328,7 @@ export default function HomeScreen() {
                     }
                   >
                     <Text style={styles.broadcastSender}>
-                      {b.is_mine ? "You" : b.sender_name}
+                      {b.is_mine ? "You" : titleCase(b.sender_name)}
                       <Text style={styles.broadcastWhen}>
                         {"  "}
                         {format(new Date(b.created_at), "MMM d")}

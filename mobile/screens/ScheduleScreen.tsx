@@ -553,11 +553,11 @@ function CoverageSection({
             <View key={m.request_id} style={styles.coverageRow}>
               <Text style={styles.coverageTitle}>
                 {fmtWhen(m)}
-                {m.shift_position ? ` · ${m.shift_position}` : ""}
+                {m.shift_position ? ` · ${titleCase(m.shift_position)}` : ""}
               </Text>
               <Text style={styles.coverageMeta}>
                 {m.outlet_name ? `${m.outlet_name} · ` : ""}
-                Covering for {m.requested_by ?? "a teammate"} — waiting on
+                Covering for {titleCase(m.requested_by) || "a teammate"} — waiting on
                 manager
               </Text>
               {confirmId === m.request_id ? (
@@ -589,11 +589,11 @@ function CoverageSection({
             <View key={c.request_id} style={styles.coverageRow}>
               <Text style={styles.coverageTitle}>
                 {fmtWhen(c)}
-                {c.shift_position ? ` · ${c.shift_position}` : ""}
+                {c.shift_position ? ` · ${titleCase(c.shift_position)}` : ""}
               </Text>
               <Text style={styles.coverageMeta}>
                 {c.outlet_name ? `${c.outlet_name} · ` : ""}Requested by{" "}
-                {c.requested_by}
+                {titleCase(c.requested_by)}
               </Text>
               {confirmId === c.request_id ? (
                 <View style={styles.coverageActions}>
@@ -725,7 +725,7 @@ function SwapRequestsSection({
           {incoming.map((s) => (
             <View key={s.swap_id} style={styles.coverageRow}>
               <Text style={styles.coverageTitle}>
-                {s.counterparty_name} wants to swap
+                {titleCase(s.counterparty_name)} wants to swap
               </Text>
               <Text style={styles.coverageMeta}>
                 Their shift: {when(s)}
@@ -774,7 +774,7 @@ function SwapRequestsSection({
           {outgoing.map((s) => (
             <View key={s.swap_id} style={styles.coverageRow}>
               <Text style={styles.coverageTitle}>
-                To {s.counterparty_name} · {when(s)}
+                To {titleCase(s.counterparty_name)} · {when(s)}
               </Text>
               <Text style={styles.coverageMeta}>
                 {SWAP_STATUS_LABEL[s.status] ?? s.status}
@@ -807,7 +807,7 @@ function SwapRequestsSection({
             <View key={s.swap_id} style={styles.coverageRow}>
               <Text style={styles.settledSwapText}>
                 {s.direction === "outgoing" ? "To" : "From"}{" "}
-                {s.counterparty_name} · {when(s)} ·{" "}
+                {titleCase(s.counterparty_name)} · {when(s)} ·{" "}
                 {SWAP_STATUS_LABEL[s.status] ?? s.status}
               </Text>
             </View>
@@ -853,13 +853,13 @@ function MyCalloutsSection({ callouts }: { callouts: MyCalloutOrOffer[] }) {
                 {c.shift_date
                   ? format(new Date(`${c.shift_date}T00:00:00`), "EEE, MMM d")
                   : "—"}
-                {c.shift_position ? ` · ${c.shift_position}` : ""}
+                {c.shift_position ? ` · ${titleCase(c.shift_position)}` : ""}
                 {c.reason ? ` · ${c.reason}` : ""}
               </Text>
               <Text style={styles.coverageMeta}>
                 {label}
                 {c.coverage_status === "volunteer_pending" && c.volunteer_name
-                  ? ` · ${c.volunteer_name} offered to cover — waiting on manager`
+                  ? ` · ${titleCase(c.volunteer_name)} offered to cover — waiting on manager`
                   : ""}
               </Text>
             </View>

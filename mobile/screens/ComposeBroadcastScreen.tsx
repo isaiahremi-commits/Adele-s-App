@@ -273,7 +273,7 @@ export default function ComposeBroadcastScreen() {
                         color={picked.has(e.id) ? colors.primary : colors.muted}
                       />
                       <View>
-                        <Text style={styles.pickName}>{e.name}</Text>
+                        <Text style={styles.pickName}>{titleCase(e.name)}</Text>
                         {(e.position || e.department) && (
                           <Text style={styles.pickMeta}>
                             {[titleCase(e.position), e.department]

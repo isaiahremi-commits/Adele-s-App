@@ -147,7 +147,7 @@ export default function WorkHoursScreen() {
                     )
                   }
                 >
-                  <Text style={[styles.td, styles.tdName]}>{r.name}</Text>
+                  <Text style={[styles.td, styles.tdName]}>{titleCase(r.name)}</Text>
                   <Text style={styles.td}>{fmtH(r.todayHours)}</Text>
                   <Text style={styles.td}>{fmtH(r.weekHours)}</Text>
                   <Ionicons

@@ -17,6 +17,7 @@ import { showToast } from "../components/Toast";
 import { useAuth } from "../contexts/AuthContext";
 import type { ScheduleStackParamList } from "../lib/navigation";
 import { type TipStatus, getTipStatus, submitTipDeclaration } from "../lib/tips";
+import { titleCase } from "../lib/format";
 import { colors } from "../lib/theme";
 
 // Declare (or edit) the signed-in employee's raw tip numbers for one worked
@@ -143,7 +144,7 @@ export default function TipDeclarationScreen() {
         <View style={styles.card}>
           <Text style={styles.headerDate}>{dateLabel}</Text>
           <Text style={styles.headerMeta}>
-            {[params.outletName, params.position].filter(Boolean).join(" · ") ||
+            {[params.outletName, titleCase(params.position)].filter(Boolean).join(" · ") ||
               "Shift"}
           </Text>
         </View>
@@ -162,7 +163,7 @@ export default function TipDeclarationScreen() {
       <View style={styles.card}>
         <Text style={styles.headerDate}>{dateLabel}</Text>
         <Text style={styles.headerMeta}>
-          {[params.outletName, params.position].filter(Boolean).join(" · ") ||
+          {[params.outletName, titleCase(params.position)].filter(Boolean).join(" · ") ||
             "Shift"}
         </Text>
       </View>

@@ -2,6 +2,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -182,6 +183,9 @@ function PtoStack() {
 const tabScreenOptions = {
   tabBarActiveTintColor: colors.primary,
   tabBarInactiveTintColor: colors.muted,
+  // PR #19: descenders were clipping ("Pay" → "Pav", "Settings" →
+  // "Settina") — smaller size + explicit lineHeight gives them room.
+  tabBarLabelStyle: { fontSize: 11, lineHeight: 16 },
   headerTitleStyle: { color: colors.foreground },
   headerTitleAlign: "center" as const,
   // One navbar row: [Personal|Work toggle] [title] [bell]. The toggle is a
@@ -253,12 +257,16 @@ function PersonalTabs() {
 // The full Approvals inbox (PR #10) rides the root stack, reached from the
 // Team screen — deliberately not a 6th tab.
 function WorkTabs() {
+  // PR #19: the Team header IS the greeting — "Team today · Tue, Aug 12".
+  const teamTitle = `Team today · ${format(new Date(), "EEE, MMM d")}`;
   return (
     <WorkTab.Navigator screenOptions={tabScreenOptions}>
       <WorkTab.Screen
         name="Team"
         component={WorkTeamScreen}
         options={{
+          title: teamTitle,
+          tabBarLabel: "Team",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
           ),
