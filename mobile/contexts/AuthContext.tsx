@@ -47,6 +47,13 @@ type AuthContextValue = {
   /** Re-check the flag (call after employee_self_onboard succeeds). */
   refreshSelfOnboarding: () => Promise<void>;
   /**
+   * Termination grace period (PR #20): set when the linked employees row
+   * carries a termination_date. daysLeft counts down the 30-day view-only
+   * window (clamped at 0). The app renders read-only surfaces while set;
+   * the daily lockout cron bans auth after day 30.
+   */
+  terminated: { date: string; daysLeft: number } | null;
+  /**
    * Tenant from user_metadata.tenant_id. RLS scopes every query by it
    * server-side; null means the account was misprovisioned (App.tsx shows the
    * "No tenant assigned" screen).
@@ -64,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isTipped, setIsTipped] = useState(true);
 
   const [selfOnboardingNeeded, setSelfOnboardingNeeded] = useState(false);
+  const [terminatedOn, setTerminatedOn] = useState<string | null>(null);
 
   // Tip-roster status: once per signed-in user (not per token refresh —
   // pay-type changes are rare and a fresh sign-in or app restart refetches).
@@ -93,14 +101,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from("employees")
-        .select("has_completed_self_onboarding")
+        .select("has_completed_self_onboarding, termination_date")
         .eq("auth_user_id", userId)
         .maybeSingle();
+      setTerminatedOn(!error ? (data?.termination_date ?? null) : null);
+      // A terminated employee is never forced through self-onboarding.
       setSelfOnboardingNeeded(
-        !error && data !== null && data.has_completed_self_onboarding === false
+        !error &&
+          data !== null &&
+          data.has_completed_self_onboarding === false &&
+          data.termination_date === null
       );
     } catch {
       setSelfOnboardingNeeded(false);
+      setTerminatedOn(null);
     }
   }, [userId]);
   useEffect(() => {
@@ -172,6 +186,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isTipped,
       selfOnboardingNeeded,
       refreshSelfOnboarding,
+      terminated: terminatedOn
+        ? {
+            date: terminatedOn,
+            daysLeft: Math.max(
+              0,
+              30 -
+                Math.floor(
+                  (Date.now() - new Date(`${terminatedOn}T00:00:00`).getTime()) /
+                    86400000
+                )
+            ),
+          }
+        : null,
       signIn: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -193,7 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
       },
     };
-  }, [session, loading, isTipped, selfOnboardingNeeded, refreshSelfOnboarding]);
+  }, [session, loading, isTipped, selfOnboardingNeeded, refreshSelfOnboarding, terminatedOn]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -18,6 +18,15 @@ import { useAuth } from "../contexts/AuthContext";
 import type { RootStackParamList } from "../App";
 import { type InboxItem, getInbox } from "../lib/broadcasts";
 import { submitRunningLate } from "../lib/coverage";
+import MissedPunchRequestModal from "../components/MissedPunchRequestModal";
+import {
+  type MissedPunchAlert,
+  type MissedPunchRequest,
+  getMyAlerts,
+  getMyMissedPunchRequests,
+  getUnresolvedAlerts,
+} from "../lib/missedPunch";
+import { isManager } from "../lib/manager";
 import { formatTime12, titleCase } from "../lib/format";
 import { getMyCalloutSummary } from "../lib/pay";
 import { getMyBalance } from "../lib/pto";
@@ -66,7 +75,7 @@ type LoadState =
     };
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, terminated } = useAuth();
   const navigation = useNavigation<Nav>();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
@@ -75,6 +84,15 @@ export default function HomeScreen() {
   const [lateOpen, setLateOpen] = useState(false);
   const [lateMinutes, setLateMinutes] = useState<number | null>(null);
   const [lateBusy, setLateBusy] = useState(false);
+  // PR #20: missed-punch alerts (mine) + requests, and the manager's
+  // unresolved-alert list. All fail-soft to empty pre-021/022.
+  const [alerts, setAlerts] = useState<MissedPunchAlert[]>([]);
+  const [myMp, setMyMp] = useState<MissedPunchRequest[]>([]);
+  const [mgrAlerts, setMgrAlerts] = useState<
+    { id: string; shift_id: string; employee_name: string; alerted_at: string }[] | null
+  >(null);
+  const [mgrOpen, setMgrOpen] = useState(false);
+  const [mpShift, setMpShift] = useState<ScheduleShift | null>(null);
   const requestSeq = useRef(0);
 
   // PR #19 bug 1 (Adèle's Home stuck on "Loading…"): fetch has NO timeout
@@ -143,6 +161,27 @@ export default function HomeScreen() {
         )
           .then((c) => patch({ callouts90d: c.count }))
           .catch(() => {});
+        getMyAlerts()
+          .then((a) => {
+            if (current()) setAlerts(a);
+          })
+          .catch(() => {});
+        getMyMissedPunchRequests()
+          .then((r) => {
+            if (current()) setMyMp(r);
+          })
+          .catch(() => {});
+        isManager(user.id)
+          .then((m) =>
+            m
+              ? getUnresolvedAlerts()
+                  .then((a) => {
+                    if (current()) setMgrAlerts(a);
+                  })
+                  .catch(() => {})
+              : undefined
+          )
+          .catch(() => {});
       } catch (e) {
         if (current()) {
           setState({
@@ -188,6 +227,13 @@ export default function HomeScreen() {
 
   const now = new Date();
   const firstShift = state.kind === "ready" ? state.todayShifts[0] : null;
+  const alertShift =
+    state.kind === "ready" && alerts.length > 0
+      ? (state.todayShifts.find((s) => s.id === alerts[0].shift_id) ?? null)
+      : null;
+  const alertPending =
+    alerts.length > 0 &&
+    myMp.some((r) => r.shift_id === alerts[0].shift_id && r.status === "pending");
   const todayTeammates =
     state.kind === "ready" && firstShift
       ? state.teammates.filter(
@@ -242,6 +288,64 @@ export default function HomeScreen() {
               {greeting(now)}, {titleCase(state.employee.first_name)}
             </Text>
 
+            {terminated && (
+              <View style={styles.termBanner}>
+                <Text style={styles.termTitle}>
+                  Your account was ended on{" "}
+                  {format(new Date(`${terminated.date}T00:00:00`), "MMM d, yyyy")}.
+                </Text>
+                <Text style={styles.termBody}>
+                  You have view-only access to pay and PTO for{" "}
+                  {terminated.daysLeft} more{" "}
+                  {terminated.daysLeft === 1 ? "day" : "days"}.
+                </Text>
+              </View>
+            )}
+
+            {mgrAlerts !== null && mgrAlerts.length > 0 && (
+              <Pressable
+                style={styles.mgrPill}
+                onPress={() => setMgrOpen((v) => !v)}
+              >
+                <Text style={styles.mgrPillText}>
+                  {mgrAlerts.length} unclocked{" "}
+                  {mgrAlerts.length === 1 ? "shift" : "shifts"}{" "}
+                  {mgrOpen ? "▾" : "▸"}
+                </Text>
+              </Pressable>
+            )}
+            {mgrOpen &&
+              (mgrAlerts ?? []).map((a) => (
+                <Text key={a.id} style={styles.mgrAlertRow}>
+                  {titleCase(a.employee_name)} — no clock-in (alerted{" "}
+                  {format(new Date(a.alerted_at), "h:mm a")})
+                </Text>
+              ))}
+
+            {alertShift && !terminated && (
+              <View style={styles.mpBanner}>
+                <Text style={styles.mpBannerText}>
+                  You didn't clock in for your{" "}
+                  {formatTime12(alertShift.start_time)} shift — let your
+                  manager know.
+                </Text>
+                {alertPending ? (
+                  <Text style={styles.mpPendingNote}>
+                    Missed-punch request pending.
+                  </Text>
+                ) : (
+                  <Pressable
+                    style={styles.mpButton}
+                    onPress={() => setMpShift(alertShift)}
+                  >
+                    <Text style={styles.mpButtonText}>
+                      Submit missed-punch request
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+
             {/* Today's shift */}
             <View style={styles.card}>
               {firstShift ? (
@@ -282,7 +386,8 @@ export default function HomeScreen() {
               )}
             </View>
 
-            {/* Quick actions */}
+            {/* Quick actions (hidden for grace-period accounts) */}
+            {!terminated && (
             <View style={styles.actionsRow}>
               <Pressable
                 style={[styles.actionButton, !firstShift && styles.dim]}
@@ -305,8 +410,10 @@ export default function HomeScreen() {
                 <Text style={styles.actionText}>Call out</Text>
               </Pressable>
             </View>
+            )}
 
-            {/* Recent broadcasts */}
+            {/* Recent broadcasts (no messaging surface once terminated) */}
+            {!terminated && (
             <View style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.cardTitle}>Messages</Text>
@@ -341,6 +448,7 @@ export default function HomeScreen() {
                 ))
               )}
             </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -352,6 +460,15 @@ export default function HomeScreen() {
           onClose={() => setDetailShift(null)}
         />
       )}
+
+      <MissedPunchRequestModal
+        shift={mpShift}
+        onClose={() => setMpShift(null)}
+        onSubmitted={() => {
+          setMpShift(null);
+          load("refresh");
+        }}
+      />
 
       <CalloutModal
         visible={calloutShift !== null}
@@ -448,6 +565,75 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     marginTop: 4,
     marginBottom: 2,
+  },
+  termBanner: {
+    backgroundColor: "rgba(217, 119, 6, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(217, 119, 6, 0.4)",
+    borderRadius: 10,
+    padding: 12,
+  },
+  termTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.foreground,
+  },
+  termBody: {
+    marginTop: 3,
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
+  },
+  mgrPill: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(220, 38, 38, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.4)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  mgrPillText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#dc2626",
+  },
+  mgrAlertRow: {
+    fontSize: 13,
+    color: colors.muted,
+    paddingLeft: 6,
+  },
+  mpBanner: {
+    backgroundColor: "rgba(220, 38, 38, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.45)",
+    borderRadius: 10,
+    padding: 12,
+  },
+  mpBannerText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.foreground,
+    lineHeight: 20,
+  },
+  mpPendingNote: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  mpButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    backgroundColor: "#dc2626",
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+  },
+  mpButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
   },
   card: {
     backgroundColor: colors.card,

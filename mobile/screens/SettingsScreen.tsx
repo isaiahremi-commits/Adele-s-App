@@ -15,7 +15,7 @@ import { colors } from "../lib/theme";
 const APP_VERSION = appJson.expo.version;
 
 export default function SettingsScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, terminated } = useAuth();
 
   const tosVersion = user?.user_metadata?.tos_accepted_version;
   const tosAcceptedAt = user?.user_metadata?.tos_accepted_at;
@@ -41,6 +41,7 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {!terminated && (
       <View style={styles.card}>
         <SettingsRow
           icon="notifications-outline"
@@ -71,6 +72,7 @@ export default function SettingsScreen() {
           </View>
         </View>
       </View>
+      )}
     </ScrollView>
   );
 }

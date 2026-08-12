@@ -334,7 +334,7 @@ export async function getTeamForDate(
     supabase
       .from("shifts")
       .select(
-        "id, employee_id, start_time, end_time, position, outlets(name), employees!inner(first_name, last_name, title, auth_user_id)"
+        "id, employee_id, start_time, end_time, position, outlets(name), employees!inner(first_name, last_name, title, auth_user_id, termination_date)"
       )
       .eq("date", date)
       .order("start_time"),
@@ -351,6 +351,7 @@ export async function getTeamForDate(
   for (const s of data ?? []) {
     if (callerAuthId && s.employees?.auth_user_id === callerAuthId) continue;
     if (s.employees?.title === "Restaurant Manager" && !s.position) continue;
+    if (s.employees?.termination_date) continue; // PR #20: terminated never on the roster
     const person = s.employees?.auth_user_id ?? s.employee_id ?? s.id;
     const key = `${person}|${s.start_time ?? ""}|${s.end_time ?? ""}`;
     if (seen.has(key)) continue;

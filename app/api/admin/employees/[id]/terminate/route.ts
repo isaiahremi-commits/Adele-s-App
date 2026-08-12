@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireManager } from "@/lib/admin-guard";
-import { createAdminClient } from "@/lib/supabase-admin";
 
-// Terminate = the 015 RPC (stamps termination_date, deletes the employee's
-// device_sessions rows) + an Auth Admin ban so token REFRESH stops working
-// server-side. The RPC runs on the MANAGER's client — the DB guard
-// (assert_manager_or_service) fires as defense in depth. The ban is
-// best-effort: without the service key the RPC side still lands, and the
-// device_sessions deletion signs the phone out on next foreground (the 006
-// posture).
+// Terminate = the 015 RPC only (stamps termination_date, deletes the
+// employee's device_sessions rows — the phone signs out on next
+// foreground). PR #20: the IMMEDIATE Auth Admin ban is GONE — terminated
+// employees keep a 30-day view-only grace window (pay + PTO history on
+// mobile); migration 022's daily pg_cron sweep
+// (enforce_termination_lockouts) lands the permanent ban after day 30.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const gate = await requireManager();
   if ("error" in gate) return gate.error;
@@ -35,15 +33,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     device_sessions_revoked: number;
   };
 
-  let banned = false;
-  const admin = createAdminClient();
-  if (admin && result.auth_user_id) {
-    // ~100 years; reactivate lifts it with ban_duration "none".
-    const { error: banErr } = await admin.auth.admin.updateUserById(result.auth_user_id, {
-      ban_duration: "876000h",
-    });
-    banned = !banErr;
-  }
-
-  return NextResponse.json({ ...result, banned });
+  // Grace period: no immediate ban — the 022 nightly sweep locks out
+  // after 30 days, and employee_reactivate lifts it in-DB.
+  return NextResponse.json({ ...result, banned: false, grace_days: 30 });
 }

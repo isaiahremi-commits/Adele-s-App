@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useAuth } from "../contexts/AuthContext";
 import type { PtoStackParamList } from "../lib/navigation";
 import {
   type PtoRequest,
@@ -33,6 +34,7 @@ function fmtDay(d: string): string {
 }
 
 export default function PtoScreen() {
+  const { terminated } = useAuth();
   const navigation =
     useNavigation<NativeStackNavigationProp<PtoStackParamList, "PtoList">>();
   const [tab, setTab] = useState<PtoStatus>("pending");
@@ -168,13 +170,16 @@ export default function PtoScreen() {
         ))}
       </ScrollView>
 
-      <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.dim]}
-        onPress={() => setSubmitOpen(true)}
-        accessibilityLabel="Request PTO"
-      >
-        <Ionicons name="add" size={30} color={colors.primaryOn} />
-      </Pressable>
+      {/* PR #20: grace-period accounts are read-only — no new requests. */}
+      {!terminated && (
+        <Pressable
+          style={({ pressed }) => [styles.fab, pressed && styles.dim]}
+          onPress={() => setSubmitOpen(true)}
+          accessibilityLabel="Request PTO"
+        >
+          <Ionicons name="add" size={30} color={colors.primaryOn} />
+        </Pressable>
+      )}
 
       <PtoSubmitModal
         visible={submitOpen}
