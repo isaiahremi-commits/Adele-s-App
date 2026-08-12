@@ -45,7 +45,12 @@ import {
   getTipStatusForShifts,
   shiftTipKey,
 } from "../lib/tips";
+import MissedPunchRequestModal from "../components/MissedPunchRequestModal";
 import ShiftDetailModal from "../components/ShiftDetailModal";
+import {
+  type MissedPunchRequest,
+  getMyMissedPunchRequests,
+} from "../lib/missedPunch";
 import { titleCase } from "../lib/format";
 import CalloutModal from "./CalloutModal";
 
@@ -89,7 +94,7 @@ type LoadState =
     };
 
 export default function ScheduleScreen() {
-  const { user, isTipped } = useAuth();
+  const { user, isTipped, terminated } = useAuth();
   const navigation =
     useNavigation<
       NativeStackNavigationProp<ScheduleStackParamList, "ScheduleList">
@@ -113,6 +118,9 @@ export default function ScheduleScreen() {
     mine: MyCalloutOrOffer[];
   } | null>(null);
   const [calloutShift, setCalloutShift] = useState<ScheduleShift | null>(null);
+  // PR #20: my missed-punch requests (pending ones badge their shifts).
+  const [mpRequests, setMpRequests] = useState<MissedPunchRequest[]>([]);
+  const [mpShift, setMpShift] = useState<ScheduleShift | null>(null);
   // null = swaps unavailable (RPCs missing pre-011, or a fetch error).
   const [swaps, setSwaps] = useState<MySwapRequest[] | null>(null);
   const requestSeq = useRef(0);
@@ -219,14 +227,23 @@ export default function ScheduleScreen() {
     }
   }, []);
 
+  const loadMissedPunch = useCallback(async () => {
+    try {
+      setMpRequests(await getMyMissedPunchRequests());
+    } catch {
+      setMpRequests([]);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       if (state.kind === "ready") {
         loadTipStatuses(state.shifts);
         loadCoverage();
         loadSwaps();
+        loadMissedPunch();
       }
-    }, [state, loadTipStatuses, loadCoverage, loadSwaps])
+    }, [state, loadTipStatuses, loadCoverage, loadSwaps, loadMissedPunch])
   );
 
   // My pending outgoing swap per shift — replaces the "Request swap" link.
@@ -252,6 +269,14 @@ export default function ScheduleScreen() {
     }
     return m;
   }, [coverage]);
+
+  const mpPendingShifts = useMemo(
+    () =>
+      new Set(
+        mpRequests.filter((r) => r.status === "pending").map((r) => r.shift_id)
+      ),
+    [mpRequests]
+  );
 
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
@@ -328,7 +353,11 @@ export default function ScheduleScreen() {
             <View style={styles.card}>
               {days.map((day, i) => {
                 const dayKey = format(day, "yyyy-MM-dd");
-                const dayShifts = state.shifts.filter((s) => s.date === dayKey);
+                // Grace-period accounts see past shifts only (PR #20).
+                const dayShifts = state.shifts.filter(
+                  (s) =>
+                    s.date === dayKey && (!terminated || dayKey <= todayKey)
+                );
                 return (
                   <View
                     key={dayKey}
@@ -372,6 +401,11 @@ export default function ScheduleScreen() {
                                 Called out
                               </Text>
                             )}
+                            {mpPendingShifts.has(shift.id) && (
+                              <Text style={styles.gridCalloutTag}>
+                                Missed punch request pending
+                              </Text>
+                            )}
                           </Pressable>
                         ))
                       )}
@@ -381,7 +415,7 @@ export default function ScheduleScreen() {
               })}
             </View>
 
-            {coverage !== null && (
+            {coverage !== null && !terminated && (
               <CoverageSection
                 available={coverage.available}
                 pendingOffers={coverage.mine.filter(
@@ -392,10 +426,10 @@ export default function ScheduleScreen() {
                 onChanged={loadCoverage}
               />
             )}
-            {swaps !== null && (
+            {swaps !== null && !terminated && (
               <SwapRequestsSection swaps={swaps} onChanged={loadSwaps} />
             )}
-            {coverage !== null && (
+            {coverage !== null && !terminated && (
               <MyCalloutsSection callouts={coverage.mine.filter(
                 (m) => m.kind === "callout"
               )} />
@@ -427,6 +461,19 @@ export default function ScheduleScreen() {
           }
           myCallout={calloutsByShift.get(selectedShift.id)}
           pendingSwap={pendingSwapByShift.get(selectedShift.id)}
+          missedPunchPending={mpPendingShifts.has(selectedShift.id)}
+          onMissedPunch={
+            !terminated &&
+            isPastShift(selectedShift, todayKey, nowTime) &&
+            selectedShift.date &&
+            !mpPendingShifts.has(selectedShift.id)
+              ? () => {
+                  const s = selectedShift;
+                  setSelectedShift(null);
+                  setMpShift(s);
+                }
+              : undefined
+          }
           onDeclareTips={
             selectedShift.outlet_id && selectedShift.date
               ? () => {
@@ -442,6 +489,7 @@ export default function ScheduleScreen() {
               : undefined
           }
           onCallOut={
+            !terminated &&
             !isPastShift(selectedShift, todayKey, nowTime) && coverage !== null
               ? () => {
                   setCalloutShift(selectedShift);
@@ -450,6 +498,7 @@ export default function ScheduleScreen() {
               : undefined
           }
           onRequestSwap={
+            !terminated &&
             !isPastShift(selectedShift, todayKey, nowTime) &&
             swaps !== null &&
             isSwappable(selectedShift)
@@ -470,6 +519,15 @@ export default function ScheduleScreen() {
           onClose={() => setSelectedShift(null)}
         />
       )}
+
+      <MissedPunchRequestModal
+        shift={mpShift}
+        onClose={() => setMpShift(null)}
+        onSubmitted={() => {
+          setMpShift(null);
+          loadMissedPunch();
+        }}
+      />
 
       <CalloutModal
         visible={calloutShift !== null}

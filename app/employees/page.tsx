@@ -107,6 +107,7 @@ export default function EmployeesPage() {
   const [fOutlet, setFOutlet] = useState("");
   const [fPosition, setFPosition] = useState("");
   const [missingHireOnly, setMissingHireOnly] = useState(false); // Section 2 backfill banner
+  const [fTerminated, setFTerminated] = useState(false); // PR #20 filter chip
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, Totals>>({});
   const [assignmentsByEmp, setAssignmentsByEmp] = useState<Record<string, Assignment[]>>({});
@@ -176,8 +177,12 @@ export default function EmployeesPage() {
   // admin status route and degrades to plain "Invited" without it.
   function statusFor(e: Employee): { label: string; color: string } {
     if (e.termination_date) {
+      // PR #20 grace period: 30 days view-only, then the nightly sweep bans.
+      const daysLeft = Math.max(0, 30 - Math.floor(
+        (Date.now() - new Date(e.termination_date + "T00:00:00").getTime()) / 86400000));
       return {
-        label: `Terminated ${new Date(e.termination_date + "T00:00:00").toLocaleDateString()}`,
+        label: `Terminated ${new Date(e.termination_date + "T00:00:00").toLocaleDateString()}` +
+          (daysLeft > 0 ? ` · ${daysLeft}d until lockout` : " · locked out"),
         color: "var(--danger)",
       };
     }
@@ -423,6 +428,11 @@ export default function EmployeesPage() {
           <option value="">All outlets</option>
           {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
+        <button type="button" className={`chip ${fTerminated ? "chip-amber" : "chip-muted"}`}
+          style={{ cursor: "pointer" }}
+          onClick={() => setFTerminated((v) => !v)}>
+          Terminated
+        </button>
         <select className="input" style={{ width: 200 }} value={fPosition} onChange={(e) => setFPosition(e.target.value)}>
           <option value="">All positions</option>
           {PREDEFINED_ROLES.map((p) => <option key={p} value={p}>{titleCase(p)}</option>)}
@@ -456,6 +466,7 @@ export default function EmployeesPage() {
       {(() => {
         const filtered = rows.filter((e) => {
           if (missingHireOnly && e.date_of_hire) return false; // Section 2 banner filter
+          if (fTerminated && !e.termination_date) return false; // PR #20 chip
           // Item 5: department / outlet / position filters (AND).
           if (fDept && e.department_id !== fDept) return false;
           if (fOutlet && e.home_outlet_id !== fOutlet) return false;

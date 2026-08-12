@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { format } from "date-fns";
@@ -32,6 +33,12 @@ import {
   postTipSheet,
 } from "../lib/manager";
 import { formatTime12, titleCase } from "../lib/format";
+import {
+  type PendingMissedPunchRequest,
+  approveMissedPunchRequest,
+  denyMissedPunchRequest,
+  getPendingMissedPunchRequests,
+} from "../lib/missedPunch";
 import { colors } from "../lib/theme";
 import LargePartyEntryModal from "./LargePartyEntryModal";
 
@@ -45,7 +52,12 @@ import LargePartyEntryModal from "./LargePartyEntryModal";
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; inbox: ManagerInbox; refreshedAt: Date };
+  | {
+      kind: "ready";
+      inbox: ManagerInbox;
+      mpReqs: PendingMissedPunchRequest[];
+      refreshedAt: Date;
+    };
 
 type PendingAction = { rowKey: string; action: string } | null;
 
@@ -78,6 +90,7 @@ export default function ManagerInboxScreen() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [partyOpen, setPartyOpen] = useState(false);
+  const [denyReason, setDenyReason] = useState("");
   // "any shift" swap approval: the picked shift per swap id
   const [targetShifts, setTargetShifts] = useState<
     Awaited<ReturnType<typeof getUpcomingShifts>> | null
@@ -90,9 +103,12 @@ export default function ManagerInboxScreen() {
     if (mode === "initial") setState({ kind: "loading" });
     else setRefreshing(true);
     try {
-      const inbox = await getInbox();
+      const [inbox, mpReqs] = await Promise.all([
+        getInbox(),
+        getPendingMissedPunchRequests().catch(() => []), // fail-soft pre-022
+      ]);
       if (seq === requestSeq.current) {
-        setState({ kind: "ready", inbox, refreshedAt: new Date() });
+        setState({ kind: "ready", inbox, mpReqs, refreshedAt: new Date() });
       }
     } catch (e) {
       if (seq === requestSeq.current) {
@@ -119,6 +135,7 @@ export default function ManagerInboxScreen() {
     setActionError(null);
     setPickedShift(null);
     setTargetShifts(null);
+    setDenyReason("");
     setExpanded((cur) => (cur === rowKey ? null : rowKey));
     if (swap?.needs_target_shift) {
       getUpcomingShifts(swap.new_employee_id)
@@ -221,7 +238,7 @@ export default function ManagerInboxScreen() {
           <>
             <View style={styles.headerCard}>
               <Text style={styles.headerCount}>
-                {state.inbox.total_pending} pending
+                {state.inbox.total_pending + state.mpReqs.length} pending
               </Text>
               <Text style={styles.headerMeta}>
                 refreshed {format(state.refreshedAt, "h:mm a")}
@@ -531,6 +548,70 @@ export default function ManagerInboxScreen() {
               </Section>
             )}
 
+            {state.mpReqs.length > 0 && (
+              <Section title={`Missed punch requests (${state.mpReqs.length})`}>
+                {state.mpReqs.map((q) => (
+                  <Row
+                    key={q.id}
+                    rowKey={`mp:${q.id}`}
+                    expanded={expanded}
+                    onToggle={() => toggleExpand(`mp:${q.id}`)}
+                    title={`${titleCase(q.employee_name)} · ${fmtDay(q.shift_date)}`}
+                    subtitle={`Wants ${fmtClock(q.requested_clock_in)} – ${fmtClock(q.requested_clock_out)}${q.reason ? ` · "${q.reason}"` : ""}`}
+                  >
+                    <>
+                      <Text style={styles.actionNote}>
+                        Approving writes these punches onto the timecard,
+                        which then waits in the normal timecard queue.
+                      </Text>
+                      <TextInput
+                        style={styles.denyInput}
+                        value={denyReason}
+                        onChangeText={setDenyReason}
+                        placeholder="Reason if denying (optional)"
+                        placeholderTextColor={colors.muted}
+                      />
+                      <ActionRow
+                        error={actionError}
+                        busy={busy}
+                        buttons={[
+                          {
+                            label: confirmLabel(`mp:${q.id}`, "approve", "Approve"),
+                            primary: true,
+                            onPress: () =>
+                              run(
+                                `mp:${q.id}`,
+                                "approve",
+                                () => approveMissedPunchRequest(q.id),
+                                () => {
+                                  setExpanded(null);
+                                  load("refresh");
+                                },
+                                "Missed punch approved — timecard updated."
+                              ),
+                          },
+                          {
+                            label: confirmLabel(`mp:${q.id}`, "deny", "Deny"),
+                            onPress: () =>
+                              run(
+                                `mp:${q.id}`,
+                                "deny",
+                                () => denyMissedPunchRequest(q.id, denyReason),
+                                () => {
+                                  setExpanded(null);
+                                  load("refresh");
+                                },
+                                "Missed-punch request denied."
+                              ),
+                          },
+                        ]}
+                      />
+                    </>
+                  </Row>
+                ))}
+              </Section>
+            )}
+
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Quick actions</Text>
               <Pressable
@@ -720,6 +801,17 @@ const styles = StyleSheet.create({
   },
   rowBody: {
     marginTop: 10,
+  },
+  denyInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+    color: colors.foreground,
+    fontSize: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
   },
   actionNote: {
     fontSize: 12,

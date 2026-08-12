@@ -36,9 +36,11 @@ export default function ShiftDetailModal({
   notTipped,
   myCallout,
   pendingSwap,
+  missedPunchPending,
   onDeclareTips,
   onCallOut,
   onRequestSwap,
+  onMissedPunch,
   onClose,
 }: {
   shift: ScheduleShift | null; // null = hidden
@@ -48,9 +50,13 @@ export default function ShiftDetailModal({
   notTipped?: boolean;
   myCallout?: MyCalloutOrOffer;
   pendingSwap?: MySwapRequest;
+  /** PR #20: a pending missed-punch request exists for this shift. */
+  missedPunchPending?: boolean;
   onDeclareTips?: () => void;
   onCallOut?: () => void;
   onRequestSwap?: () => void;
+  /** PR #20: open the missed-punch request flow (past shifts). */
+  onMissedPunch?: () => void;
   onClose: () => void;
 }) {
   if (!shift) return null;
@@ -113,7 +119,7 @@ export default function ShiftDetailModal({
             )}
 
             {/* per-shift actions, verbatim behavior from the old cards */}
-            {(notTipped || tipStatus || myCallout || onCallOut || pendingSwap || onRequestSwap) && (
+            {(notTipped || tipStatus || myCallout || onCallOut || pendingSwap || onRequestSwap || onMissedPunch || missedPunchPending) && (
               <View style={styles.actionsBlock}>
                 {notTipped ? (
                   <Text style={styles.tipDim}>
@@ -121,6 +127,15 @@ export default function ShiftDetailModal({
                   </Text>
                 ) : tipStatus ? (
                   <TipActionRow status={tipStatus} onPress={onDeclareTips} />
+                ) : null}
+                {missedPunchPending ? (
+                  <Text style={styles.tipDim}>
+                    Missed punch request pending
+                  </Text>
+                ) : onMissedPunch ? (
+                  <Pressable onPress={onMissedPunch}>
+                    <Text style={styles.swapLink}>Report a missed punch →</Text>
+                  </Pressable>
                 ) : null}
                 {myCallout ? (
                   <Text style={styles.calledOutNote}>

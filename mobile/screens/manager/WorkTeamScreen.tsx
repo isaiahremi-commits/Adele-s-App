@@ -14,6 +14,7 @@ import { showToast } from "../../components/Toast";
 import { useAuth } from "../../contexts/AuthContext";
 import type { RootStackParamList } from "../../App";
 import { formatTime12, titleCase } from "../../lib/format";
+import { getUnresolvedAlerts } from "../../lib/missedPunch";
 import {
   type InboxCoverage,
   type TeamShift,
@@ -34,7 +35,12 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; team: TeamShift[]; pickups: InboxCoverage[] };
+  | {
+      kind: "ready";
+      team: TeamShift[];
+      pickups: InboxCoverage[];
+      unclocked: { id: string; employee_name: string; alerted_at: string }[];
+    };
 
 export default function WorkTeamScreen() {
   const navigation = useNavigation<Nav>();
@@ -53,17 +59,19 @@ export default function WorkTeamScreen() {
       if (mode === "initial") setState({ kind: "loading" });
       else setRefreshing(true);
       try {
-        const [team, inbox] = await Promise.all([
+        const [team, inbox, unclocked] = await Promise.all([
           // caller filtered out server-shape-side (PR #19: Adèle never
           // sees herself in her own team list)
           getTeamForDate(todayKey, user?.id),
           getInbox().catch(() => null),
+          getUnresolvedAlerts().catch(() => []), // fail-soft pre-021
         ]);
         if (seq === requestSeq.current) {
           setState({
             kind: "ready",
             team,
             pickups: inbox?.pending_coverage ?? [],
+            unclocked,
           });
         }
       } catch (e) {
@@ -148,6 +156,20 @@ export default function WorkTeamScreen() {
 
       {state.kind === "ready" && (
         <>
+          {state.unclocked.length > 0 && (
+            <View style={styles.unclockedCard}>
+              <Text style={styles.unclockedTitle}>
+                {state.unclocked.length} unclocked{" "}
+                {state.unclocked.length === 1 ? "shift" : "shifts"}
+              </Text>
+              {state.unclocked.map((a) => (
+                <Text key={a.id} style={styles.unclockedRow}>
+                  {titleCase(a.employee_name)} — no clock-in (alerted{" "}
+                  {format(new Date(a.alerted_at), "h:mm a")})
+                </Text>
+              ))}
+            </View>
+          )}
           <View style={styles.card}>
             {state.team.length === 0 ? (
               <Text style={styles.mutedBody}>Nobody scheduled today.</Text>
@@ -280,6 +302,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  unclockedCard: {
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.4)",
+    borderRadius: 12,
+    padding: 12,
+    gap: 3,
+  },
+  unclockedTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#dc2626",
+  },
+  unclockedRow: {
+    fontSize: 13,
+    color: colors.foreground,
   },
   headerText: {
     flex: 1,

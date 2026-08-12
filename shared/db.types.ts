@@ -732,6 +732,117 @@ export type Database = {
           },
         ]
       }
+      missed_punch_alerts: {
+        // Whole table pending 021 (Phase 2) — HAND-ADDED, regen after apply.
+        Row: {
+          alerted_at: string
+          employee_id: string
+          id: string
+          resolved_at: string | null
+          shift_id: string
+          tenant_id: string
+        }
+        Insert: {
+          alerted_at?: string
+          employee_id: string
+          id?: string
+          resolved_at?: string | null
+          shift_id: string
+          tenant_id: string
+        }
+        Update: {
+          alerted_at?: string
+          employee_id?: string
+          id?: string
+          resolved_at?: string | null
+          shift_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "missed_punch_alerts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missed_punch_alerts_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: true
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      missed_punch_requests: {
+        // Whole table pending 022 (Phase 2) — HAND-ADDED, regen after apply.
+        Row: {
+          created_at: string
+          decision_reason: string | null
+          employee_id: string
+          id: string
+          manager_decision_at: string | null
+          manager_decision_by: string | null
+          reason: string | null
+          requested_clock_in: string
+          requested_clock_out: string
+          shift_id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          decision_reason?: string | null
+          employee_id: string
+          id?: string
+          manager_decision_at?: string | null
+          manager_decision_by?: string | null
+          reason?: string | null
+          requested_clock_in: string
+          requested_clock_out: string
+          shift_id: string
+          status?: string
+          tenant_id?: string
+        }
+        Update: {
+          created_at?: string
+          decision_reason?: string | null
+          employee_id?: string
+          id?: string
+          manager_decision_at?: string | null
+          manager_decision_by?: string | null
+          reason?: string | null
+          requested_clock_in?: string
+          requested_clock_out?: string
+          shift_id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "missed_punch_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missed_punch_requests_manager_decision_by_fkey"
+            columns: ["manager_decision_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missed_punch_requests_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lateness_history: {
         Row: {
           created_at: string
@@ -2080,6 +2191,27 @@ export type Database = {
       manager_approval_inbox: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      missed_punch_request_approve: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      missed_punch_request_cancel: {
+        Args: { p_request_id: string }
+        Returns: undefined
+      }
+      missed_punch_request_deny: {
+        Args: { p_reason?: string; p_request_id: string }
+        Returns: undefined
+      }
+      missed_punch_request_submit: {
+        Args: {
+          p_clock_in: string
+          p_clock_out: string
+          p_reason?: string
+          p_shift_id: string
+        }
+        Returns: string
       }
       my_callouts_and_coverage: {
         Args: Record<PropertyKey, never>

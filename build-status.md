@@ -1218,6 +1218,73 @@ description for Isaiah to copy-paste — no code depends on it.
   submit, callout, broadcast send/reply paths untouched beyond the
   display-only casing wraps.
 
+### PR #20 — Spec-completeness batch (2026-08-12)
+
+**MIGRATIONS 021 + 022 PENDING — Isaiah applies via Supabase dashboard.
+Enable the pg_cron extension first if not already enabled** (Dashboard →
+Database → Extensions); 021 fails fast with that instruction otherwise.
+Apply 021 then 022. Until applied, the new mobile surfaces fail soft
+(no banners/pills/sections) and terminate keeps working — but WITHOUT
+the immediate ban (the web route change ships now), so apply promptly
+or terminated employees keep app access indefinitely.
+
+Closes three July-30 scope items:
+
+- **Missed-punch auto-notify at 25 min (021).** pg_cron runs
+  scan_missed_punches() every 5 minutes: today's shifts (per-tenant
+  setup.timezone) whose start + 25 min passed with no timecard clock-in
+  get a missed_punch_alerts row (UNIQUE per shift; own-rows + manager
+  RLS). Deliberately skipped: called-out shifts (excused — coverage owns
+  those), terminated employees. Alerts AUTO-RESOLVE when a clock-in
+  appears. Channel deviation (spec allowed it): alerts are their own
+  table, not synthetic broadcasts — broadcasts are manager-authored DMs
+  with receipts/threads a system sender would corrupt. Mobile: red Home
+  banner ("You didn't clock in for your X shift") with a
+  submit-request button; managers get an "N unclocked shifts" pill +
+  list on Home and Work → Team.
+- **Termination 30-day grace (022 + web).** The immediate Auth Admin
+  ban is REMOVED from the terminate route (it was never in the RPC —
+  employee_terminate is untouched and still revokes device_sessions).
+  enforce_termination_lockouts() bans (banned_until 9999-12-31) 30+
+  days past termination, nightly at 03:00 via pg_cron;
+  employee_reactivate now lifts the ban in-DB too. No status column
+  added (termination_date stays the single signal, the PR #11 REV 2
+  precedent). Mobile grace mode (AuthContext.terminated): Home shows
+  the ended-on banner with days-left, quick actions/broadcasts hidden;
+  Schedule shows past shifts only, no callout/swap/missed-punch
+  actions, sections hidden; PTO loses the request FAB; Pay untouched;
+  bell hidden; Settings reduced to sign-out. Team lists exclude
+  terminated employees. Web /employees: "Terminated" filter chip +
+  "Xd until lockout" countdown on the status chip.
+- **Missed-punch request flow (022).** missed_punch_requests table
+  (own-rows + manager RLS) with submit/cancel (employee) and
+  approve/deny (manager) RPCs. Submit guards: own past shift, no
+  COMPLETE timecard (a punch-missing one is exactly the repairable
+  case), no duplicate pending, clock_out > clock_in, reason ≤200.
+  Approve upserts the timecard punches (ISO text, live shape) and
+  leaves it 'pending' — tc_approve stays the only hours/lateness
+  computer — and resolves the shift's 021 alert; deny records a
+  reason. Mobile: request modal (native time pickers, web
+  input[type=time], scheduled-time defaults, overnight roll-over) from
+  the Home banner or any past shift's detail sheet; "Missed punch
+  request pending" badges on the grid + sheet; a new Missed punch
+  requests section in the manager Approvals inbox with approve/deny +
+  optional deny reason (header count includes them).
+- shared/db.types.ts: both tables + 4 RPCs hand-added (regen after).
+- Verified: **40/40 PGlite checks** — real 015 → 021 ×2 → 022 ×2 on a
+  live-shape base with a mocked cron schema (job-table upsert; 021's
+  extension block takes the skip path, exactly a live re-run) and a
+  mocked auth.users table so the ban sweep/unban are real UPDATEs.
+  Covers the full scan matrix (too-early / clocked / called-out /
+  terminated all skipped; UNIQUE re-scan; auto-resolve), alert RLS
+  triangle, every submit guard, cancel/approve/deny lifecycles with
+  ISO-text timecard writes + alert resolution + decision stamps,
+  request RLS, the 30-day boundary both sides, sweep idempotency,
+  terminate-no-ban + device revocation, reactivate-unbans, both cron
+  registrations, and API-role lockout of the sweep functions. Root +
+  mobile `tsc --noEmit` clean; `next build` clean; `expo export`
+  bundles clean.
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle

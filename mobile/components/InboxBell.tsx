@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../App";
+import { useAuth } from "../contexts/AuthContext";
 import { useInbox } from "../contexts/InboxContext";
 import { colors } from "../lib/theme";
 
@@ -14,6 +15,9 @@ export default function InboxBell() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { unread } = useInbox();
+  const { terminated } = useAuth();
+  // Grace-period employees have no messaging surface (PR #20).
+  if (terminated) return null;
 
   return (
     <Pressable
