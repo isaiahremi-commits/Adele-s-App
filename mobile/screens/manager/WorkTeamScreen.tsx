@@ -120,9 +120,15 @@ export default function WorkTeamScreen() {
         />
       }
     >
-      {/* Date lives in the navigation title now ("Team today · Tue, Aug 12") */}
+      {/* Nav title stays a single word ("Team") — it shares the header row
+          with the toggle + bell. The date/context lives HERE in the body. */}
       <View style={styles.headerRow}>
-        <Text style={styles.subGreeting}>Here's who's on today.</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.bodyTitle}>
+            Team today · {format(new Date(), "EEE, MMM d")}
+          </Text>
+          <Text style={styles.subGreeting}>Here's who's on today.</Text>
+        </View>
         <Pressable onPress={() => navigation.navigate("Approvals")}>
           <Text style={styles.approvalsLink}>Approvals →</Text>
         </Pressable>
@@ -275,8 +281,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  headerText: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  bodyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.foreground,
+  },
   subGreeting: {
-    fontSize: 14,
+    marginTop: 1,
+    fontSize: 13,
     color: colors.muted,
   },
   approvalsLink: {

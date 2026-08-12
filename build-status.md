@@ -1188,9 +1188,14 @@ description for Isaiah to copy-paste — no code depends on it.
 - **Toggle inline (item 4): shipped ahead** on main (389d21b, Aug 11
   night) — headerLeft toggle, one standard-height row of
   [Personal|Work] [title] [bell]. Verified present on this branch.
-- **Work → Team header:** the navigation title is now the greeting —
-  "Team today · Tue, Aug 12" — with a warm "Here's who's on today."
-  subtitle in the body (date no longer duplicated in-screen).
+- **Work → Team header:** nav titles stay SINGLE-WORD everywhere (Team /
+  Hours / Sales / End of day / Settings; Personal already was) — a first
+  cut put "Team today · Tue, Aug 12" in the nav title and it collided
+  with the inline toggle at narrow widths. The date/context greeting
+  lives in the body instead: "Team today · Tue, Aug 12" + "Here's who's
+  on today." (Sales' "Yesterday · …" and End of day's date line were
+  already body content.) Toggle compacted (11pt, tighter padding) so the
+  longest title clears toggle + bell with ~35px to spare at 366px.
 - **Tab label clipping** ("Pay" → "Pav", "Settings" → "Settina"):
   `tabBarLabelStyle { fontSize: 11, lineHeight: 16 }` on both tab bars —
   descenders get room.

@@ -2,7 +2,6 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -257,16 +256,16 @@ function PersonalTabs() {
 // The full Approvals inbox (PR #10) rides the root stack, reached from the
 // Team screen — deliberately not a 6th tab.
 function WorkTabs() {
-  // PR #19: the Team header IS the greeting — "Team today · Tue, Aug 12".
-  const teamTitle = `Team today · ${format(new Date(), "EEE, MMM d")}`;
+  // Header titles stay SINGLE-WORD — they share the row with the
+  // Personal|Work toggle and the bell, and anything longer collides at
+  // narrow widths. Date/context lines live in each screen's body.
   return (
     <WorkTab.Navigator screenOptions={tabScreenOptions}>
       <WorkTab.Screen
         name="Team"
         component={WorkTeamScreen}
         options={{
-          title: teamTitle,
-          tabBarLabel: "Team",
+          title: "Team",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
           ),
@@ -470,10 +469,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Header-left segmented control — compact enough for a ~50pt navbar.
+  // Header-left segmented control — compact enough that even the longest
+  // single-word title ("End of day") clears it and the bell at 366px:
+  // toggle ≈ 118px + bell ≈ 42px leaves >120px of centered title space.
   modeToggle: {
     flexDirection: "row",
-    marginLeft: 12,
+    marginLeft: 10,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 999,
@@ -481,14 +482,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   modeSegment: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 5,
   },
   modeSegmentActive: {
     backgroundColor: "rgba(45, 184, 122, 0.14)",
   },
   modeSegmentText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: colors.muted,
   },
