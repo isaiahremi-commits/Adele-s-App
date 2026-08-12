@@ -1301,6 +1301,30 @@ Closes three July-30 scope items:
   mobile `tsc --noEmit` clean; `next build` clean; `expo export`
   bundles clean.
 
+### PR #23 — EAS Build config prep (2026-08-12)
+
+- EAS Build config ready — no functional change. Blocked on Apple Dev
+  enrollment + DUNS; post-enrollment steps documented in
+  `mobile/README.md` ("Building with EAS") and repo-root `SECRETS.md`.
+- `mobile/eas.json`: `development` (dev client, internal, physical
+  device), `development-simulator`, `preview` (internal/TestFlight),
+  `production` (store, remote auto-increment build number).
+- `mobile/app.json`: app identity Manadele / `com.apptage.manadele`
+  (both platforms), phone-only (`supportsTablet: false`), NFC reader
+  entitlements (`TAG` + `NDEF` — covers NTAG213 stickers) + usage
+  string, `react-native-nfc-manager` config plugin (no ISO 7816 /
+  FeliCa identifiers — NTAG213 is an NFC Forum Type 2 tag, addressed
+  by the TAG format), Android `NFC` + `USE_BIOMETRIC` permissions,
+  empty `associated-domains` placeholder for future NFC background
+  reading / Universal Links.
+- Deps: `eas-cli` devDep; `expo-dev-client` (required for the
+  `development` profile) + `react-native-nfc-manager` (required for
+  the config plugin to resolve at prebuild) — nothing imports them
+  yet, so runtime is unchanged and Expo Go still works until NFC code
+  lands.
+- The moment credentials exist, the dev IPA is:
+  `npx eas build --platform ios --profile development`.
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle
