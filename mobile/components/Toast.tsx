@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, StyleSheet, Text } from "react-native";
+import { Animated, StyleSheet } from "react-native";
+import { Text } from "./Text";
 import { colors } from "../lib/theme";
 
 // Minimal app-wide toast: showToast() can be called from anywhere (including

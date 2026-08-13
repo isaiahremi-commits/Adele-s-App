@@ -400,7 +400,7 @@ export default function EmployeesPage() {
         if (missing === 0) return null;
         return (
           <div className="mb-4 p-3 rounded-md text-sm flex items-center justify-between flex-wrap gap-2"
-            style={{ background: "rgba(239,159,39,0.12)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
+            style={{ background: "var(--warning-bg)", color: "var(--amber)", border: "1px solid var(--amber)" }}>
             <span>⚠ {missing} employee{missing === 1 ? "" : "s"} missing hire dates — set them to enable PTO accrual.</span>
             <button className="text-xs" style={{ color: "var(--amber)", background: "none", border: "1px solid var(--amber)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}
               onClick={() => setMissingHireOnly((v) => !v)}>
@@ -834,7 +834,7 @@ export default function EmployeesPage() {
           </div>
 
           {error && (
-            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+            <div className="text-sm p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
               {error}
             </div>
           )}

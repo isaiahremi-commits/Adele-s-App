@@ -1,16 +1,16 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "../components/Text";
 import { useAuth } from "../contexts/AuthContext";
-import { colors } from "../lib/theme";
+import { colors, fontFamilies } from "../lib/theme";
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -40,7 +40,12 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.card}>
-        <Text style={styles.brand}>manadele</Text>
+        <Image
+          source={require("../assets/logo-wordmark.png")}
+          style={styles.brand}
+          resizeMode="contain"
+          accessibilityLabel="manadele"
+        />
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
         <Text style={styles.label}>Email</Text>
@@ -111,13 +116,14 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   brand: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: 4,
+    width: 190,
+    height: 46,
+    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 14,
+    // Crimson Text italic — the brand book's serif for supporting copy.
+    fontFamily: fontFamilies.serifItalic,
+    fontSize: 15,
     color: colors.muted,
     marginBottom: 20,
   },
@@ -137,7 +143,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     padding: 10,
     marginBottom: 6,

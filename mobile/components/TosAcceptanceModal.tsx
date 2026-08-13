@@ -4,9 +4,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "./Text";
 import { TOS_CURRENT_VERSION, TOS_TEXT } from "../../shared/tos";
 import { supabase } from "../lib/supabase";
 import { colors } from "../lib/theme";
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   errorBox: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     padding: 10,
     marginBottom: 6,

@@ -1,24 +1,40 @@
-import { NavigationContainer } from "@react-navigation/native";
+import {
+  DefaultTheme,
+  NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
-import { createContext, useContext, useEffect, useState } from "react";
+import { useFonts } from "expo-font";
+import {
+  ElmsSans_400Regular,
+  ElmsSans_500Medium,
+  ElmsSans_600SemiBold,
+  ElmsSans_700Bold,
+} from "@expo-google-fonts/elms-sans";
+import {
+  CrimsonText_400Regular,
+  CrimsonText_400Regular_Italic,
+} from "@expo-google-fonts/crimson-text";
+import { createContext,
+  useContext,
+  useEffect,
+  useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "./components/Text";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { InboxProvider } from "./contexts/InboxContext";
 import InboxBell from "./components/InboxBell";
 import { ToastHost } from "./components/Toast";
 import TosAcceptanceModal from "./components/TosAcceptanceModal";
 import { isManager } from "./lib/manager";
-import { colors } from "./lib/theme";
+import { colors, fontFamilies } from "./lib/theme";
 import type {
   PtoStackParamList,
   ScheduleStackParamList,
@@ -71,6 +87,39 @@ export type WorkTabParamList = {
   Sales: undefined;
   EndOfDay: undefined;
   Settings: undefined;
+};
+
+// Brand navigation theme — cream canvas, white chrome, apricot accents.
+// Passing it at the container level themes screen backgrounds (no white
+// flashes against cream) and every default header/tab surface at once.
+const navTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.card,
+    text: colors.foreground,
+    border: colors.border,
+    notification: colors.primary,
+  },
+  fonts: {
+    regular: { fontFamily: fontFamilies.regular, fontWeight: "400" as const },
+    medium: { fontFamily: fontFamilies.medium, fontWeight: "500" as const },
+    bold: { fontFamily: fontFamilies.semibold, fontWeight: "600" as const },
+    heavy: { fontFamily: fontFamilies.bold, fontWeight: "700" as const },
+  },
+};
+
+// Shared styling for the three native-stack navigators (root + nested):
+// white header, chocolate title/back tint, brand semibold titles.
+const stackScreenOptions = {
+  headerStyle: { backgroundColor: colors.card },
+  headerTintColor: colors.foreground,
+  headerTitleStyle: {
+    color: colors.foreground,
+    fontFamily: fontFamilies.semibold,
+  },
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -131,7 +180,7 @@ function ModeToggle() {
 // back header (same pattern as the PTO stack).
 function ScheduleStack() {
   return (
-    <ScheduleStackNav.Navigator>
+    <ScheduleStackNav.Navigator screenOptions={stackScreenOptions}>
       <ScheduleStackNav.Screen
         name="ScheduleList"
         component={ScheduleScreen}
@@ -159,7 +208,7 @@ function ScheduleStack() {
 // PTO gets its own stack so the detail screen has a native back header.
 function PtoStack() {
   return (
-    <PtoStackNav.Navigator>
+    <PtoStackNav.Navigator screenOptions={stackScreenOptions}>
       <PtoStackNav.Screen
         name="PtoList"
         component={PtoScreen}
@@ -181,11 +230,24 @@ function PtoStack() {
 
 const tabScreenOptions = {
   tabBarActiveTintColor: colors.primary,
-  tabBarInactiveTintColor: colors.muted,
+  // Brand spec: 60% swiss chocolate for inactive tabs (not the 50% muted).
+  tabBarInactiveTintColor: colors.mutedStrong,
+  tabBarStyle: {
+    backgroundColor: colors.card,
+    borderTopColor: colors.border,
+  },
   // PR #19: descenders were clipping ("Pay" → "Pav", "Settings" →
   // "Settina") — smaller size + explicit lineHeight gives them room.
-  tabBarLabelStyle: { fontSize: 11, lineHeight: 16 },
-  headerTitleStyle: { color: colors.foreground },
+  tabBarLabelStyle: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: fontFamilies.medium,
+  },
+  headerStyle: { backgroundColor: colors.card },
+  headerTitleStyle: {
+    color: colors.foreground,
+    fontFamily: fontFamilies.semibold,
+  },
   headerTitleAlign: "center" as const,
   // One navbar row: [Personal|Work toggle] [title] [bell]. The toggle is a
   // no-op render for non-managers; the bell (PR #11) lives in every
@@ -379,7 +441,7 @@ function RootNavigator() {
   // two clear user_metadata flags (USER_UPDATED re-renders this navigator);
   // self-onboarding clears via refreshSelfOnboarding after its RPC.
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={stackScreenOptions}>
       {!session ? (
         <Stack.Screen
           name="Login"
@@ -449,13 +511,30 @@ function RootNavigator() {
 }
 
 export default function App() {
+  // Brand fonts gate the whole tree (same cream spinner as the session
+  // restore) so no screen ever renders in the system font.
+  const [fontsLoaded] = useFonts({
+    ElmsSans_400Regular,
+    ElmsSans_500Medium,
+    ElmsSans_600SemiBold,
+    ElmsSans_700Bold,
+    CrimsonText_400Regular,
+    CrimsonText_400Regular_Italic,
+  });
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.splash}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
   return (
     <AuthProvider>
       <InboxProvider>
-        <NavigationContainer>
+        <NavigationContainer theme={navTheme}>
           <RootNavigator />
           <ToastHost />
-          <StatusBar style="auto" />
+          <StatusBar style="dark" />
         </NavigationContainer>
       </InboxProvider>
     </AuthProvider>
@@ -486,7 +565,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   modeSegmentActive: {
-    backgroundColor: "rgba(45, 184, 122, 0.14)",
+    backgroundColor: colors.primarySoft,
   },
   modeSegmentText: {
     fontSize: 11,

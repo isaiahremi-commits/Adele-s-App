@@ -167,7 +167,7 @@ export default function SmsLogPage() {
               <div className="text-sm" style={{ color: "var(--foreground)", whiteSpace: "pre-wrap" }}>{l.message}</div>
 
               {l.error_message && (
-                <div className="text-xs mt-2 p-2 rounded-md" style={{ background: "rgba(239,90,90,0.1)", color: "var(--danger)" }}>
+                <div className="text-xs mt-2 p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
                   Error: {l.error_message}
                 </div>
               )}

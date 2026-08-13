@@ -14,7 +14,10 @@
         "NFCReaderUsageDescription": "Manadele uses NFC to let you clock in and out by tapping the tag at your outlet."
       },
       "entitlements": {
-        "com.apple.developer.nfc.readersession.formats": ["TAG", "NDEF"],
+        "com.apple.developer.nfc.readersession.formats": [
+          "TAG",
+          "NDEF"
+        ],
         "com.apple.developer.associated-domains": []
       }
     },
@@ -26,9 +29,8 @@
         "android.permission.USE_BIOMETRIC"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#3A1F1A",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -43,6 +45,15 @@
         "react-native-nfc-manager",
         {
           "nfcPermission": "Manadele uses NFC to let you clock in and out by tapping the tag at your outlet."
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#F7F2E1"
         }
       ]
     ]

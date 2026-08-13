@@ -4,9 +4,9 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../../components/Text";
 import { format } from "date-fns";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -304,9 +304,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   unclockedCard: {
-    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    backgroundColor: colors.dangerSoft,
     borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.4)",
+    borderColor: colors.dangerBorder,
     borderRadius: 12,
     padding: 12,
     gap: 3,
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   unclockedTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#dc2626",
+    color: colors.danger,
   },
   unclockedRow: {
     fontSize: 13,
@@ -373,8 +373,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarOut: {
-    borderColor: "#dc2626",
-    backgroundColor: "rgba(220, 38, 38, 0.08)",
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerSoft,
   },
   avatarText: {
     fontSize: 14,
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     color: colors.primaryDim,
   },
   avatarOutText: {
-    color: "#dc2626",
+    color: colors.danger,
   },
   rowInfo: {
     flex: 1,
@@ -393,12 +393,12 @@ const styles = StyleSheet.create({
     color: colors.foreground,
   },
   nameOut: {
-    color: "#dc2626",
+    color: colors.danger,
   },
   calledOutTag: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#dc2626",
+    color: colors.danger,
   },
   meta: {
     marginTop: 1,
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
   denyText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#dc2626",
+    color: colors.danger,
   },
   mutedBody: {
     fontSize: 13,

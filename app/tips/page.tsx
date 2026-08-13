@@ -410,7 +410,7 @@ export default function TipsPage() {
             <input type="date" className="input mt-1" required value={form.sheet_date} onChange={(e) => setForm({ ...form, sheet_date: e.target.value })} />
           </label>
           {error && (
-            <div className="text-sm p-2 rounded-md" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>
+            <div className="text-sm p-2 rounded-md" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
               {error}
             </div>
           )}

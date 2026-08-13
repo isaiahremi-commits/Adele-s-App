@@ -3,10 +3,9 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "../components/Text";
 import { format } from "date-fns";
 import { showToast } from "../components/Toast";
 import { formatShiftTime, type ScheduleShift } from "../lib/schedule";
@@ -252,7 +251,7 @@ export default function CalloutModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: colors.scrim,
     justifyContent: "center",
     padding: 24,
   },
@@ -316,7 +315,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(45, 184, 122, 0.12)",
+    backgroundColor: colors.primarySoft,
   },
   chipText: {
     fontSize: 13,
@@ -345,10 +344,10 @@ const styles = StyleSheet.create({
   },
   confirmBox: {
     marginTop: 14,
-    backgroundColor: "rgba(217, 119, 6, 0.10)",
+    backgroundColor: colors.warningSoft,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(217, 119, 6, 0.35)",
+    borderColor: colors.warningBorder,
     padding: 12,
   },
   confirmTitle: {
@@ -365,7 +364,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 10,
     fontSize: 13,
-    color: "#dc2626",
+    color: colors.danger,
     lineHeight: 18,
   },
   buttonRow: {

@@ -5,9 +5,9 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "../components/Text";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     color: colors.foreground,
   },
   reasonChip: {
-    backgroundColor: "rgba(45, 184, 122, 0.14)",
+    backgroundColor: colors.infoSoft,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
   reasonChipText: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.primaryDim,
+    color: colors.infoText,
   },
   rowMeta: {
     marginTop: 6,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     elevation: 4,
-    shadowColor: "#000",
+    shadowColor: colors.shadow,
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },

@@ -209,7 +209,7 @@ export default function TipSheetEditor() {
       </header>
 
       {toast && (
-        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: toast.kind === "success" ? "rgba(78,203,148,0.15)" : "rgba(239,90,90,0.15)", color: toast.kind === "success" ? "var(--primary)" : "var(--danger)" }}>
+        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: toast.kind === "success" ? "var(--success-bg)" : "var(--danger-bg)", color: toast.kind === "success" ? "var(--primary)" : "var(--danger)" }}>
           {toast.text}
         </div>
       )}

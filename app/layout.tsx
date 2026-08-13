@@ -1,16 +1,34 @@
 import type { Metadata } from "next";
-import { DM_Sans } from "next/font/google";
+import { Crimson_Text } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import Nav from "@/components/Nav";
 import SessionKeepalive from "@/components/SessionKeepalive";
 
-const dmSans = DM_Sans({
+// Elms Sans (brand primary) is on Google Fonts but postdates this Next
+// version's next/font/google list, so it's self-hosted (OFL — see
+// app/fonts/OFL.txt).
+const elmsSans = localFont({
+  src: [
+    { path: "./fonts/elms-sans-latin-400-normal.woff2", weight: "400" },
+    { path: "./fonts/elms-sans-latin-500-normal.woff2", weight: "500" },
+    { path: "./fonts/elms-sans-latin-600-normal.woff2", weight: "600" },
+    { path: "./fonts/elms-sans-latin-700-normal.woff2", weight: "700" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const crimson = Crimson_Text({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-serif",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Adele's",
+  title: "Manadele",
   description: "Staff scheduling & tip distribution",
 };
 
@@ -18,18 +36,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    // suppressHydrationWarning: the inline script below sets data-theme from
-    // localStorage before paint, intentionally diverging from the SSR value.
-    <html lang="en" data-theme="light" suppressHydrationWarning>
-      <head>
-        <script
-          // Apply saved theme before paint to avoid a flash.
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}`,
-          }}
-        />
-      </head>
-      <body className={`${dmSans.className} antialiased`}>
+    <html lang="en" className={`${elmsSans.variable} ${crimson.variable}`}>
+      <body className="antialiased">
         <SessionKeepalive />
         <div className="flex min-h-screen">
           <Nav />

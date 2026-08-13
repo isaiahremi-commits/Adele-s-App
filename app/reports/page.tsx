@@ -154,7 +154,7 @@ export default function ReportsPage() {
                   <td className="p-3">{r.name}</td><td className="p-3 text-right">{r.tier1}</td><td className="p-3 text-right">{r.tier2}</td>
                   <td className="p-3 text-right">{r.callouts}</td><td className="p-3 text-right font-semibold">{r.total}</td>
                   <td className="p-3">
-                    {r.escalation ? <span className="chip" style={{ background: "rgba(239,90,90,0.15)", color: "var(--danger)" }}>⚠ escalation</span>
+                    {r.escalation ? <span className="chip" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>⚠ escalation</span>
                       : r.callout_flag ? <span className="chip chip-amber">⚠ callouts</span> : null}
                   </td>
                 </tr>
@@ -166,7 +166,7 @@ export default function ReportsPage() {
 
       {/* Drawer */}
       {drawer && (
-        <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={() => setDrawer(null)}>
+        <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "var(--scrim)" }} onClick={() => setDrawer(null)}>
           <div className="h-full overflow-y-auto p-6" style={{ width: 460, maxWidth: "100%", background: "var(--surface)", borderLeft: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">{drawer.name}</h3>
