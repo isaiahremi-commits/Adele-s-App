@@ -1,15 +1,30 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Manadele",
+    "slug": "manadele",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.apptage.manadele",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NFCReaderUsageDescription": "Manadele uses NFC to let you clock in and out by tapping the tag at your outlet."
+      },
+      "entitlements": {
+        "com.apple.developer.nfc.readersession.formats": ["TAG", "NDEF"],
+        "com.apple.developer.associated-domains": []
+      }
     },
     "android": {
+      "package": "com.apptage.manadele",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.NFC",
+        "android.permission.USE_BIOMETRIC"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,7 +38,13 @@
     },
     "plugins": [
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Manadele uses NFC to let you clock in and out by tapping the tag at your outlet."
+        }
+      ]
     ]
   }
 }

@@ -47,6 +47,61 @@ screens/LoginScreen.tsx  Email + password sign-in
 screens/HomeScreen.tsx   Placeholder (real screens land in later PRs)
 ```
 
+## Building with EAS
+
+Build config lives in [eas.json](eas.json) (profiles) and [app.json](app.json)
+(bundle ids `com.apptage.manadele`, NFC entitlements, icons). `eas-cli` is a
+devDependency, so run everything as `npx eas …` from `mobile/`.
+
+One-time setup (needs the Apple Developer Program enrollment — see the
+repo-root `SECRETS.md` for the account values to have on hand):
+
+```bash
+cd mobile
+npx eas login            # Expo account
+npx eas build:configure  # links the EAS project — writes extra.eas.projectId
+                         # into app.json; commit that change
+```
+
+iOS builds:
+
+```bash
+npx eas build --platform ios --profile development  # dev IPA for a physical iPhone
+npx eas build --platform ios --profile preview      # TestFlight (internal)
+npx eas build --platform ios --profile production   # App Store submission
+```
+
+The first device build asks you to log in with the Apple ID and register the
+iPhone's UDID (EAS sends a link that installs a provisioning profile). Install
+dev builds straight from the QR/URL EAS prints when the build finishes.
+`development-simulator` is the same dev client built for the iOS Simulator.
+
+Android builds (same profiles):
+
+```bash
+npx eas build --platform android --profile development  # dev APK
+npx eas build --platform android --profile preview      # internal-testing APK
+npx eas build --platform android --profile production   # Play Store AAB
+```
+
+Store submission (after a `production` build; credentials in `SECRETS.md`):
+
+```bash
+npx eas submit --platform ios --latest      # App Store review
+npx eas submit --platform android --latest  # Play Console
+```
+
+Notes:
+
+- The `development` profile builds the custom dev client (`expo-dev-client`).
+  Once NFC code lands, Expo Go can no longer run the app — use the dev build
+  from `npx expo start` instead (it appears in the dev client automatically).
+- `production` auto-increments the build number remotely
+  (`appVersionSource: "remote"`); the `buildNumber`/`versionCode` in app.json
+  are just the starting values.
+- `com.apple.developer.associated-domains` is an empty placeholder — the real
+  domain gets added when NFC background reading / Universal Links land.
+
 ## DB types
 
 `shared/db.types.ts` (repo root) holds the generated Supabase types, imported

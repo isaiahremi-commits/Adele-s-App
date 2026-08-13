@@ -14,6 +14,7 @@
     "date-fns": "^4.4.0",
     "expo": "~57.0.10",
     "expo-crypto": "~57.0.1",
+    "expo-dev-client": "~57.0.11",
     "expo-device": "~57.0.1",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
@@ -21,6 +22,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
     "react-native-get-random-values": "~1.11.0",
+    "react-native-nfc-manager": "^3.17.2",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-url-polyfill": "^4.0.0",
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@types/aes-js": "^3.1.4",
     "@types/react": "~19.2.2",
+    "eas-cli": "^21.8.0",
     "supabase": "^2.111.0",
     "typescript": "~6.0.3"
   },
