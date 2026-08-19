@@ -325,6 +325,11 @@ export default function SchedulingPage() {
     return Array.from(names).sort();
   }
 
+  // Whole numbers stay whole ("40h"), fractional show one decimal ("16.3h").
+  function fmtHours(n: number): string {
+    return n.toFixed(n % 1 === 0 ? 0 : 1);
+  }
+
   // Item 6: total scheduled hours for an employee across the visible week.
   function weekHoursFor(empId: string): number {
     let total = 0;
@@ -850,9 +855,20 @@ export default function SchedulingPage() {
                     <div className="text-xs" style={{ color: "var(--muted)" }}>
                       {empDept?.name ?? ""}
                     </div>
-                    {/* Item 6: total scheduled hours this visible week. */}
-                    <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                      {wk.toFixed(wk % 1 === 0 ? 0 : 1)}h scheduled
+                    {/* Item 6: total scheduled hours this visible week.
+                        PR #25 item 8: over 40h splits into regular + red OT. */}
+                    <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}
+                      title={wk > 40 ? `${fmtHours(wk)}h scheduled — over the 40h/week OT threshold` : undefined}>
+                      {wk > 40 ? (
+                        <>
+                          40h{" "}
+                          <span style={{ color: "var(--danger)", fontWeight: 600 }}>
+                            · {fmtHours(wk - 40)}h OT
+                          </span>
+                        </>
+                      ) : (
+                        `${fmtHours(wk)}h scheduled`
+                      )}
                     </div>
                   </td>
                   {days.map((d) => {

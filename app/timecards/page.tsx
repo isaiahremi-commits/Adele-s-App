@@ -160,6 +160,9 @@ export default function TimecardsPage() {
   const [toast, setToast] = useState<Toast>(null);
   const [loading, setLoading] = useState(true);
 
+  // PR #25 item 7: which row's break detail popover is open (row.key).
+  const [breakOpen, setBreakOpen] = useState<string | null>(null);
+
   // Ad-hoc modal
   const [adhocOpen, setAdhocOpen] = useState(false);
   const [adhoc, setAdhoc] = useState({ employee_id: "", clock_in: "", clock_out: "", break_minutes: "0", notes: "" });
@@ -482,10 +485,43 @@ export default function TimecardsPage() {
                       disabled={approved}
                       onChange={(ev) => setEdit(row.key, { clock_out: ev.target.value })} />
                   </td>
-                  <td className="p-3 align-top">
-                    <input type="number" min={0} className="input" style={{ width: 70 }} value={e.break_minutes}
-                      disabled={approved}
-                      onChange={(ev) => setEdit(row.key, { break_minutes: ev.target.value })} />
+                  <td className="p-3 align-top" style={{ position: "relative" }}>
+                    {/* PR #25 item 7: the break value expands into a detail
+                        popover. Punch-level break in/out timestamps aren't
+                        captured yet (only total minutes is stored), so the
+                        popover shows what exists and says so. */}
+                    <div className="flex items-center gap-1">
+                      <input type="number" min={0} className="input" style={{ width: 70 }} value={e.break_minutes}
+                        disabled={approved}
+                        onChange={(ev) => setEdit(row.key, { break_minutes: ev.target.value })} />
+                      <button
+                        onClick={() => setBreakOpen(breakOpen === row.key ? null : row.key)}
+                        aria-label="Break details" title="Break details"
+                        className="text-xs"
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)", padding: 2 }}>
+                        {breakOpen === row.key ? "▾" : "▸"}
+                      </button>
+                    </div>
+                    {breakOpen === row.key && (
+                      <div className="card p-3 text-xs"
+                        style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, minWidth: 190, boxShadow: "0 4px 12px var(--shadow, rgba(0,0,0,0.15))" }}>
+                        <div className="flex justify-between gap-4 py-0.5">
+                          <span style={{ color: "var(--muted)" }}>Break in</span>
+                          <span>—</span>
+                        </div>
+                        <div className="flex justify-between gap-4 py-0.5">
+                          <span style={{ color: "var(--muted)" }}>Break out</span>
+                          <span>—</span>
+                        </div>
+                        <div className="flex justify-between gap-4 py-0.5">
+                          <span style={{ color: "var(--muted)" }}>Duration</span>
+                          <span className="font-medium">{Number(e.break_minutes) || 0} min</span>
+                        </div>
+                        <p className="mt-1" style={{ color: "var(--muted)" }}>
+                          Punch-level break times aren&apos;t recorded yet — only the total.
+                        </p>
+                      </div>
+                    )}
                   </td>
                   <td className="p-3 align-top">
                     <div className="flex flex-col gap-1">
@@ -505,9 +541,12 @@ export default function TimecardsPage() {
                           {(tc?.training_hours ?? 0) > 0 ? ` · tr ${tc?.training_hours}h` : ""}
                         </span>
                       )}
-                      {preview.tier === 0 && !preview.discrepancy && !approved && (
+                      {/* PR #25 item 6: hours show as soon as both punches are
+                          set — flags no longer suppress them. Approval still
+                          gates what feeds the pay engine; this is display-only. */}
+                      {!approved && (
                         <span className="text-xs" style={{ color: "var(--muted)" }}>
-                          {preview.actualHours != null ? `${preview.actualHours.toFixed(2)}h` : "—"}
+                          {preview.actualHours != null ? `${preview.actualHours.toFixed(2)}h worked` : "—"}
                         </span>
                       )}
                     </div>
