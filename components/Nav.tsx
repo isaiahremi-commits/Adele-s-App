@@ -4,14 +4,15 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import SignOutButton from "@/components/SignOutButton";
 
-// Day-3 item 4: Adèle's tab order. Route for Schedule stays /scheduling.
+// PR #25 item 1: Adèle's Aug-18 order — Payroll up to 3rd. Route for
+// Schedule stays /scheduling.
 const links = [
   { href: "/", label: "Dashboard", icon: "◎" },
   { href: "/scheduling", label: "Schedule", icon: "▦" },
+  { href: "/payroll", label: "Payroll", icon: "▣" },
   { href: "/timecards", label: "Timecards", icon: "◷" },
   { href: "/tips", label: "Tips", icon: "◈" },
   { href: "/pto", label: "PTO", icon: "❖" },
-  { href: "/payroll", label: "Payroll", icon: "▣" },
   { href: "/reports", label: "Reports", icon: "▤" },
   { href: "/swaps", label: "Swaps", icon: "⇄" },
   { href: "/employees", label: "Employees", icon: "◉" },

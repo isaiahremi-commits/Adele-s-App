@@ -6,11 +6,13 @@ import { createClient } from "@/lib/supabase";
 import { useMounted } from "@/lib/useMounted";
 import { buildEarningsCSV, buildHoursCSV, buildDailyHoursCSV, type DailyHours } from "@/lib/payrollExport";
 import {
+  addDays,
   cycleLength,
   currentPeriod,
   previousPeriod,
   nextPeriod,
   formatPeriod,
+  formatPeriodShort,
   todayISO,
   type Period,
 } from "@/lib/payroll";
@@ -77,6 +79,8 @@ export default function PayrollPage() {
   const [cycle, setCycle] = useState(14);
   const [period, setPeriod] = useState<Period>(() => currentPeriod(14, todayISO()));
   const [mode, setMode] = useState<Mode>("actual");
+  // PR #25 item 3: Week 1 / Week 2 / Total view within a bi-weekly period.
+  const [weekTab, setWeekTab] = useState<"w1" | "w2" | "total">("total");
   const [rows, setRows] = useState<PayRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
@@ -111,9 +115,19 @@ export default function PayrollPage() {
       .catch(() => {});
   }, []);
 
+  // The range the table actually shows: the full period, or a 7-day slice of
+  // it under the Week 1 / Week 2 tabs (bi-weekly cycles only). Period-scoped
+  // actions (Post period, the unposted check) always use the full period.
+  const effRange = useMemo<Period>(() => {
+    if (cycle !== 14 || weekTab === "total") return period;
+    return weekTab === "w1"
+      ? { start: period.start, end: addDays(period.start, 6) }
+      : { start: addDays(period.start, 7), end: period.end };
+  }, [cycle, weekTab, period]);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/payroll?start=${period.start}&end=${period.end}&mode=${mode}`).then((r) => r.json());
+    const res = await fetch(`/api/payroll?start=${effRange.start}&end=${effRange.end}&mode=${mode}`).then((r) => r.json());
     setRows(Array.isArray(res) ? res : []);
     setLoading(false);
 
@@ -122,9 +136,9 @@ export default function PayrollPage() {
       const supabase = createClient();
       const [tcRes, ptoRes] = await Promise.all([
         supabase.from("timecards").select("employee_id,date,regular_hours,ot_hours,training_hours")
-          .gte("date", period.start).lte("date", period.end).in("status", ["approved", "posted"]),
+          .gte("date", effRange.start).lte("date", effRange.end).in("status", ["approved", "posted"]),
         supabase.from("pto_allocations").select("employee_id,date,paid_hours")
-          .gte("date", period.start).lte("date", period.end),
+          .gte("date", effRange.start).lte("date", effRange.end),
       ]);
       const byEmp: Record<string, Record<string, DailyHours>> = {};
       const ensure = (emp: string, date: string): DailyHours => {
@@ -147,7 +161,7 @@ export default function PayrollPage() {
       }
       setDailyByEmp(out);
     } catch { setDailyByEmp({}); }
-  }, [period, mode]);
+  }, [effRange, mode]);
 
   useEffect(() => {
     load();
@@ -205,11 +219,12 @@ export default function PayrollPage() {
   }
 
   function doExport(kind: "earnings" | "hours" | "daily") {
-    const ctx = { periodStart: period.start, periodEnd: period.end, empNumbers, payFrequency: payCycle };
+    // Exports reflect the visible range (a Week-1/2 slice exports that week).
+    const ctx = { periodStart: effRange.start, periodEnd: effRange.end, empNumbers, payFrequency: payCycle };
     const csv = kind === "earnings" ? buildEarningsCSV(rows, ctx)
       : kind === "daily" ? buildDailyHoursCSV(rows, dailyByEmp, ctx)
       : buildHoursCSV(rows, ctx);
-    const fn = `manadele_${kind === "daily" ? "daily_hours" : kind}_${period.start}_to_${period.end}.csv`;
+    const fn = `manadele_${kind === "daily" ? "daily_hours" : kind}_${effRange.start}_to_${effRange.end}.csv`;
     downloadCSV(fn, csv);
     setToast({ kind: "success", text: `Downloaded ${fn}` });
   }
@@ -225,8 +240,8 @@ export default function PayrollPage() {
         .from("timecards")
         .select("id", { count: "exact", head: true })
         .eq("status", "approved")
-        .gte("date", period.start)
-        .lte("date", period.end);
+        .gte("date", effRange.start)
+        .lte("date", effRange.end);
       unposted = count ?? 0;
     } catch { /* advisory only */ }
 
@@ -236,25 +251,70 @@ export default function PayrollPage() {
 
   const todayPeriod = currentPeriod(cycle, todayISO());
   const isCurrent = period.start === todayPeriod.start;
+  const isNext = period.start === nextPeriod(todayPeriod, cycle).start;
+
+  // Item 5: prediction hides the actuals-only money columns (SC/NC tips,
+  // Mgr comm) and the TC completeness chip — 6 columns instead of 10.
+  const showActualCols = mode === "actual";
+  const colCount = showActualCols ? 10 : 6;
+
+  // PR #25 item 3: dropdown of periods — next, current, previous 6 — most
+  // recent first. If the user has Prev'd beyond the list, keep the selected
+  // period visible as an extra option.
+  const periodChoices = useMemo(() => {
+    const cur = currentPeriod(cycle, todayISO());
+    const list: Period[] = [nextPeriod(cur, cycle), cur];
+    let p = cur;
+    for (let i = 0; i < 6; i++) {
+      p = previousPeriod(p, cycle);
+      list.push(p);
+    }
+    return list;
+  }, [cycle]);
 
   return (
     <div className="max-w-[1280px] page-shell">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Payroll</h1>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>{mounted ? formatPeriod(period) : " "}</p>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>{mounted ? `${formatPeriod(period)}${cycle === 14 && weekTab !== "total" ? ` · ${weekTab === "w1" ? "Week 1" : "Week 2"} (${formatPeriodShort(effRange)})` : ""}` : " "}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button className="btn btn-secondary" onClick={() => setPeriod(previousPeriod(period, cycle))}>‹ Prev</button>
-          <button className="btn btn-secondary" onClick={() => setPeriod(currentPeriod(cycle, todayISO()))}>Current</button>
-          <button className="btn btn-secondary" disabled={isCurrent} onClick={() => setPeriod(nextPeriod(period, cycle))}>Next ›</button>
-          <div className="flex items-center gap-1">
-            <input type="date" className="input" style={{ width: 150 }} value={period.start}
-              onChange={(e) => setPeriod({ ...period, start: e.target.value })} />
-            <span style={{ color: "var(--muted)" }}>→</span>
-            <input type="date" className="input" style={{ width: 150 }} value={period.end}
-              onChange={(e) => setPeriod({ ...period, end: e.target.value })} />
+          {/* Item 3: period dropdown (most recent first) with quick nav below. */}
+          <div className="flex flex-col gap-1">
+            <select className="input" style={{ width: 190 }} value={period.start}
+              onChange={(e) => setPeriod({ start: e.target.value, end: addDays(e.target.value, cycle - 1) })}>
+              {mounted && !periodChoices.some((p) => p.start === period.start) && (
+                <option value={period.start}>{formatPeriodShort(period)}</option>
+              )}
+              {mounted && periodChoices.map((p) => (
+                <option key={p.start} value={p.start}>
+                  {formatPeriodShort(p)}{p.start === todayPeriod.start ? " (current)" : ""}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1">
+              <button className="btn btn-secondary" style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => setPeriod(previousPeriod(period, cycle))}>‹ Prev</button>
+              <button className="btn btn-secondary" style={{ fontSize: 12, padding: "2px 8px" }} disabled={isCurrent} onClick={() => setPeriod(currentPeriod(cycle, todayISO()))}>Current</button>
+              <button className="btn btn-secondary" style={{ fontSize: 12, padding: "2px 8px" }} disabled={isNext} onClick={() => setPeriod(nextPeriod(period, cycle))}>Next ›</button>
+            </div>
           </div>
+          {/* Item 3: Week 1 / Week 2 / Total tabs replace the raw date inputs
+              (bi-weekly cycles only — a weekly period has no sub-weeks). */}
+          {cycle === 14 && (
+            <div className="inline-flex rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
+              {([["w1", "Week 1"], ["w2", "Week 2"], ["total", "Total"]] as const).map(([key, label]) => (
+                <button key={key} onClick={() => setWeekTab(key)} className="text-xs px-3 py-1 rounded-md"
+                  style={{
+                    background: weekTab === key ? "var(--surface)" : "transparent",
+                    color: weekTab === key ? "var(--primary)" : "var(--muted)",
+                    fontWeight: weekTab === key ? 600 : 400, border: "none", cursor: "pointer",
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="inline-flex rounded-lg p-1" style={{ background: "var(--surface-2)" }}>
             {(["actual", "prediction"] as Mode[]).map((m) => (
               <button key={m} onClick={() => setMode(m)} className="text-xs px-3 py-1 rounded-md"
@@ -275,7 +335,8 @@ export default function PayrollPage() {
 
       {mode === "prediction" && (
         <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
-          Prediction = approved/posted hours so far + scheduled-but-unclocked shifts projected as regular hours (no OT).
+          Prediction = approved/posted hours so far + scheduled-but-unclocked shifts projected.
+          On a bi-weekly cycle, combined hours over 80 for the full period count as OT.
         </p>
       )}
 
@@ -283,22 +344,27 @@ export default function PayrollPage() {
         <table className="w-full text-sm" style={{ minWidth: 1100 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
+              {/* Item 4: PTO before Train (Adèle, Aug 18). */}
               <th className="text-left p-3 font-medium">Employee</th>
               <th className="text-right p-3 font-medium">Reg h / pay</th>
               <th className="text-right p-3 font-medium">OT h / pay</th>
-              <th className="text-right p-3 font-medium">Train h / pay</th>
               <th className="text-right p-3 font-medium">PTO h / pay</th>
-              <th className="text-right p-3 font-medium">SC tips</th>
-              <th className="text-right p-3 font-medium">NC tips</th>
-              <th className="text-right p-3 font-medium">Mgr comm</th>
-              <th className="text-right p-3 font-medium">Gross</th>
-              <th className="text-center p-3 font-medium">TC</th>
+              <th className="text-right p-3 font-medium">Train h / pay</th>
+              {showActualCols && (
+                <>
+                  <th className="text-right p-3 font-medium">SC tips</th>
+                  <th className="text-right p-3 font-medium">NC tips</th>
+                  <th className="text-right p-3 font-medium">Mgr comm</th>
+                </>
+              )}
+              <th className="text-right p-3 font-medium">{showActualCols ? "Gross" : "Gross (predicted)"}</th>
+              {showActualCols && <th className="text-center p-3 font-medium">TC</th>}
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={10} className="p-6 text-center" style={{ color: "var(--muted)" }}>Loading…</td></tr>}
+            {loading && <tr><td colSpan={colCount} className="p-6 text-center" style={{ color: "var(--muted)" }}>Loading…</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={10} className="p-6 text-center" style={{ color: "var(--muted)" }}>No payroll activity in this period.</td></tr>
+              <tr><td colSpan={colCount} className="p-6 text-center" style={{ color: "var(--muted)" }}>No payroll activity in this period.</td></tr>
             )}
             {!loading && rows.map((r) => {
               const isMgr = r.title === "Restaurant Manager";
@@ -341,34 +407,40 @@ export default function PayrollPage() {
                       : <div style={{ color: r.ot_pay === null ? "var(--amber)" : "inherit" }}>{money(r.ot_pay)}</div>}
                   </td>
                   <td className="p-3 align-top text-right">
-                    <div>{hrs(r.training_hours)}</div>
-                    {salaried
-                      ? <div style={{ color: "var(--muted)" }}>—</div>
-                      : <div style={{ color: r.training_pay === null ? "var(--amber)" : "inherit" }}>{money(r.training_pay)}</div>}
-                  </td>
-                  <td className="p-3 align-top text-right">
                     <div>{hrs(r.pto_hours)}</div>
                     {salaried
                       ? <div style={{ color: "var(--muted)" }}>—</div>
                       : <div style={{ color: r.pto_pay === null ? "var(--amber)" : "inherit" }}>{money(r.pto_pay)}</div>}
                   </td>
-                  <td className="p-3 align-top text-right">{money(r.sc_tips)}</td>
-                  <td className="p-3 align-top text-right">{money(r.nc_tips)}</td>
                   <td className="p-3 align-top text-right">
-                    {isMgr && cents(r.manager_amount) > 0 ? money(r.manager_amount) : <span style={{ color: "var(--muted)" }}>—</span>}
+                    <div>{hrs(r.training_hours)}</div>
+                    {salaried
+                      ? <div style={{ color: "var(--muted)" }}>—</div>
+                      : <div style={{ color: r.training_pay === null ? "var(--amber)" : "inherit" }}>{money(r.training_pay)}</div>}
                   </td>
+                  {showActualCols && (
+                    <>
+                      <td className="p-3 align-top text-right">{money(r.sc_tips)}</td>
+                      <td className="p-3 align-top text-right">{money(r.nc_tips)}</td>
+                      <td className="p-3 align-top text-right">
+                        {isMgr && cents(r.manager_amount) > 0 ? money(r.manager_amount) : <span style={{ color: "var(--muted)" }}>—</span>}
+                      </td>
+                    </>
+                  )}
                   <td className="p-3 align-top text-right font-semibold" style={{ color: r.gross_pay === null ? "var(--amber)" : "var(--primary)" }}>
                     {money(r.gross_pay)}
                   </td>
-                  <td className="p-3 align-top text-center">
-                    <span className={`chip ${complete ? "chip-green" : "chip-amber"}`} title="Approved/posted timecards vs scheduled shifts">
-                      {r.approved_count}/{r.scheduled_count}
-                    </span>
-                  </td>
+                  {showActualCols && (
+                    <td className="p-3 align-top text-center">
+                      <span className={`chip ${complete ? "chip-green" : "chip-amber"}`} title="Approved/posted timecards vs scheduled shifts">
+                        {r.approved_count}/{r.scheduled_count}
+                      </span>
+                    </td>
+                  )}
                 </tr>
                 {isOpen && days.length > 0 && (
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td colSpan={10} className="px-3 pb-3" style={{ background: "var(--surface-2)" }}>
+                    <td colSpan={colCount} className="px-3 pb-3" style={{ background: "var(--surface-2)" }}>
                       <table className="text-xs" style={{ minWidth: 420 }}>
                         <thead>
                           <tr style={{ color: "var(--muted)" }}>
@@ -401,9 +473,9 @@ export default function PayrollPage() {
           {!loading && rows.length > 0 && (
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--border)" }}>
-                <td className="p-3 font-semibold" colSpan={8}>Period total{anyIncomplete ? " (excludes rows missing rates)" : ""}</td>
+                <td className="p-3 font-semibold" colSpan={showActualCols ? 8 : 5}>Period total{anyIncomplete ? " (excludes rows missing rates)" : ""}</td>
                 <td className="p-3 text-right font-bold" style={{ color: "var(--primary)" }}>{money(periodTotal)}</td>
-                <td></td>
+                {showActualCols && <td></td>}
               </tr>
             </tfoot>
           )}

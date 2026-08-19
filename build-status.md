@@ -1373,6 +1373,56 @@ Closes three July-30 scope items:
 - Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
   `expo export` bundles clean.
 
+### PR #25 — Payroll + timecards feedback (2026-08-19)
+
+Adèle's Aug 18 meeting feedback — nine focused payroll/timecards
+polish items, shipped for the Aug 19 follow-up.
+
+- Nav: Payroll moved to 3rd (Dashboard, Schedule, Payroll, Timecards,
+  Tips, PTO, Reports, Swaps, Employees, Setup).
+- **Migration 023 — bi-weekly OT threshold.** When
+  `setup.pay_cycle = 'biweekly'`, `pay_breakdown` now recombines
+  worked hours (stored weekly splits + prediction projections) and
+  re-splits at **80h per full 14-day period**. Victor Nit's 96.28
+  scheduled hours now show 80 reg + 16.28 OT (was 96.28 reg / 0 OT).
+  Guards: weekly cycles untouched (still tc_approve's 40h/week);
+  7-day sub-slices (Week 1/2 tabs) pass stored splits through;
+  salaried rows never re-split. Same return signature as 017, so
+  `pay_breakdown_for_me` (mobile Pay tab) and the dashboard
+  prediction widget inherit the fix. Verified in PGlite (22 checks:
+  the 96.28 case exact to the cent, recombination under 80h, slice +
+  weekly passthrough, salaried, missing-OT-rate warning, idempotent
+  double-apply on top of 017).
+- Payroll period selector: dropdown of periods (next, current,
+  previous 6 — most recent first, "Aug 15 – Aug 28" labels) with
+  Prev/Current/Next quick nav below; the raw date inputs are replaced
+  by **Week 1 | Week 2 | Total** tabs (bi-weekly cycles only). Post
+  period always locks the full period; exports reflect the visible
+  range.
+- Payroll columns: PTO before Train (Employee | Reg | OT | PTO |
+  Train | SC | NC | Mgr comm | Gross | TC). Prediction mode hides the
+  actuals-only columns (SC/NC tips, Mgr comm, TC) — 6 columns with
+  "Gross (predicted)".
+- Timecards: worked hours now show as soon as both punches are set
+  (flags no longer suppress them; approval still gates the pay
+  engine). Break value expands into a popover — punch-level break
+  in/out times aren't captured anywhere yet (only total minutes), so
+  it shows the duration and says so; real break punches are a future
+  schema item.
+- Scheduling grid: weekly totals over 40h render "40h · Nh OT" with
+  the OT segment in red.
+- Crimson Text is now self-hosted like Elms Sans
+  (`app/fonts/crimson-text-*.woff2` + OFL) — build-time Google Fonts
+  fetches failed behind TLS-intercepting networks; `next build` no
+  longer needs the network.
+- **Logo swap pending**: Adèle's final logo files (emailed separately
+  from the brand guide) were not yet in the repo at `/assets/brand/`
+  when this PR shipped — current logos kept; swap is a follow-up drop.
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean; migration 023 executed twice in PGlite
+  against db.types.ts-shaped tables.
+
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle

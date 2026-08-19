@@ -19,7 +19,7 @@ function toUTCDate(iso: string): Date {
 function toISO(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
-function addDays(iso: string, n: number): string {
+export function addDays(iso: string, n: number): string {
   const d = toUTCDate(iso);
   d.setUTCDate(d.getUTCDate() + n);
   return toISO(d);
@@ -79,4 +79,10 @@ export function formatPeriod(p: Period): string {
   const e = toUTCDate(p.end);
   const opt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
   return `${s.toLocaleDateString(undefined, opt)} – ${e.toLocaleDateString(undefined, { ...opt, year: "numeric" })}`;
+}
+
+// Yearless variant for the payroll period dropdown ("Aug 15 – Aug 28").
+export function formatPeriodShort(p: Period): string {
+  const opt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
+  return `${toUTCDate(p.start).toLocaleDateString(undefined, opt)} – ${toUTCDate(p.end).toLocaleDateString(undefined, opt)}`;
 }

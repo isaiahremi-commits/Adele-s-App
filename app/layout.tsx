@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Crimson_Text } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import Nav from "@/components/Nav";
@@ -19,10 +18,17 @@ const elmsSans = localFont({
   display: "swap",
 });
 
-const crimson = Crimson_Text({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  style: ["normal", "italic"],
+// Crimson Text (brand serif) is self-hosted too (PR #25): build-time Google
+// Fonts fetches fail behind TLS-intercepting networks, and self-hosting
+// removes the network dependency entirely (OFL — see
+// app/fonts/OFL-crimson-text.txt).
+const crimson = localFont({
+  src: [
+    { path: "./fonts/crimson-text-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/crimson-text-latin-400-italic.woff2", weight: "400", style: "italic" },
+    { path: "./fonts/crimson-text-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/crimson-text-latin-600-italic.woff2", weight: "600", style: "italic" },
+  ],
   variable: "--font-serif",
   display: "swap",
 });
