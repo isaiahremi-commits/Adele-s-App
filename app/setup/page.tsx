@@ -40,6 +40,16 @@ export default function SetupPage() {
   const [roleForm, setRoleForm] = useState<Record<string, { role_name: string; points: string; other?: boolean }>>({});
   const [outletError, setOutletError] = useState<Record<string, string>>({});
 
+  // PR #26: PARS (staffing requirements) editor. Cells are keyed
+  // "<dow>|<position lowercased>"; the baseline mirrors what the server
+  // holds so Save only sends changed cells (0 = remove the requirement).
+  const [parsOpen, setParsOpen] = useState<Set<string>>(new Set());
+  const [parCells, setParCells] = useState<Record<string, Record<string, string>>>({});
+  const [parBaseline, setParBaseline] = useState<Record<string, Record<string, number>>>({});
+  const [parExtraRows, setParExtraRows] = useState<Record<string, string[]>>({});
+  const [parSaving, setParSaving] = useState<string | null>(null);
+  const [parMsg, setParMsg] = useState<Record<string, string>>({});
+
   async function load() {
     const [o, s, r, c, d] = await Promise.all([
       fetch("/api/outlets").then((r) => r.json()),
@@ -61,6 +71,86 @@ export default function SetupPage() {
     }
   }
   useEffect(() => { load(); loadSmsSettings(); }, []);
+
+  // ── PR #26: PARS editor helpers ────────────────────────────────────────
+  const parKey = (dow: number, pos: string) => `${dow}|${pos.toLowerCase()}`;
+
+  async function loadPars(outletId: string) {
+    const rows = await fetch(`/api/pars?outlet_id=${outletId}`).then((r) => r.json()).catch(() => []);
+    const cells: Record<string, string> = {};
+    const base: Record<string, number> = {};
+    const extras: string[] = [];
+    const roleNames = new Set(roles.filter((r) => r.outlet_id === outletId).map((r) => r.role_name.toLowerCase()));
+    for (const p of Array.isArray(rows) ? rows : []) {
+      const k = parKey(p.day_of_week, p.position_name);
+      cells[k] = String(p.required_count);
+      base[k] = p.required_count;
+      // A par can outlive its role (role deleted later) — keep it editable.
+      if (!roleNames.has(p.position_name.toLowerCase()) &&
+          !extras.some((e) => e.toLowerCase() === p.position_name.toLowerCase())) {
+        extras.push(p.position_name);
+      }
+    }
+    setParCells((prev) => ({ ...prev, [outletId]: cells }));
+    setParBaseline((prev) => ({ ...prev, [outletId]: base }));
+    setParExtraRows((prev) => ({ ...prev, [outletId]: extras }));
+  }
+
+  function toggleParSection(outletId: string) {
+    setParsOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(outletId)) next.delete(outletId);
+      else next.add(outletId);
+      return next;
+    });
+    if (!parCells[outletId]) loadPars(outletId);
+  }
+
+  function setParCell(outletId: string, dow: number, pos: string, val: string) {
+    setParCells((prev) => ({
+      ...prev,
+      [outletId]: { ...(prev[outletId] ?? {}), [parKey(dow, pos)]: val },
+    }));
+  }
+
+  async function saveParsFor(outletId: string, rowNames: string[]) {
+    const cells = parCells[outletId] ?? {};
+    const base = parBaseline[outletId] ?? {};
+    const changed: Array<{ day_of_week: number; position_name: string; required_count: number }> = [];
+    for (const pos of rowNames) {
+      for (let dow = 0; dow < 7; dow++) {
+        const raw = cells[parKey(dow, pos)];
+        const val = Math.max(0, Math.min(99, Number(raw) || 0));
+        if (val !== (base[parKey(dow, pos)] ?? 0)) {
+          changed.push({ day_of_week: dow, position_name: pos, required_count: val });
+        }
+      }
+    }
+    if (changed.length === 0) {
+      setParMsg((m) => ({ ...m, [outletId]: "No changes" }));
+      setTimeout(() => setParMsg((m) => ({ ...m, [outletId]: "" })), 2000);
+      return;
+    }
+    setParSaving(outletId);
+    try {
+      const res = await fetch("/api/pars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outlet_id: outletId, pars: changed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setParMsg((m) => ({ ...m, [outletId]: data.error || `Save failed (${res.status})` }));
+      else {
+        setParMsg((m) => ({ ...m, [outletId]: "Saved" }));
+        await loadPars(outletId); // refresh the baseline
+      }
+    } catch (err) {
+      setParMsg((m) => ({ ...m, [outletId]: err instanceof Error ? err.message : "Network error" }));
+    } finally {
+      setParSaving(null);
+      setTimeout(() => setParMsg((m) => ({ ...m, [outletId]: "" })), 2500);
+    }
+  }
 
   async function saveConfig(next: Partial<PayrollConfig>) {
     const merged = { ...config, ...next };
@@ -461,7 +551,7 @@ export default function SetupPage() {
         )}
       </section>
 
-      <section className="card p-6">
+      <section className="card p-6 mb-6">
         <h2 className="text-lg font-semibold mb-3">Outlets</h2>
         <form onSubmit={addOutlet} className="flex gap-2 mb-5 flex-wrap">
           <input
@@ -578,6 +668,94 @@ export default function SetupPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* PR #26: PARS — staffing requirements per outlet × day × position. */}
+      <section className="card p-6">
+        <h2 className="text-lg font-semibold mb-1">Staffing requirements</h2>
+        <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+          Set how many people you need scheduled per position per day. Get an alert on the
+          Schedule page when you&apos;re above or below these numbers.
+        </p>
+        {outlets.length === 0 && <div className="text-sm" style={{ color: "var(--muted)" }}>Add an outlet first.</div>}
+        <div className="flex flex-col gap-3">
+          {outlets.map((o) => {
+            const open = parsOpen.has(o.id);
+            const roleRows = roles.filter((r) => r.outlet_id === o.id).map((r) => r.role_name);
+            const rowNames = [...roleRows, ...(parExtraRows[o.id] ?? [])];
+            const cells = parCells[o.id] ?? {};
+            return (
+              <div key={o.id} className="rounded-lg" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                <button
+                  onClick={() => toggleParSection(o.id)}
+                  className="w-full flex items-center justify-between p-4 text-left"
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}
+                >
+                  <span className="font-semibold">{o.name}</span>
+                  <span style={{ color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
+                </button>
+                {open && (
+                  <div className="px-4 pb-4 overflow-x-auto">
+                    {rowNames.length === 0 ? (
+                      <p className="text-sm" style={{ color: "var(--muted)" }}>
+                        No roles configured for this outlet yet — add roles above first.
+                      </p>
+                    ) : (
+                      <>
+                        <table className="text-sm" style={{ minWidth: 560 }}>
+                          <thead>
+                            <tr style={{ color: "var(--muted)" }}>
+                              <th className="text-left py-1 pr-4 font-medium">Position</th>
+                              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                                <th key={d} className="text-center py-1 px-1 font-medium">{d}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rowNames.map((pos) => (
+                              <tr key={pos}>
+                                <td className="py-1 pr-4 whitespace-nowrap">
+                                  {pos}
+                                  {!roleRows.includes(pos) && (
+                                    <span className="chip chip-muted ml-2" style={{ fontSize: 10 }} title="This role was removed from the outlet; its requirement is still set.">removed role</span>
+                                  )}
+                                </td>
+                                {[0, 1, 2, 3, 4, 5, 6].map((dow) => (
+                                  <td key={dow} className="py-1 px-1 text-center">
+                                    <input
+                                      type="number" min={0} max={99}
+                                      className="input"
+                                      style={{ width: 56, textAlign: "center", padding: "4px 6px" }}
+                                      value={cells[parKey(dow, pos)] ?? ""}
+                                      placeholder="0"
+                                      onChange={(e) => setParCell(o.id, dow, pos, e.target.value)}
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="flex items-center gap-3 mt-3">
+                          <button className="btn btn-primary" disabled={parSaving === o.id}
+                            onClick={() => saveParsFor(o.id, rowNames)}>
+                            {parSaving === o.id ? "Saving…" : "Save requirements"}
+                          </button>
+                          {parMsg[o.id] && (
+                            <span className="text-sm" style={{ color: parMsg[o.id] === "Saved" ? "var(--primary)" : "var(--muted)" }}>
+                              {parMsg[o.id]}
+                            </span>
+                          )}
+                          <span className="text-xs" style={{ color: "var(--muted)" }}>Empty or 0 = no requirement.</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
