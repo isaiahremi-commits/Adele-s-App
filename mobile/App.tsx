@@ -27,6 +27,11 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+  type EdgeInsets,
+} from "react-native-safe-area-context";
 import { Text } from "./components/Text";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { InboxProvider } from "./contexts/InboxContext";
@@ -228,13 +233,18 @@ function PtoStack() {
   );
 }
 
-const tabScreenOptions = {
+// Insets are threaded in explicitly: there is no auto safe-area handling
+// without a root SafeAreaProvider, and on physical home-indicator iPhones
+// the bare tabBarStyle left "Pay"/"Settings" clipped by the indicator.
+const makeTabScreenOptions = (insets: EdgeInsets) => ({
   tabBarActiveTintColor: colors.primary,
   // Brand spec: 60% swiss chocolate for inactive tabs (not the 50% muted).
   tabBarInactiveTintColor: colors.mutedStrong,
   tabBarStyle: {
     backgroundColor: colors.card,
     borderTopColor: colors.border,
+    height: 60 + insets.bottom,
+    paddingBottom: insets.bottom,
   },
   // PR #19: descenders were clipping ("Pay" → "Pav", "Settings" →
   // "Settina") — smaller size + explicit lineHeight gives them room.
@@ -255,13 +265,14 @@ const tabScreenOptions = {
   // on their root screens instead.
   headerLeft: () => <ModeToggle />,
   headerRight: () => <InboxBell />,
-};
+});
 
 // Personal mode (every employee, and managers on the Personal side):
 // Home / Schedule / PTO / Pay / Settings (PR #18 order).
 function PersonalTabs() {
+  const insets = useSafeAreaInsets();
   return (
-    <Tab.Navigator screenOptions={tabScreenOptions}>
+    <Tab.Navigator screenOptions={makeTabScreenOptions(insets)}>
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -321,8 +332,9 @@ function WorkTabs() {
   // Header titles stay SINGLE-WORD — they share the row with the
   // Personal|Work toggle and the bell, and anything longer collides at
   // narrow widths. Date/context lines live in each screen's body.
+  const insets = useSafeAreaInsets();
   return (
-    <WorkTab.Navigator screenOptions={tabScreenOptions}>
+    <WorkTab.Navigator screenOptions={makeTabScreenOptions(insets)}>
       <WorkTab.Screen
         name="Team"
         component={WorkTeamScreen}
@@ -529,15 +541,17 @@ export default function App() {
     );
   }
   return (
-    <AuthProvider>
-      <InboxProvider>
-        <NavigationContainer theme={navTheme}>
-          <RootNavigator />
-          <ToastHost />
-          <StatusBar style="dark" />
-        </NavigationContainer>
-      </InboxProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <InboxProvider>
+          <NavigationContainer theme={navTheme}>
+            <RootNavigator />
+            <ToastHost />
+            <StatusBar style="dark" />
+          </NavigationContainer>
+        </InboxProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

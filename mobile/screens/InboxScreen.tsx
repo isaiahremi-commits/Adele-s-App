@@ -10,6 +10,7 @@ import { Text } from "../components/Text";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../App";
 import { useAuth } from "../contexts/AuthContext";
@@ -42,6 +43,7 @@ function when(iso: string): string {
 
 export default function InboxScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const inboxCtx = useInbox();
   const [segment, setSegment] = useState<Segment>("received");
@@ -219,7 +221,9 @@ export default function InboxScreen() {
 
       {managerView && (
         <Pressable
-          style={styles.fab}
+          // Root-stack screen — no tab bar below to absorb the home
+          // indicator, so the FAB clears it itself.
+          style={[styles.fab, { bottom: 24 + insets.bottom }]}
           onPress={() => navigation.navigate("ComposeBroadcast")}
           accessibilityLabel="New broadcast"
         >
@@ -330,7 +334,6 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 24,
     width: 54,
     height: 54,
     borderRadius: 27,
