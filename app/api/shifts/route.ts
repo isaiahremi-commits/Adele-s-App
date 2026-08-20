@@ -48,6 +48,9 @@ export async function POST(req: Request) {
   };
   if (body.outlet_id) payload.outlet_id = body.outlet_id;
   if (body.notes) payload.notes = body.notes;
+  // PR #27 item 4: paste carries the training/event flags.
+  if (typeof body.is_training === "boolean") payload.is_training = body.is_training;
+  if (typeof body.is_event === "boolean") payload.is_event = body.is_event;
 
   const supabase = createClient();
 

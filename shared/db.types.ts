@@ -1687,6 +1687,11 @@ export type Database = {
       timecards: {
         Row: {
           break_minutes: number
+          // break1/2 punches (pending 025, PR #27) HAND-ADDED — regen after apply.
+          break1_in: string | null
+          break1_out: string | null
+          break2_in: string | null
+          break2_out: string | null
           clock_in: string | null
           clock_out: string | null
           created_at: string
@@ -1708,6 +1713,10 @@ export type Database = {
         }
         Insert: {
           break_minutes?: number
+          break1_in?: string | null
+          break1_out?: string | null
+          break2_in?: string | null
+          break2_out?: string | null
           clock_in?: string | null
           clock_out?: string | null
           created_at?: string
@@ -1729,6 +1738,10 @@ export type Database = {
         }
         Update: {
           break_minutes?: number
+          break1_in?: string | null
+          break1_out?: string | null
+          break2_in?: string | null
+          break2_out?: string | null
           clock_in?: string | null
           clock_out?: string | null
           created_at?: string
@@ -2042,6 +2055,28 @@ export type Database = {
       am_i_a_manager: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      // pay_ytd_for_me + tc_break_punch (pending 026/025, PR #27) HAND-ADDED —
+      // regen after apply.
+      pay_ytd_for_me: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          year: number
+          regular_hours: number
+          ot_hours: number
+          training_hours: number
+          pto_hours: number
+          sc_tips: number
+          nc_tips: number
+          tip_pay: number
+          manager_amount: number
+          gross_pay: number | null
+          pay_type: string
+        }[]
+      }
+      tc_break_punch: {
+        Args: { p_shift_id: string }
+        Returns: Json
       }
       broadcast_mark_read: {
         Args: { p_broadcast_id: string }

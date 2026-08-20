@@ -111,6 +111,8 @@ export default function EmployeesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, Totals>>({});
   const [assignmentsByEmp, setAssignmentsByEmp] = useState<Record<string, Assignment[]>>({});
+  // PR #27 item 2: employee_id -> PTO balance hours.
+  const [ptoBalances, setPtoBalances] = useState<Record<string, number>>({});
   const [wizardOpen, setWizardOpen] = useState(false);
   const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
   // One-time temp password surfaced after an Invite / Reset password action.
@@ -119,7 +121,7 @@ export default function EmployeesPage() {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   async function load() {
-    const [r, o, d, rl, t, a, st] = await Promise.all([
+    const [r, o, d, rl, t, a, st, ptoRes] = await Promise.all([
       fetch("/api/employees").then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
       fetch("/api/departments").then((r) => r.json()),
@@ -128,7 +130,14 @@ export default function EmployeesPage() {
       fetch("/api/employee-outlets").then((r) => r.json()).catch(() => []),
       // 501 when the service key isn't configured — chips degrade gracefully.
       fetch("/api/admin/employees/status").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+      // PR #27 item 2: balances for the "PTO: Xh" chip; degrades gracefully.
+      fetch("/api/pto").then((r) => r.json()).catch(() => ({})),
     ]);
+    const balMap: Record<string, number> = {};
+    for (const b of Array.isArray(ptoRes?.balances) ? ptoRes.balances : []) {
+      if (b?.employee_id != null) balMap[b.employee_id] = Number(b.balance_hours) || 0;
+    }
+    setPtoBalances(balMap);
     setAuthStatus(
       typeof st === "object" && st !== null && !Array.isArray(st)
         ? (st as Record<string, AuthStatus>)
@@ -512,7 +521,7 @@ export default function EmployeesPage() {
                         {e.name?.[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{titleCase(e.name)}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}</h3>
+                        <h3 className="font-semibold truncate">{titleCase(e.name)}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}{ptoBalances[e.id] !== undefined && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }} title="Current PTO balance">PTO: {Number.isInteger(ptoBalances[e.id]) ? ptoBalances[e.id] : ptoBalances[e.id].toFixed(1)}h</span>}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
                             const pos = titleCase(e.home_position || e.position);

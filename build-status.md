@@ -1468,6 +1468,67 @@ outlet × day-of-week × position, with alerts on the scheduling grid.
   against db.types.ts-shaped tables.
 
 
+### PR #27 — Backlog batch (2026-08-20)
+
+Post-Aug-18 backlog cleanup: final logo swap + 9 items, web + mobile.
+
+- **Logos (item 1)**: Adèle's final files swapped in everywhere — the four
+  `public/brand/*.svg`, all mobile icons/splash/wordmark, web favicon —
+  compositions matching PR #24's layouts (chocolate tile + pear/milk mark,
+  transparent splash, pear/chocolate wordmark). **The final SVGs carry the
+  real brand hexes**, closing PR #24's "estimates until real codes arrive"
+  flag: milk #F8F7EA, chocolate #382020, apricot #F5855F, pear #D2D276,
+  gruyère #F8DC89, berries #A7B7DE — `shared/theme.ts`, `globals.css`,
+  `mobile/lib/theme.ts`, `mobile/app.json`, and every rgb() form swept.
+  Derived darkened text variants (deep gruyère/pear) kept as-is.
+- **Migration 025 — break punches**: `break1/2_in/out` on timecards;
+  `tc_save` re-signed with punch params (both halves of 014's guard-shim
+  pair recreated; old signature dropped so PostgREST can't be ambiguous);
+  break_minutes DERIVED from complete spans when punches are supplied, so
+  `tc_approve`'s hours math is untouched; best-effort midpoint backfill.
+  New employee-callable `tc_break_punch` find-or-creates the caller's own
+  pending timecard for a today-shift (mobile has NO clock-in flow — that's
+  the judgment call; NFC clock-in remains future work). Mobile: Start/End
+  break in the shift detail sheet, today only. Web: Break popover shows
+  real punch times when present.
+- **Migration 026 — pay_ytd_for_me**: calendar-YTD sums of STORED hours
+  (never re-runs pay_breakdown across periods — 023's OT re-split is
+  per-period), tips, manager comm; hourly gross at current rates (no rate
+  history exists); salaried gross NULL with pay_type returned for the UI.
+- Both migrations PGlite-verified (23 checks) against the real
+  timecards.sql chain + a faithful 014 guard slice, applied twice.
+- **Employees (item 2)**: wizard gains "Starting PTO balance (hours)" in
+  the Employment-type step (echoed in Review); create route seeds it via
+  the guarded `pto_adjust_balance` best-effort after create (no 'initial'
+  ledger type exists — the note carries intent); rows show a "PTO: Xh"
+  chip from a new balances fetch.
+- **Mobile PTO (item 3)**: sort dropdown (Most recent / Oldest / By date
+  requested), persisted via AsyncStorage.
+- **Schedule copy/paste (item 4)**: right-click a shift chip → Copy;
+  right-click any cell → Paste (chip left-click was already edit). Carries
+  position/times/notes/training/event flags (POST whitelist extended);
+  respects approval locks + the PTO 409 guard; clipboard clears on week
+  switch (cross-week deferred per spec).
+- **Copy previous week (item 5)**: Outlets multi-select filter, AND-combined
+  like the others — and **overwrite is now scoped to the same filters**
+  (it used to delete the entire destination week even when copying one
+  outlet). Copies now preserve notes/is_training/is_event too.
+- **Payroll diff (item 6)**: prediction mode gains "Show diff vs Final
+  actuals" (disabled with tooltip until the period has posted timecards):
+  Δ column = predicted − actual gross, green on/under budget, red over.
+- **Home loading (item 8)**: root cause of the surviving "Loading…" hang
+  is the null-`user` path, which had no watchdog — an 8s escape now lands
+  on the retry card, a 3s "still loading" line shows progress, a failed
+  pull-to-refresh no longer replaces a rendered Home with the error card,
+  and the refresh spinner can't wedge on superseded requests.
+- **Pay YTD toggle (item 9)** + **tappable standing counts (item 10)**:
+  YTD pill on the current-period card; Lateness/Callouts rows open new
+  read-only 90-day detail screens (tc_lateness_range — already
+  employee-callable under caller RLS — and my_callouts_and_coverage).
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean; migrations 025+026 PGlite 23/23.
+
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle

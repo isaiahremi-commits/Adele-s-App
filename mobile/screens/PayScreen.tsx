@@ -9,6 +9,9 @@ import {
   View,
 } from "react-native";
 import { Text } from "../components/Text";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../App";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -31,6 +34,8 @@ import {
   getMyPayBreakdown,
   getMyTimecards,
   getPaySettings,
+  getMyPayYtd,
+  type YtdSummary,
 } from "../lib/pay";
 import { getCurrentEmployee } from "../lib/schedule";
 import { colors } from "../lib/theme";
@@ -93,12 +98,34 @@ type LoadState =
 
 export default function PayScreen() {
   const { user, isTipped } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [periodsBack, setPeriodsBack] = useState(0);
   const [olderOpen, setOlderOpen] = useState(false);
   const [timecardsOpen, setTimecardsOpen] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
+  // PR #27 item 9: YTD toggle on the current-period card (lazy-loaded).
+  const [ytdOpen, setYtdOpen] = useState(false);
+  const [ytd, setYtd] = useState<YtdSummary | null>(null);
+  const [ytdLoading, setYtdLoading] = useState(false);
+  const [ytdError, setYtdError] = useState<string | null>(null);
+
+  async function toggleYtd() {
+    const next = !ytdOpen;
+    setYtdOpen(next);
+    if (next && ytd === null && !ytdLoading) {
+      setYtdLoading(true);
+      setYtdError(null);
+      try {
+        setYtd(await getMyPayYtd());
+      } catch (e) {
+        setYtdError(e instanceof Error ? e.message : "Couldn't load YTD totals");
+      } finally {
+        setYtdLoading(false);
+      }
+    }
+  }
   const requestSeq = useRef(0);
 
   const load = useCallback(
@@ -228,7 +255,7 @@ export default function PayScreen() {
 
         {state.kind === "ready" && (
           <>
-            <CurrentEstimateCard state={state} />
+            <CurrentEstimateCard state={state} ytdOpen={ytdOpen} ytd={ytd} ytdLoading={ytdLoading} ytdError={ytdError} onToggleYtd={toggleYtd} />
             <PeriodPicker
               periodsBack={periodsBack}
               onSelect={(n) => {
@@ -262,6 +289,8 @@ export default function PayScreen() {
               lateness={state.lateness}
               callouts={state.callouts}
               settings={state.settings}
+              onLateness={() => navigation.navigate("LatenessDetail")}
+              onCallouts={() => navigation.navigate("CalloutsDetail")}
             />
           </>
         )}
@@ -272,8 +301,18 @@ export default function PayScreen() {
 
 function CurrentEstimateCard({
   state,
+  ytdOpen,
+  ytd,
+  ytdLoading,
+  ytdError,
+  onToggleYtd,
 }: {
   state: Extract<LoadState, { kind: "ready" }>;
+  ytdOpen: boolean;
+  ytd: YtdSummary | null;
+  ytdLoading: boolean;
+  ytdError: string | null;
+  onToggleYtd: () => void;
 }) {
   const actual = state.currentActual;
   const hoursSoFar = actual
@@ -285,16 +324,54 @@ function CurrentEstimateCard({
   const empty = projected === null || projected === 0;
   return (
     <View style={[styles.card, styles.estimateCard]}>
-      <Text style={styles.estimateLabel}>Current pay period</Text>
-      <Text style={styles.estimatePeriod}>{formatPeriod(state.current)}</Text>
-      <Text style={styles.estimateValue}>{fmtUSD(projected ?? 0)}</Text>
-      <Text style={styles.estimateHint}>projected gross</Text>
-      {empty && (
-        <Text style={styles.estimateEmpty}>No earnings recorded yet.</Text>
+      {/* PR #27 item 9: toggle between current period and year-to-date. */}
+      <Pressable
+        style={styles.ytdToggle}
+        onPress={onToggleYtd}
+        accessibilityLabel={ytdOpen ? "Show current pay period" : "Show year-to-date totals"}
+      >
+        <Ionicons name={ytdOpen ? "calendar-outline" : "time-outline"} size={14} color={colors.primary} />
+        <Text style={styles.ytdToggleText}>{ytdOpen ? "Period" : "YTD"}</Text>
+      </Pressable>
+      {!ytdOpen ? (
+        <>
+          <Text style={styles.estimateLabel}>Current pay period</Text>
+          <Text style={styles.estimatePeriod}>{formatPeriod(state.current)}</Text>
+          <Text style={styles.estimateValue}>{fmtUSD(projected ?? 0)}</Text>
+          <Text style={styles.estimateHint}>projected gross</Text>
+          {empty && (
+            <Text style={styles.estimateEmpty}>No earnings recorded yet.</Text>
+          )}
+          <Text style={styles.estimateHours}>
+            {fmtHours(hoursSoFar)} worked so far this period
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.estimateLabel}>Year to date</Text>
+          <Text style={styles.estimatePeriod}>{ytd ? `Jan 1 – today, ${ytd.year}` : new Date().getFullYear()}</Text>
+          {ytdLoading && <Text style={styles.estimateEmpty}>Loading…</Text>}
+          {ytdError && <Text style={styles.estimateEmpty}>{ytdError}</Text>}
+          {ytd && !ytdLoading && (
+            <>
+              <Text style={styles.estimateValue}>
+                {ytd.gross_pay === null ? "—" : fmtUSD(ytd.gross_pay)}
+              </Text>
+              <Text style={styles.estimateHint}>
+                {ytd.gross_pay === null && ytd.pay_type === "salary"
+                  ? "gross unavailable for salaried pay"
+                  : "gross year-to-date"}
+              </Text>
+              <View style={styles.ytdGrid}>
+                <Text style={styles.ytdRow}>Reg {fmtHours(ytd.regular_hours)}</Text>
+                <Text style={styles.ytdRow}>OT {fmtHours(ytd.ot_hours)}</Text>
+                <Text style={styles.ytdRow}>PTO {fmtHours(ytd.pto_hours)}</Text>
+                <Text style={styles.ytdRow}>Training {fmtHours(ytd.training_hours)}</Text>
+              </View>
+            </>
+          )}
+        </>
       )}
-      <Text style={styles.estimateHours}>
-        {fmtHours(hoursSoFar)} worked so far this period
-      </Text>
     </View>
   );
 }
@@ -637,10 +714,14 @@ function StandingCard({
   lateness,
   callouts,
   settings,
+  onLateness,
+  onCallouts,
 }: {
   lateness: LatenessSummary;
   callouts: CalloutSummary;
   settings: PaySettings;
+  onLateness: () => void;
+  onCallouts: () => void;
 }) {
   // Threshold is judged on the (usually shorter) rolling window from setup,
   // not the 90-day display window — same as the web /reports flag.
@@ -651,19 +732,24 @@ function StandingCard({
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>Your standing</Text>
       <Text style={styles.sectionSubtitle}>last {STANDING_DAYS} days</Text>
-      <View style={styles.standingRow}>
+      {/* PR #27 item 10: both counts open their per-incident detail. */}
+      <Pressable style={styles.standingRow} onPress={onLateness}
+        accessibilityLabel="View lateness incidents">
         <Ionicons name="time-outline" size={18} color={colors.muted} />
         <Text style={styles.standingLabel}>Lateness</Text>
-        <Text style={styles.standingValue}>
+        <Text style={[styles.standingValue, styles.standingLink]}>
           {lateness.count} {lateness.count === 1 ? "incident" : "incidents"}
           {lateness.tier2Count > 0 ? ` (${lateness.tier2Count} tier-2)` : ""}
         </Text>
-      </View>
-      <View style={styles.standingRow}>
+        <Ionicons name="chevron-forward" size={14} color={colors.mutedStrong} />
+      </Pressable>
+      <Pressable style={styles.standingRow} onPress={onCallouts}
+        accessibilityLabel="View callouts">
         <Ionicons name="call-outline" size={18} color={colors.muted} />
         <Text style={styles.standingLabel}>Callouts</Text>
-        <Text style={styles.standingValue}>{callouts.count}</Text>
-      </View>
+        <Text style={[styles.standingValue, styles.standingLink]}>{callouts.count}</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.mutedStrong} />
+      </Pressable>
       {overThreshold && (
         <Text style={styles.warningNote}>
           ⚠ {rollingCount} callouts in the last{" "}
@@ -736,6 +822,38 @@ const styles = StyleSheet.create({
   },
   estimateCard: {
     alignItems: "center",
+  },
+  // PR #27 item 9: YTD toggle pill, top-right of the estimate card.
+  ytdToggle: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+  },
+  ytdToggleText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  ytdGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  ytdRow: {
+    fontSize: 13,
+    color: colors.mutedStrong,
+  },
+  standingLink: {
+    color: colors.primary,
   },
   estimateLabel: {
     fontSize: 13,

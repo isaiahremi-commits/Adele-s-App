@@ -8,31 +8,31 @@
    Single light theme — the old green dark mode retired with the re-brand
    (a brand-worthy dark palette is a future design task). */
 :root {
-  --background: #f7f2e1; /* braunvieh milk */
+  --background: #F8F7EA; /* braunvieh milk */
   --surface: #ffffff; /* white cards on cream */
-  --surface-2: #f7f2e1; /* inputs / inactive segments — cream on white */
-  --border: rgba(58, 31, 26, 0.08); /* 8% swiss chocolate hairline */
-  --foreground: #3a1f1a; /* swiss chocolate */
-  --muted: rgba(58, 31, 26, 0.5); /* 50% swiss chocolate */
-  --primary: #e8825a; /* apricot */
+  --surface-2: #F8F7EA; /* inputs / inactive segments — cream on white */
+  --border: rgba(56, 32, 32, 0.08); /* 8% swiss chocolate hairline */
+  --foreground: #382020; /* swiss chocolate */
+  --muted: rgba(56, 32, 32, 0.5); /* 50% swiss chocolate */
+  --primary: #F5855F; /* apricot */
   --primary-dim: #c9663f;
-  --primary-soft: rgba(232, 130, 90, 0.14);
+  --primary-soft: rgba(245, 133, 95, 0.14);
   --primary-on: #ffffff;
   --amber: #8a6a15; /* deep gruyère — legible warning text on cream */
-  --warning-bg: rgba(240, 214, 119, 0.32); /* gruyère fill */
+  --warning-bg: rgba(248, 220, 137, 0.32); /* gruyère fill */
   --warning-border: rgba(138, 106, 21, 0.4);
   --success: #6f7423; /* darkened pear — legible on cream */
-  --success-bg: rgba(196, 200, 102, 0.3); /* pear fill */
+  --success-bg: rgba(210, 210, 118, 0.3); /* pear fill */
   --danger: #c24545;
   --danger-bg: rgba(194, 69, 69, 0.09);
   --danger-on: #ffffff;
-  --scrim: rgba(58, 31, 26, 0.5);
+  --scrim: rgba(56, 32, 32, 0.5);
   /* Manager sidebar — swiss chocolate with cream/apricot accents. */
-  --sidebar: #3a1f1a;
-  --sidebar-fg: rgba(247, 242, 225, 0.92);
-  --sidebar-muted: rgba(247, 242, 225, 0.55);
-  --sidebar-border: rgba(247, 242, 225, 0.14);
-  --sidebar-active: rgba(232, 130, 90, 0.18);
+  --sidebar: #382020;
+  --sidebar-fg: rgba(248, 247, 234, 0.92);
+  --sidebar-muted: rgba(248, 247, 234, 0.55);
+  --sidebar-border: rgba(248, 247, 234, 0.14);
+  --sidebar-active: rgba(245, 133, 95, 0.18);
 }
 
 html, body {
@@ -80,7 +80,7 @@ html, body {
   .btn-primary:hover { background: var(--primary-dim); }
   .btn-secondary { background: var(--surface-2); color: var(--foreground); border-color: var(--border); }
   .btn-secondary:hover { background: var(--border); }
-  .btn-amber { background: #f0d677; color: #3a1f1a; } /* gruyère */
+  .btn-amber { background: #F8DC89; color: #382020; } /* gruyère */
   .btn-danger { background: var(--danger); color: var(--danger-on); }
   .chip {
     display: inline-flex;
@@ -92,7 +92,7 @@ html, body {
   }
   .chip-green { background: var(--success-bg); color: var(--success); }
   .chip-amber { background: var(--warning-bg); color: var(--amber); }
-  .chip-muted { background: rgba(58, 31, 26, 0.08); color: var(--muted); }
+  .chip-muted { background: rgba(56, 32, 32, 0.08); color: var(--muted); }
 }
 
 /* Brand table affordance: rows tint braunvieh milk on hover. */

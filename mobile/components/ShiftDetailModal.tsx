@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "./Text";
 import { format } from "date-fns";
@@ -11,6 +11,11 @@ import {
 import type { TipStatus } from "../lib/tips";
 import type { MyCalloutOrOffer } from "../lib/coverage";
 import type { MySwapRequest } from "../lib/swaps";
+import {
+  type MyBreakState,
+  getMyBreakState,
+  punchBreak,
+} from "../lib/pay";
 import { colors } from "../lib/theme";
 
 // Shift detail sheet (PR #18) — opened from the Schedule grid and the Home
@@ -119,6 +124,9 @@ export default function ShiftDetailModal({
               ))
             )}
 
+            {/* PR #27 item 7: break punches for today's shift. */}
+            <BreakSection shift={shift} />
+
             {/* per-shift actions, verbatim behavior from the old cards */}
             {(notTipped || tipStatus || myCallout || onCallOut || pendingSwap || onRequestSwap || onMissedPunch || missedPunchPending) && (
               <View style={styles.actionsBlock}>
@@ -223,7 +231,110 @@ function TipActionRow({
   );
 }
 
+// PR #27 item 7: Start/End break for TODAY's shift. Mobile has no clock-in
+// flow yet, so the punch RPC find-or-creates the caller's own pending
+// timecard server-side; managers see the punches on the web Break popover.
+function BreakSection({ shift }: { shift: ScheduleShift }) {
+  const today = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const todayIso = `${today.getFullYear()}-${p(today.getMonth() + 1)}-${p(today.getDate())}`;
+  const isToday = shift.date === todayIso;
+  const [state, setState] = useState<MyBreakState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isToday) {
+      getMyBreakState(shift.id).then(setState).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shift.id, isToday]);
+
+  if (!isToday) return null;
+
+  const onBreak = !!(
+    (state?.break1_in && !state?.break1_out) ||
+    (state?.break2_in && !state?.break2_out)
+  );
+  const done = !!(state?.break1_out && state?.break2_out);
+  const label = onBreak
+    ? "End break"
+    : state?.break1_out
+      ? "Start break 2"
+      : "Start break";
+
+  async function punch() {
+    setBusy(true);
+    setError(null);
+    try {
+      setState(await punchBreak(shift.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't record the punch");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.breakBlock}>
+      {done ? (
+        <Text style={styles.breakDone}>
+          Breaks recorded — {state?.break_minutes ?? 0} min total
+        </Text>
+      ) : (
+        <Pressable
+          style={[styles.breakButton, onBreak && styles.breakButtonActive]}
+          disabled={busy}
+          onPress={punch}
+        >
+          <Text style={[styles.breakButtonText, onBreak && styles.breakButtonTextActive]}>
+            {busy ? "Saving…" : label}
+          </Text>
+        </Pressable>
+      )}
+      {onBreak && !done && (
+        <Text style={styles.breakNote}>Break in progress…</Text>
+      )}
+      {error && <Text style={styles.breakError}>{error}</Text>}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  breakBlock: {
+    marginTop: 10,
+    gap: 4,
+  },
+  breakButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+  },
+  breakButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  breakButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  breakButtonTextActive: {
+    color: colors.primaryOn,
+  },
+  breakNote: {
+    fontSize: 12,
+    color: colors.mutedStrong,
+  },
+  breakDone: {
+    fontSize: 13,
+    color: colors.mutedStrong,
+  },
+  breakError: {
+    fontSize: 12,
+    color: colors.danger,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: colors.scrim,

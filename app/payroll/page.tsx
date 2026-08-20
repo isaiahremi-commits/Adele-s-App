@@ -92,6 +92,11 @@ export default function PayrollPage() {
   const [dailyByEmp, setDailyByEmp] = useState<Record<string, DailyHours[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [validate, setValidate] = useState<{ kind: "earnings" | "hours"; missingRates: PayRow[]; unposted: number } | null>(null);
+  // PR #27 item 6: prediction-vs-actuals diff. actualGross maps employee_id →
+  // actual-mode gross for the same range; postedCount gates the toggle.
+  const [showDiff, setShowDiff] = useState(false);
+  const [actualGross, setActualGross] = useState<Record<string, number | null>>({});
+  const [postedCount, setPostedCount] = useState(0);
 
   // Resolve the configured cycle once, then re-anchor the default period.
   useEffect(() => {
@@ -161,7 +166,32 @@ export default function PayrollPage() {
       }
       setDailyByEmp(out);
     } catch { setDailyByEmp({}); }
-  }, [effRange, mode]);
+
+    // PR #27 item 6: in prediction mode, count posted timecards (gates the
+    // diff toggle) and, when the diff is on, fetch actual-mode gross to
+    // compare against.
+    if (mode === "prediction") {
+      try {
+        const supabase = createClient();
+        const { count } = await supabase
+          .from("timecards")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "posted")
+          .gte("date", effRange.start)
+          .lte("date", effRange.end);
+        setPostedCount(count ?? 0);
+      } catch { setPostedCount(0); }
+      if (showDiff) {
+        const act = await fetch(`/api/payroll?start=${effRange.start}&end=${effRange.end}&mode=actual`)
+          .then((r) => r.json()).catch(() => []);
+        const m: Record<string, number | null> = {};
+        for (const r of Array.isArray(act) ? act : []) {
+          m[r.employee_id] = r.gross_pay === null ? null : Number(r.gross_pay);
+        }
+        setActualGross(m);
+      }
+    }
+  }, [effRange, mode, showDiff]);
 
   useEffect(() => {
     load();
@@ -256,7 +286,9 @@ export default function PayrollPage() {
   // Item 5: prediction hides the actuals-only money columns (SC/NC tips,
   // Mgr comm) and the TC completeness chip — 6 columns instead of 10.
   const showActualCols = mode === "actual";
-  const colCount = showActualCols ? 10 : 6;
+  // PR #27 item 6: optional Δ column in prediction mode.
+  const showDiffCol = mode === "prediction" && showDiff && postedCount > 0;
+  const colCount = (showActualCols ? 10 : 6) + (showDiffCol ? 1 : 0);
 
   // PR #25 item 3: dropdown of periods — next, current, previous 6 — most
   // recent first. If the user has Prev'd beyond the list, keep the selected
@@ -327,6 +359,13 @@ export default function PayrollPage() {
               </button>
             ))}
           </div>
+          {mode === "prediction" && (
+            <button className="btn btn-secondary" disabled={postedCount === 0}
+              title={postedCount === 0 ? "No posted timecards in this period yet — nothing to compare against." : undefined}
+              onClick={() => setShowDiff((v) => !v)}>
+              {showDiff && postedCount > 0 ? "Hide diff vs Final actuals" : "Show diff vs Final actuals"}
+            </button>
+          )}
           <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("earnings")}>Export earnings</button>
           <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("hours")}>Export hours</button>
           <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => doExport("daily")}>Export daily hours</button>
@@ -358,6 +397,7 @@ export default function PayrollPage() {
                 </>
               )}
               <th className="text-right p-3 font-medium">{showActualCols ? "Gross" : "Gross (predicted)"}</th>
+              {showDiffCol && <th className="text-right p-3 font-medium" title="Predicted minus actual gross">Δ vs actual</th>}
               {showActualCols && <th className="text-center p-3 font-medium">TC</th>}
             </tr>
           </thead>
@@ -430,6 +470,19 @@ export default function PayrollPage() {
                   <td className="p-3 align-top text-right font-semibold" style={{ color: r.gross_pay === null ? "var(--amber)" : "var(--primary)" }}>
                     {money(r.gross_pay)}
                   </td>
+                  {showDiffCol && (() => {
+                    const act = actualGross[r.employee_id];
+                    const pred = r.gross_pay === null ? null : Number(r.gross_pay);
+                    const diff = pred != null && act != null && act !== undefined ? pred - act : null;
+                    // Budget read: actual over predicted = over budget = red.
+                    return (
+                      <td className="p-3 align-top text-right"
+                        style={{ color: diff === null ? "var(--muted)" : diff < 0 ? "var(--danger)" : "var(--primary)" }}
+                        title={diff === null ? "No actuals for this employee yet" : diff < 0 ? "Actual came in over the prediction" : "Actual came in on/under the prediction"}>
+                        {diff === null ? "—" : `${diff < 0 ? "−" : "+"}${money(Math.abs(diff))}`}
+                      </td>
+                    );
+                  })()}
                   {showActualCols && (
                     <td className="p-3 align-top text-center">
                       <span className={`chip ${complete ? "chip-green" : "chip-amber"}`} title="Approved/posted timecards vs scheduled shifts">
@@ -475,6 +528,7 @@ export default function PayrollPage() {
               <tr style={{ borderTop: "2px solid var(--border)" }}>
                 <td className="p-3 font-semibold" colSpan={showActualCols ? 8 : 5}>Period total{anyIncomplete ? " (excludes rows missing rates)" : ""}</td>
                 <td className="p-3 text-right font-bold" style={{ color: "var(--primary)" }}>{money(periodTotal)}</td>
+                {showDiffCol && <td></td>}
                 {showActualCols && <td></td>}
               </tr>
             </tfoot>

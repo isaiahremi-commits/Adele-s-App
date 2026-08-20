@@ -8,26 +8,26 @@ export const colors = {
   background: semantic.background,
   foreground: semantic.text,
   muted: semantic.textMuted, // 50% swiss chocolate
-  mutedStrong: "#3A1F1A99", // 60% — inactive tab tint
+  mutedStrong: "#38202099", // 60% — inactive tab tint
   primary: semantic.primary, // apricot
   primaryDim: "#C9663F", // darker apricot — active-chip text, pressed
   primaryOn: semantic.primaryText,
-  primarySoft: "rgba(232, 130, 90, 0.14)", // active chip / toggle fill
+  primarySoft: "rgba(245, 133, 95, 0.14)", // active chip / toggle fill
   amber: "#8A6A15", // deep gruyère — legible warning text on cream
-  warningSoft: "rgba(240, 214, 119, 0.32)", // gruyère fill for banners/pills
+  warningSoft: "rgba(248, 220, 137, 0.32)", // gruyère fill for banners/pills
   warningBorder: "rgba(138, 106, 21, 0.4)",
   success: semantic.secondary, // pear
-  successSoft: "rgba(196, 200, 102, 0.3)", // pear fill — approved/posted
+  successSoft: "rgba(210, 210, 118, 0.3)", // pear fill — approved/posted
   successText: "#6F7423", // darkened pear — legible on cream
-  infoSoft: "rgba(165, 176, 222, 0.28)", // berries fill — informational pills
+  infoSoft: "rgba(167, 183, 222, 0.28)", // berries fill — informational pills
   infoText: "#4A5486", // darkened berries
   danger: semantic.error,
   dangerSoft: "rgba(194, 69, 69, 0.09)",
   dangerBorder: "rgba(194, 69, 69, 0.42)",
-  neutralSoft: "rgba(58, 31, 26, 0.1)", // canceled/dimmed chips
+  neutralSoft: "rgba(56, 32, 32, 0.1)", // canceled/dimmed chips
   card: semantic.surface,
   border: semantic.border, // 8% swiss chocolate hairline
-  scrim: "rgba(58, 31, 26, 0.45)", // warm modal scrim
+  scrim: "rgba(56, 32, 32, 0.45)", // warm modal scrim
   shadow: brand.swissChocolate,
 };
 

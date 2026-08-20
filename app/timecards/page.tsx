@@ -15,6 +15,12 @@ type Timecard = {
   clock_in: string | null;
   clock_out: string | null;
   break_minutes: number | null;
+  // PR #27 item 7 (migration 025): punch-level break times. Absent (undefined)
+  // until the migration is applied; null on legacy rows.
+  break1_in?: string | null;
+  break1_out?: string | null;
+  break2_in?: string | null;
+  break2_out?: string | null;
   training_hours: number | null;
   regular_hours: number | null;
   ot_hours: number | null;
@@ -502,26 +508,49 @@ export default function TimecardsPage() {
                         {breakOpen === row.key ? "▾" : "▸"}
                       </button>
                     </div>
-                    {breakOpen === row.key && (
-                      <div className="card p-3 text-xs"
-                        style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, minWidth: 190, boxShadow: "0 4px 12px var(--shadow, rgba(0,0,0,0.15))" }}>
-                        <div className="flex justify-between gap-4 py-0.5">
-                          <span style={{ color: "var(--muted)" }}>Break in</span>
-                          <span>—</span>
+                    {breakOpen === row.key && (() => {
+                      // PR #27 item 7: real punch data when migration 025 has
+                      // captured it; the legacy placeholder otherwise.
+                      const fmtPunch = (iso: string | null | undefined) =>
+                        iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase() : null;
+                      const spanMin = (a: string | null | undefined, b: string | null | undefined) =>
+                        a && b ? Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)) : null;
+                      const b1 = tc?.break1_in || tc?.break1_out ? { in: fmtPunch(tc?.break1_in), out: fmtPunch(tc?.break1_out), min: spanMin(tc?.break1_in, tc?.break1_out) } : null;
+                      const b2 = tc?.break2_in || tc?.break2_out ? { in: fmtPunch(tc?.break2_in), out: fmtPunch(tc?.break2_out), min: spanMin(tc?.break2_in, tc?.break2_out) } : null;
+                      const hasPunches = !!(b1 || b2);
+                      return (
+                        <div className="card p-3 text-xs"
+                          style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, minWidth: 210, boxShadow: "0 4px 12px var(--shadow, rgba(0,0,0,0.15))" }}>
+                          {hasPunches ? (
+                            <>
+                              {[["Break 1", b1] as const, ["Break 2", b2] as const].map(([label, b]) => b && (
+                                <div key={label} className="flex justify-between gap-4 py-0.5">
+                                  <span style={{ color: "var(--muted)" }}>{label}</span>
+                                  <span>
+                                    {b.in ?? "—"} → {b.out ?? (b.in ? "in progress" : "—")}
+                                    {b.min !== null ? ` (${b.min} min)` : ""}
+                                  </span>
+                                </div>
+                              ))}
+                              <div className="flex justify-between gap-4 py-0.5" style={{ borderTop: "1px solid var(--border)" }}>
+                                <span style={{ color: "var(--muted)" }}>Total</span>
+                                <span className="font-medium">{(b1?.min ?? 0) + (b2?.min ?? 0)} min</span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between gap-4 py-0.5">
+                                <span style={{ color: "var(--muted)" }}>Duration</span>
+                                <span className="font-medium">{Number(e.break_minutes) || 0} min</span>
+                              </div>
+                              <p className="mt-1" style={{ color: "var(--muted)" }}>
+                                No break punches on this timecard — only the total minutes.
+                              </p>
+                            </>
+                          )}
                         </div>
-                        <div className="flex justify-between gap-4 py-0.5">
-                          <span style={{ color: "var(--muted)" }}>Break out</span>
-                          <span>—</span>
-                        </div>
-                        <div className="flex justify-between gap-4 py-0.5">
-                          <span style={{ color: "var(--muted)" }}>Duration</span>
-                          <span className="font-medium">{Number(e.break_minutes) || 0} min</span>
-                        </div>
-                        <p className="mt-1" style={{ color: "var(--muted)" }}>
-                          Punch-level break times aren&apos;t recorded yet — only the total.
-                        </p>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </td>
                   <td className="p-3 align-top">
                     <div className="flex flex-col gap-1">
