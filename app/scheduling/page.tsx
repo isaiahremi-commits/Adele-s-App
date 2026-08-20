@@ -89,6 +89,20 @@ const emptyForm: Form = {
 };
 
 type Assignment = { outlet_id: string; position_name: string };
+// PR #26: one par_compliance_for_week row — required vs scheduled for an
+// (outlet, date, position). has_par distinguishes a configured requirement
+// from shifts scheduled where no par exists (those never alert).
+type ParCompliance = {
+  outlet_id: string;
+  outlet_name: string;
+  date: string;
+  day_of_week: number;
+  position_name: string;
+  required: number;
+  scheduled: number;
+  delta: number;
+  has_par: boolean;
+};
 
 // Minutes since midnight from "HH:MM"; null when absent.
 function timeToMin(t?: string | null): number | null {
@@ -145,6 +159,9 @@ export default function SchedulingPage() {
     overwrite: false,
   });
   const [copying, setCopying] = useState(false);
+  // PR #26: PARS compliance for the visible week.
+  const [compliance, setCompliance] = useState<ParCompliance[]>([]);
+  const [complianceLoaded, setComplianceLoaded] = useState(false);
 
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -153,6 +170,32 @@ export default function SchedulingPage() {
       return d;
     });
   }, [weekStart]);
+
+  // ── PR #26: PARS alert derivations ────────────────────────────────────
+  // Issues = configured requirements that aren't met exactly. Rows without
+  // a par (has_par false) never alert — scheduling someone where no
+  // requirement exists is not an issue.
+  const parIssues = useMemo(
+    () => compliance.filter((r) => r.has_par && r.delta !== 0),
+    [compliance]
+  );
+  const parsConfigured = useMemo(() => compliance.some((r) => r.has_par), [compliance]);
+  const parUnders = useMemo(() => parIssues.filter((r) => r.delta < 0).length, [parIssues]);
+  // Worst per-day status for the column-header badge: red beats amber
+  // beats green; days with no configured par get no badge at all.
+  const parBadgeByDate = useMemo(() => {
+    const map: Record<string, "red" | "amber" | "green"> = {};
+    for (const r of compliance) {
+      if (!r.has_par) continue;
+      const cur = map[r.date];
+      const own: "red" | "amber" | "green" = r.delta < 0 ? "red" : r.delta > 0 ? "amber" : "green";
+      map[r.date] =
+        cur === "red" || own === "red" ? "red"
+        : cur === "amber" || own === "amber" ? "amber"
+        : "green";
+    }
+    return map;
+  }, [compliance]);
 
   async function load() {
     const start = toISODate(days[0]);
@@ -178,12 +221,17 @@ export default function SchedulingPage() {
     }
     setEmpOutlets(byEmp);
     // Tier 2 reads (batched for the visible week), tolerant of missing endpoints.
-    const [ptoRes, swapRes] = await Promise.all([
+    const [ptoRes, swapRes, parRes] = await Promise.all([
       fetch(`/api/scheduling/pto-overlay?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
       fetch(`/api/swaps?start=${start}&end=${end}`).then((r) => r.json()).catch(() => []),
+      // PR #26: recomputes on every load, so week switches and shift edits
+      // (which call load()) refresh the staffing alerts.
+      fetch(`/api/pars/compliance?start=${start}`).then((r) => r.json()).catch(() => []),
     ]);
     setPtoOverlay(Array.isArray(ptoRes) ? ptoRes : []);
     setSwaps(Array.isArray(swapRes) ? swapRes : []);
+    setCompliance(Array.isArray(parRes) ? parRes : []);
+    setComplianceLoaded(true);
     setEmployees(Array.isArray(eRes) ? eRes : []);
     setShifts(Array.isArray(sRes) ? sRes : []);
     const lateMap: Record<string, { tier: number; minutes_late: number }> = {};
@@ -805,6 +853,33 @@ export default function SchedulingPage() {
         </div>
       )}
 
+      {/* PR #26 item 10a: aggregate staffing banner — click scrolls to the
+          detail list. Red styling if anything is under-par, amber if the
+          only issues are over-par. */}
+      {parIssues.length > 0 && (
+        <button
+          onClick={() => document.getElementById("staffing-check")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="w-full text-left mb-4 p-3 rounded-md text-sm"
+          style={{
+            background: parUnders > 0 ? "var(--danger-bg)" : "var(--warning-bg)",
+            color: parUnders > 0 ? "var(--danger)" : "var(--amber)",
+            border: `1px solid ${parUnders > 0 ? "var(--danger)" : "var(--amber)"}`,
+            cursor: "pointer",
+          }}
+        >
+          ⚠ {parIssues.length} staffing issue{parIssues.length === 1 ? "" : "s"} this week
+          {" "}({parUnders} under-par, {parIssues.length - parUnders} over-par) — click for details ↓
+        </button>
+      )}
+      {/* PR #26 item 12: first-run nudge when no pars exist yet. */}
+      {complianceLoaded && !parsConfigured && (
+        <div className="mb-4 p-3 rounded-md text-sm" style={{ background: "var(--surface-2)", color: "var(--muted)", border: "1px solid var(--border)" }}>
+          No staffing requirements set — configure them in{" "}
+          <a href="/setup" style={{ color: "var(--primary)" }}>Setup → Staffing requirements</a>{" "}
+          to get under-/over-staffing alerts here.
+        </div>
+      )}
+
       {toast && (
         <div
           className="mb-4 p-3 rounded-md text-sm"
@@ -825,13 +900,29 @@ export default function SchedulingPage() {
             <tr style={{ borderBottom: "1px solid var(--border)" }}>
               <th className="text-left p-3 font-medium"
                 style={{ color: "var(--muted)", minWidth: 200, position: "sticky", top: 0, zIndex: 6, background: "var(--surface)" }}>Employee</th>
-              {days.map((d) => (
-                <th key={d.toISOString()} className="text-left p-3 font-medium"
-                  style={{ color: "var(--muted)", minWidth: 140, position: "sticky", top: 0, zIndex: 5, background: "var(--surface)" }}>
-                  <div>{DOW[d.getDay()]}</div>
-                  <div className="text-xs" style={{ color: "var(--muted)" }}>{MON[d.getMonth()]} {d.getDate()}</div>
-                </th>
-              ))}
+              {days.map((d) => {
+                // PR #26 item 10b: worst staffing status for the day.
+                const badge = parBadgeByDate[toISODate(d)];
+                return (
+                  <th key={d.toISOString()} className="text-left p-3 font-medium"
+                    style={{ color: "var(--muted)", minWidth: 140, position: "sticky", top: 0, zIndex: 5, background: "var(--surface)" }}>
+                    <div className="flex items-center gap-1">
+                      {DOW[d.getDay()]}
+                      {badge && (
+                        <span
+                          style={{ fontSize: 10, cursor: "default" }}
+                          title={badge === "red" ? "Under-par: a position is below its required count"
+                            : badge === "amber" ? "Over-par: a position is above its required count"
+                            : "Fully staffed: all requirements met"}
+                        >
+                          {badge === "red" ? "🔴" : badge === "amber" ? "🟡" : "🟢"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>{MON[d.getMonth()]} {d.getDate()}</div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -955,6 +1046,38 @@ export default function SchedulingPage() {
           </tbody>
         </table>
       </div>
+
+      {/* PR #26 item 11: staffing check detail — every configured
+          requirement that isn't met exactly, one line per variance. */}
+      {parsConfigured && (
+        <div id="staffing-check" className="card p-5 mt-6">
+          <h3 className="font-semibold mb-1">Staffing check</h3>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            Required vs scheduled for this week — requirements are set in Setup → Staffing requirements.
+          </p>
+          {parIssues.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--primary)" }}>All staffing requirements met this week ✓</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {parIssues.map((r) => {
+                const d = new Date(r.date + "T00:00:00");
+                const short = r.delta < 0;
+                return (
+                  <div key={`${r.outlet_id}|${r.date}|${r.position_name}`} className="text-sm py-1 flex items-baseline gap-2 flex-wrap">
+                    <span style={{ color: short ? "var(--danger)" : "var(--amber)" }}>{short ? "🔴" : "🟡"}</span>
+                    <span className="font-medium">{r.outlet_name}</span>
+                    <span style={{ color: "var(--muted)" }}>· {DOW[d.getDay()]} {MON[d.getMonth()]} {d.getDate()} ·</span>
+                    <span>{titleCase(r.position_name)}</span>
+                    <span style={{ color: short ? "var(--danger)" : "var(--amber)" }}>
+                      — needs {r.required}, scheduled {r.scheduled} ({short ? `short ${-r.delta}` : `extra ${r.delta}`})
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditingShiftId(null); }} title={editingShiftId ? "Edit Shift" : "Add Shift"}>
         {/* Item 11: field order Employee → Date → Outlet → Shift Type → Position → Start → End. */}

@@ -1423,6 +1423,51 @@ polish items, shipped for the Aug 19 follow-up.
   against db.types.ts-shaped tables.
 
 
+### PR #26 — PARS: staffing requirements + schedule alerts (2026-08-19)
+
+Committed free of charge to Adèle (Aug 18): required staffing per
+outlet × day-of-week × position, with alerts on the scheduling grid.
+
+- **Migration 024** — `outlet_pars` table (tenant-scoped RLS:
+  `manager_full_access` + `tenant_member_select`; unique per
+  tenant/outlet/day/position; added to 005's canonical `_tenant_tables`
+  as REV 5) + four SECURITY DEFINER RPCs, all manager-guarded and
+  explicitly tenant-scoped internally: `par_upsert`, `par_delete`,
+  `par_list_for_outlet`, `par_compliance_for_week`. Compliance derives
+  day-of-week from `shifts.date` (never the denormalized column),
+  matches positions case-insensitively (the 005b/019 casing lesson),
+  and returns a `has_par` flag beyond the spec shape so the UI can
+  distinguish a configured requirement (alert) from shifts where no
+  par exists (never alert). Verified in PGlite — 24 checks: guards
+  (non-manager, no-tenant, cross-tenant outlet, bad dow, negative
+  count), upsert insert/update/trim, case-insensitive delete,
+  compliance math (under/over/exactly-met/no-par/explicit-0-par),
+  tenant isolation, idempotent double-apply.
+- **Setup → Staffing requirements**: per-outlet collapsible 7-day ×
+  position matrix (positions from that outlet's roles, plus any par
+  whose role was later deleted, flagged "removed role"). Save sends
+  only changed cells; 0/empty removes the requirement (par_delete).
+- **Scheduling alerts**: compliance loads with the week (so week
+  switches and shift edits recompute). Three surfaces — clickable
+  aggregate banner ("N staffing issues this week (X under-par, Y
+  over-par)", red if any under, scrolls to detail); per-day header
+  badges (🔴 any under / 🟡 overs only / 🟢 all met / none when no
+  pars that day); "Staffing check" detail below the grid listing each
+  variance ("The Cowboy Bar · Sun Aug 16 · Bartender — needs 2,
+  scheduled 1 (short 1)"). First-run nudge points at Setup when no
+  pars exist.
+- API: `/api/pars` (GET list per outlet, POST batch save),
+  `/api/pars/compliance?start=` — thin RPC wrappers, RLS/guards in SQL.
+- **No PR-body screenshots**: the repo has no demo credentials
+  (PR #24 precedent — no synthetic users in the prod project) and the
+  local screenshot harness (dev server with a temporary auth
+  exclusion + stubbed APIs) was blocked by the sandbox policy. See
+  the PR body for the fastest manual path.
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean; migration 024 executed twice in PGlite
+  against db.types.ts-shaped tables.
+
+
 ### Upcoming
 
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle

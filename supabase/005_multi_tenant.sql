@@ -112,6 +112,7 @@ INSERT INTO _tenant_tables (name) VALUES
   ('employees'),
   ('large_party_revenues'),
   ('lateness_history'),
+  ('outlet_pars'),          -- REV 5 (024)
   ('outlet_roles'),
   ('outlets'),
   ('pto_allocations'),
