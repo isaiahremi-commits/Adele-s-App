@@ -37,6 +37,9 @@ type WizardForm = {
   ot_rate: string;
   pto_rate: string;
   training_rate: string;
+  // PR #27 item 2: seed balance in hours, applied via pto_adjust_balance
+  // right after create.
+  pto_starting_balance: string;
   department_id: string;
   home_outlet_id: string;
   home_position: string;
@@ -61,6 +64,7 @@ function emptyWizardForm(): WizardForm {
     ot_rate: "",
     pto_rate: "",
     training_rate: "",
+    pto_starting_balance: "",
     department_id: "",
     home_outlet_id: "",
     home_position: "",
@@ -182,6 +186,7 @@ export default function AddEmployeeWizard({
           ot_rate: salaried || form.ot_rate === "" ? null : Number(form.ot_rate),
           pto_rate: form.pto_rate === "" ? null : Number(form.pto_rate),
           training_rate: salaried || form.training_rate === "" ? null : Number(form.training_rate),
+          pto_starting_balance: form.pto_starting_balance === "" ? 0 : Math.max(0, Number(form.pto_starting_balance) || 0),
           assignments: salaried ? [] : form.assignments.filter((a) => a.outlet_id),
         }),
       });
@@ -340,6 +345,11 @@ export default function AddEmployeeWizard({
                   <input type="number" step="0.01" min="0" className="input mt-1" value={form.pto_rate}
                     onChange={(e) => setForm({ ...form, pto_rate: e.target.value })} />
                 </label>
+                <label className="text-sm">Starting PTO balance (hours)
+                  <input type="number" step="0.25" min="0" className="input mt-1" value={form.pto_starting_balance}
+                    placeholder="0"
+                    onChange={(e) => setForm({ ...form, pto_starting_balance: e.target.value })} />
+                </label>
                 <label className="text-sm">Department
                   <select className="input mt-1" value={form.department_id}
                     onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
@@ -452,6 +462,7 @@ export default function AddEmployeeWizard({
                         (form.pto_rate ? `, PTO $${form.pto_rate}` : "") +
                         (form.training_rate ? `, Training $${form.training_rate}` : "")],
                     ] as const)),
+                ["Starting PTO balance", form.pto_starting_balance && Number(form.pto_starting_balance) > 0 ? `${form.pto_starting_balance}h` : "0h"],
               ] as readonly (readonly [string, string])[]).map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4">
                   <span style={{ color: "var(--muted)" }}>{k}</span>

@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     department_ids?: string[];
     positions?: string[];
     employee_ids?: string[];
+    outlet_ids?: string[]; // PR #27 item 5
     overwrite?: boolean;
   };
 
@@ -40,35 +41,61 @@ export async function POST(req: Request) {
   const deptSet = new Set((body.department_ids ?? []).filter(Boolean));
   const posSet = new Set((body.positions ?? []).filter(Boolean).map((p) => p.trim().toLowerCase()));
   const empSet = new Set((body.employee_ids ?? []).filter(Boolean));
+  const outletSet = new Set((body.outlet_ids ?? []).filter(Boolean));
 
-  let filtered = sourceShifts;
-
-  if (deptSet.size > 0) {
-    filtered = filtered.filter((s) => {
+  // One filter predicate reused for the source rows AND the overwrite scope,
+  // so "overwrite" can never delete shifts the filters excluded.
+  type FilterableShift = {
+    employee_id: string;
+    position?: string | null;
+    outlet_id?: string | null;
+    employees?: { department_id?: string | null } | null;
+  };
+  const matchesFilters = (s: FilterableShift) => {
+    if (deptSet.size > 0) {
       const emp = s.employees as { department_id?: string | null } | null;
-      return emp?.department_id ? deptSet.has(emp.department_id) : false;
-    });
-  }
+      if (!emp?.department_id || !deptSet.has(emp.department_id)) return false;
+    }
+    if (posSet.size > 0 && !posSet.has((s.position ?? "").trim().toLowerCase())) return false;
+    if (empSet.size > 0 && !empSet.has(s.employee_id)) return false;
+    if (outletSet.size > 0 && (!s.outlet_id || !outletSet.has(s.outlet_id))) return false;
+    return true;
+  };
 
-  if (posSet.size > 0) {
-    filtered = filtered.filter((s) => posSet.has((s.position ?? "").trim().toLowerCase()));
-  }
-
-  if (empSet.size > 0) {
-    filtered = filtered.filter((s) => empSet.has(s.employee_id));
-  }
+  const filtered = sourceShifts.filter(matchesFilters);
 
   if (filtered.length === 0) {
     return NextResponse.json({ copied: 0, skipped: 0, message: "No shifts matched filters." });
   }
 
   if (body.overwrite) {
-    const { error: delErr } = await supabase
-      .from("shifts")
-      .delete()
-      .gte("date", body.to_week)
-      .lte("date", toEnd);
-    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    // PR #27 item 5: overwrite is scoped to the SAME filters as the copy —
+    // copying only The Cowboy Bar must never clear other outlets' week.
+    const anyFilter = deptSet.size > 0 || posSet.size > 0 || empSet.size > 0 || outletSet.size > 0;
+    if (anyFilter) {
+      const { data: destShifts, error: destErr } = await supabase
+        .from("shifts")
+        .select("id, employee_id, position, outlet_id, employees(department_id)")
+        .gte("date", body.to_week)
+        .lte("date", toEnd);
+      if (destErr) return NextResponse.json({ error: destErr.message }, { status: 500 });
+      // Supabase infers the joined `employees` as an array here; runtime is a
+      // single object (FK join) — same shape the source query filters on.
+      const ids = (destShifts ?? [])
+        .filter((s) => matchesFilters(s as unknown as FilterableShift))
+        .map((s) => s.id);
+      if (ids.length > 0) {
+        const { error: delErr } = await supabase.from("shifts").delete().in("id", ids);
+        if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+      }
+    } else {
+      const { error: delErr } = await supabase
+        .from("shifts")
+        .delete()
+        .gte("date", body.to_week)
+        .lte("date", toEnd);
+      if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
   }
 
   const fromStart = new Date(body.from_week + "T00:00:00");
@@ -85,6 +112,11 @@ export async function POST(req: Request) {
     position: s.position,
     outlet_id: s.outlet_id,
     department: s.department,
+    // PR #27: a copy should be a copy — notes and the training/event flags
+    // used to be silently dropped.
+    notes: s.notes ?? null,
+    is_training: s.is_training ?? false,
+    is_event: s.is_event ?? false,
   }));
 
   const { error: insErr } = await supabase.from("shifts").insert(newRows);

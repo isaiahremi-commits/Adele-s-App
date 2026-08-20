@@ -45,11 +45,13 @@ import type {
   ScheduleStackParamList,
 } from "./lib/navigation";
 import BroadcastDetailScreen from "./screens/BroadcastDetailScreen";
+import CalloutsDetailScreen from "./screens/CalloutsDetailScreen";
 import ChangePasswordScreen from "./screens/ChangePasswordScreen";
 import ComposeBroadcastScreen from "./screens/ComposeBroadcastScreen";
 import HomeScreen from "./screens/HomeScreen";
 import InboxScreen from "./screens/InboxScreen";
 import LoginScreen from "./screens/LoginScreen";
+import LatenessDetailScreen from "./screens/LatenessDetailScreen";
 import ManagerInboxScreen from "./screens/ManagerInboxScreen";
 import EndOfDayScreen from "./screens/manager/EndOfDayScreen";
 import WorkHoursScreen from "./screens/manager/WorkHoursScreen";
@@ -76,6 +78,9 @@ export type RootStackParamList = {
   BroadcastDetail: { broadcastId: string };
   ComposeBroadcast: undefined;
   Approvals: undefined;
+  // PR #27 item 10: read-only standing detail screens (from the Pay tab).
+  LatenessDetail: undefined;
+  CalloutsDetail: undefined;
 };
 
 export type MainTabParamList = {
@@ -505,6 +510,16 @@ function RootNavigator() {
             name="BroadcastDetail"
             component={BroadcastDetailScreen}
             options={{ title: "Message" }}
+          />
+          <Stack.Screen
+            name="LatenessDetail"
+            component={LatenessDetailScreen}
+            options={{ title: "Lateness" }}
+          />
+          <Stack.Screen
+            name="CalloutsDetail"
+            component={CalloutsDetailScreen}
+            options={{ title: "Callouts" }}
           />
           <Stack.Screen
             name="ComposeBroadcast"

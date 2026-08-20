@@ -28,6 +28,8 @@ type Shift = {
   position?: string;
   outlet_id?: string;
   notes?: string | null;
+  is_training?: boolean;
+  is_event?: boolean;
 };
 
 const WEEKDAYS: { label: string; jsDay: number }[] = [
@@ -152,16 +154,25 @@ export default function SchedulingPage() {
   const [form, setForm] = useState<Form>(emptyForm);
   const [toast, setToast] = useState<Toast>(null);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
-  const [copyForm, setCopyForm] = useState<{ department_ids: string[]; positions: string[]; employee_ids: string[]; overwrite: boolean }>({
+  const [copyForm, setCopyForm] = useState<{ department_ids: string[]; positions: string[]; employee_ids: string[]; outlet_ids: string[]; overwrite: boolean }>({
     department_ids: [],
     positions: [],
     employee_ids: [],
+    outlet_ids: [],
     overwrite: false,
   });
   const [copying, setCopying] = useState(false);
   // PR #26: PARS compliance for the visible week.
   const [compliance, setCompliance] = useState<ParCompliance[]>([]);
   const [complianceLoaded, setComplianceLoaded] = useState(false);
+  // PR #27 item 4: single-shift copy/paste via right-click context menu (the
+  // chip's left-click is taken by edit). Clipboard is week-local by spec.
+  const [shiftClipboard, setShiftClipboard] = useState<Shift | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<
+    | { x: number; y: number; kind: "shift"; shift: Shift }
+    | { x: number; y: number; kind: "cell"; empId: string; date: string }
+    | null
+  >(null);
 
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -249,6 +260,53 @@ export default function SchedulingPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [weekStart]);
+
+  // Item 4: cross-week paste is deferred — switching weeks drops the clipboard.
+  useEffect(() => { setShiftClipboard(null); setCtxMenu(null); }, [weekStart]);
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); };
+  }, [ctxMenu]);
+
+  async function pasteShift(empId: string, date: string) {
+    const src = shiftClipboard;
+    setCtxMenu(null);
+    if (!src) return;
+    if (isPastWeek || (src.outlet_id && approvedSet.has(src.outlet_id))) {
+      setToast({ kind: "error", text: "That outlet's week is locked — unapprove it to paste." });
+      return;
+    }
+    try {
+      const res = await fetch("/api/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_id: empId,
+          date,
+          start_time: src.start_time ?? null,
+          end_time: src.end_time ?? null,
+          shift_type: src.shift_type ?? null,
+          position: src.position ?? null,
+          outlet_id: src.outlet_id ?? null,
+          notes: src.notes ?? null,
+          is_training: src.is_training ?? false,
+          is_event: src.is_event ?? false,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", text: data.error || "Paste failed" });
+        return;
+      }
+      setToast({ kind: "success", text: "Shift pasted." });
+      load();
+    } catch (err) {
+      setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
+    }
+  }
 
   // Anchor the schedule week on setup.period_start_day (Item 1). Display only —
   // does not touch lib/payroll pay-period math.
@@ -493,6 +551,7 @@ export default function SchedulingPage() {
       if (copyForm.department_ids.length > 0) payload.department_ids = copyForm.department_ids;
       if (copyForm.positions.length > 0) payload.positions = copyForm.positions;
       if (copyForm.employee_ids.length > 0) payload.employee_ids = copyForm.employee_ids;
+      if (copyForm.outlet_ids.length > 0) payload.outlet_ids = copyForm.outlet_ids; // PR #27 item 5
       const res = await fetch("/api/shifts/copy-week", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -509,7 +568,7 @@ export default function SchedulingPage() {
         setToast({ kind: "success", text: `Copied ${data.copied} shift${data.copied === 1 ? "" : "s"} from last week.` });
       }
       setCopyModalOpen(false);
-      setCopyForm({ department_ids: [], positions: [], employee_ids: [], overwrite: false });
+      setCopyForm({ department_ids: [], positions: [], employee_ids: [], outlet_ids: [], overwrite: false });
       load();
     } catch (err) {
       setToast({ kind: "error", text: err instanceof Error ? err.message : "Network error" });
@@ -967,7 +1026,8 @@ export default function SchedulingPage() {
                     const atCap = list.length >= MAX_SHIFTS_PER_DAY;
                     const pto = ptoFor(emp.id, toISODate(d));
                     return (
-                      <td key={d.toISOString()} className="p-2 align-top">
+                      <td key={d.toISOString()} className="p-2 align-top"
+                        onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, kind: "cell", empId: emp.id, date: toISODate(d) }); }}>
                         <div className="flex flex-col gap-1">
                           {pto && (
                             <div className="rounded-md text-xs px-2 py-1" title={`Approved PTO: ${pto.name} (${pto.reason})`}
@@ -983,7 +1043,8 @@ export default function SchedulingPage() {
                               <div key={s.id} className="p-2 rounded-md text-xs group relative"
                                 style={{ background: "var(--surface-2)", border: "1px solid var(--border)", cursor: shiftLocked(s) ? "default" : "pointer" }}
                                 title={shiftLocked(s) ? undefined : "Click to edit shift"}
-                                onClick={() => { if (!shiftLocked(s)) openEditShift(s); }}>
+                                onClick={() => { if (!shiftLocked(s)) openEditShift(s); }}
+                                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, kind: "shift", shift: s }); }}>
                                 <div className="flex items-center gap-1 mb-0.5">
                                   {s.shift_type && <span className="chip chip-green" style={{ padding: "0 6px", fontSize: 10 }}>{s.shift_type}</span>}
                                   {lateness[s.id] && (
@@ -1242,6 +1303,30 @@ export default function SchedulingPage() {
                 From <strong>{toISODate(new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000))}</strong> → <strong>{toISODate(weekStart)}</strong>. Leave a section empty to include everything.
               </p>
 
+              {/* PR #27 item 5: outlets multi-select — intersects with the
+                  other filters, and overwrite is scoped to the same filters. */}
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold">Outlets</h4>
+                  <button type="button" className="text-xs" style={{ color: "var(--primary)" }}
+                    onClick={() => setCopyForm({ ...copyForm, outlet_ids: copyForm.outlet_ids.length === outlets.length ? [] : outlets.map((o) => o.id) })}>
+                    {copyForm.outlet_ids.length === outlets.length && outlets.length > 0 ? "Clear all" : "Select all"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {outlets.map((o) => {
+                    const checked = copyForm.outlet_ids.includes(o.id);
+                    return (
+                      <label key={o.id} className="flex items-center gap-1 text-xs cursor-pointer rounded-md px-2 py-1" style={{ background: checked ? "var(--primary)" : "var(--surface-2)", color: checked ? "var(--primary-on)" : "var(--foreground)" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setCopyForm({ ...copyForm, outlet_ids: toggle(copyForm.outlet_ids, o.id) })} style={{ display: "none" }} />
+                        {o.name}
+                      </label>
+                    );
+                  })}
+                  {outlets.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>No outlets yet.</span>}
+                </div>
+              </section>
+
               <section>
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-semibold">Departments</h4>
@@ -1307,7 +1392,7 @@ export default function SchedulingPage() {
 
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={copyForm.overwrite} onChange={(e) => setCopyForm({ ...copyForm, overwrite: e.target.checked })} />
-                Overwrite existing shifts in this week
+                Overwrite existing shifts in this week (only those matching the filters above)
               </label>
 
               <div className="flex justify-end gap-2 mt-2">
@@ -1320,6 +1405,32 @@ export default function SchedulingPage() {
           );
         })()}
       </Modal>
+
+      {/* PR #27 item 4: shift copy/paste context menu. */}
+      {ctxMenu && (
+        <div className="card p-1 text-sm" onClick={(e) => e.stopPropagation()}
+          style={{ position: "fixed", left: Math.min(ctxMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : ctxMenu.x), top: ctxMenu.y, zIndex: 100, minWidth: 220, boxShadow: "0 6px 18px rgba(0,0,0,0.18)" }}>
+          {ctxMenu.kind === "shift" ? (
+            <button className="w-full text-left px-3 py-2 rounded-md"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}
+              onClick={() => {
+                setShiftClipboard(ctxMenu.shift);
+                setCtxMenu(null);
+                setToast({ kind: "success", text: "Shift copied — right-click any cell this week to paste." });
+              }}>
+              ⧉ Copy shift{ctxMenu.shift.position ? ` (${titleCase(ctxMenu.shift.position)})` : ""}
+            </button>
+          ) : (
+            <button className="w-full text-left px-3 py-2 rounded-md" disabled={!shiftClipboard}
+              style={{ background: "none", border: "none", cursor: shiftClipboard ? "pointer" : "default", color: shiftClipboard ? "inherit" : "var(--muted)" }}
+              onClick={() => pasteShift(ctxMenu.empId, ctxMenu.date)}>
+              {shiftClipboard
+                ? `📋 Paste ${shiftClipboard.position ? titleCase(shiftClipboard.position) : "shift"}${shiftClipboard.start_time ? ` ${shiftClipboard.start_time}–${shiftClipboard.end_time ?? "?"}` : ""}`
+                : "Nothing copied yet — right-click a shift first"}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Swap dialog (record new / manage pending or completed) */}
       <Modal open={!!swapModal} onClose={() => { setSwapModal(null); setSwapNewEmp(""); setSwapNotes(""); }} title="Shift swap" width={440}>

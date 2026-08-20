@@ -1,12 +1,14 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Text } from "../components/Text";
 import { format } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +31,15 @@ import PtoSubmitModal from "./PtoSubmitModal";
 
 const STATUS_TABS: PtoStatus[] = ["pending", "approved", "denied"];
 
+// PR #27 item 3: list ordering, persisted per user/device.
+type PtoSort = "recent" | "oldest" | "requested";
+const SORT_KEY = "manadele.pto_sort_v1";
+const SORT_LABELS: Record<PtoSort, string> = {
+  recent: "Most recent",
+  oldest: "Oldest",
+  requested: "By date requested",
+};
+
 function fmtDay(d: string): string {
   return format(new Date(`${d}T00:00:00`), "MMM d, yyyy");
 }
@@ -43,7 +54,24 @@ export default function PtoScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [sort, setSort] = useState<PtoSort>("recent");
+  const [sortOpen, setSortOpen] = useState(false);
   const requestSeq = useRef(0);
+
+  // Restore the persisted sort once; writes are fire-and-forget.
+  useEffect(() => {
+    AsyncStorage.getItem(SORT_KEY)
+      .then((v) => {
+        if (v === "recent" || v === "oldest" || v === "requested") setSort(v);
+      })
+      .catch(() => {});
+  }, []);
+
+  function pickSort(next: PtoSort) {
+    setSort(next);
+    setSortOpen(false);
+    AsyncStorage.setItem(SORT_KEY, next).catch(() => {});
+  }
 
   const load = useCallback(async (mode: "initial" | "refresh") => {
     const seq = ++requestSeq.current;
@@ -77,10 +105,17 @@ export default function PtoScreen() {
     }, [load])
   );
 
-  const visible = useMemo(
-    () => (requests ?? []).filter((r) => r.status === tab),
-    [requests, tab]
-  );
+  const visible = useMemo(() => {
+    const rows = (requests ?? []).filter((r) => r.status === tab);
+    // Server order is start_date desc ("recent"); the others re-sort here.
+    if (sort === "oldest") {
+      return [...rows].sort((a, b) => a.start_date.localeCompare(b.start_date));
+    }
+    if (sort === "requested") {
+      return [...rows].sort((a, b) => (b.requested_at ?? "").localeCompare(a.requested_at ?? ""));
+    }
+    return rows;
+  }, [requests, tab, sort]);
 
   const loading = requests === null && !error;
 
@@ -126,6 +161,26 @@ export default function PtoScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* PR #27 item 3: sort dropdown (persisted). */}
+        <Pressable style={styles.sortRow} onPress={() => setSortOpen(true)}>
+          <Text style={styles.sortLabel}>Sort: {SORT_LABELS[sort]}</Text>
+          <Ionicons name="chevron-down" size={14} color={colors.mutedStrong} />
+        </Pressable>
+        <Modal transparent visible={sortOpen} animationType="fade" onRequestClose={() => setSortOpen(false)}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setSortOpen(false)}>
+            <View style={styles.modalCard}>
+              {(Object.keys(SORT_LABELS) as PtoSort[]).map((s) => (
+                <Pressable key={s} style={styles.modalRow} onPress={() => pickSort(s)}>
+                  <Text style={[styles.modalRowText, sort === s && styles.modalRowTextActive]}>
+                    {SORT_LABELS[s]}
+                  </Text>
+                  {sort === s && <Ionicons name="checkmark" size={16} color={colors.primary} />}
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Modal>
 
         {loading && <SkeletonRows />}
 
@@ -277,6 +332,46 @@ const styles = StyleSheet.create({
   },
   statusTabTextActive: {
     color: colors.foreground,
+  },
+  // PR #27 item 3: sort dropdown.
+  sortRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  sortLabel: {
+    fontSize: 13,
+    color: colors.mutedStrong,
+    fontWeight: "500",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: colors.scrim,
+    justifyContent: "center",
+    padding: 32,
+  },
+  modalCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingVertical: 6,
+  },
+  modalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  modalRowText: {
+    fontSize: 15,
+    color: colors.foreground,
+  },
+  modalRowTextActive: {
+    color: colors.primary,
+    fontWeight: "600",
   },
   card: {
     backgroundColor: colors.card,

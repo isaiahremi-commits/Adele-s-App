@@ -39,6 +39,8 @@ type CreateBody = {
   ot_rate?: number | null;
   pto_rate?: number | null;
   training_rate?: number | null;
+  // PR #27 item 2: seed balance (hours) applied via pto_adjust_balance.
+  pto_starting_balance?: number;
   assignments?: Assignment[];
 };
 
@@ -182,11 +184,30 @@ export async function POST(req: Request) {
     }
   }
 
+  // 4. PR #27 item 2: starting PTO balance. Best-effort — the account is
+  // fully created by now, so a seed failure must not roll it back; the
+  // manager can re-apply it from the PTO page's Adjust flow. The ledger has
+  // no 'initial' transaction_type anywhere (pto_adjust_balance hardcodes
+  // 'adjustment'), so the note carries the intent instead.
+  let ptoSeedError: string | null = null;
+  const startingBalance = Number(body.pto_starting_balance) || 0;
+  if (startingBalance > 0) {
+    const { error: ptoErr } = await supabase.rpc("pto_adjust_balance", {
+      p_employee_id: emp.id,
+      p_delta: startingBalance,
+      p_notes: "Starting balance (set at onboarding)",
+    });
+    if (ptoErr) ptoSeedError = ptoErr.message;
+  }
+
   return NextResponse.json({
     ok: true,
     employee_id: emp.id,
     auth_user_id: authUserId,
     email,
     temp_password: tempPassword,
+    ...(ptoSeedError
+      ? { warning: `Employee created, but the starting PTO balance could not be applied (${ptoSeedError}). Set it from the PTO page.` }
+      : {}),
   });
 }

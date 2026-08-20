@@ -1,5 +1,6 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   RefreshControl,
@@ -93,7 +94,30 @@ export default function HomeScreen() {
   >(null);
   const [mgrOpen, setMgrOpen] = useState(false);
   const [mpShift, setMpShift] = useState<ScheduleShift | null>(null);
+  // PR #27 item 8: "still loading" progress at 3s, and an 8s escape for the
+  // one path the per-request watchdogs can't cover — auth's `user` never
+  // arriving, which used to pin the bare spinner forever.
+  const [slowLoad, setSlowLoad] = useState(false);
   const requestSeq = useRef(0);
+
+  useEffect(() => {
+    if (state.kind !== "loading") {
+      setSlowLoad(false);
+      return;
+    }
+    const slow = setTimeout(() => setSlowLoad(true), 3000);
+    const escape = setTimeout(() => {
+      setState((cur) =>
+        cur.kind === "loading"
+          ? { kind: "error", message: "This is taking longer than it should." }
+          : cur
+      );
+    }, 8000);
+    return () => {
+      clearTimeout(slow);
+      clearTimeout(escape);
+    };
+  }, [state.kind]);
 
   // PR #19 bug 1 (Adèle's Home stuck on "Loading…"): fetch has NO timeout
   // on RN/web, so gating first paint on a five-way Promise.all meant one
@@ -183,14 +207,18 @@ export default function HomeScreen() {
           )
           .catch(() => {});
       } catch (e) {
-        if (current()) {
+        // PR #27 item 8: a failed pull-to-refresh must not replace a
+        // fully-rendered Home with the error card — keep what's on screen.
+        if (current() && mode === "initial") {
           setState({
             kind: "error",
             message: e instanceof Error ? e.message : "Something went wrong",
           });
         }
       } finally {
-        if (current()) setRefreshing(false);
+        // Unconditional: a superseded refresh otherwise left the
+        // RefreshControl spinning forever.
+        setRefreshing(false);
       }
     },
     [user]
@@ -256,7 +284,16 @@ export default function HomeScreen() {
         }
       >
         {state.kind === "loading" && (
-          <Text style={styles.mutedCenter}>Loading…</Text>
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.mutedCenter}>Loading…</Text>
+            {/* PR #27 item 8: visible progress before the 8s watchdog. */}
+            {slowLoad && (
+              <Text style={styles.mutedCenter}>
+                Still loading — hang tight…
+              </Text>
+            )}
+          </View>
         )}
 
         {state.kind === "error" && (
@@ -675,6 +712,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: colors.muted,
     marginTop: 24,
+  },
+  loadingBlock: {
+    alignItems: "center",
+    gap: 0,
+    paddingTop: 24,
   },
   actionsRow: {
     flexDirection: "row",

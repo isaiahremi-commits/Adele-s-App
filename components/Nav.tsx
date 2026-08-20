@@ -56,7 +56,7 @@ export default function Nav() {
   // Brand book cover treatment: swiss-chocolate sidebar, cream text, apricot
   // active states, pear/cream logotype.
   const btnStyle = {
-    background: "rgba(247, 242, 225, 0.08)",
+    background: "rgba(248, 247, 234, 0.08)",
     border: "1px solid var(--sidebar-border)",
     color: "var(--sidebar-fg)",
   } as const;
