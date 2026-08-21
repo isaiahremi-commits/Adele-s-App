@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { tipPoolModeLabel } from "@/lib/constants";
 
 type Employee = { id: string; name: string; title?: string | null };
 type EmpEmbed = { name?: string } | null;
@@ -78,7 +79,14 @@ export default function TipSheetEditor() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const mode = outlet?.tip_pool_mode ?? "pool";
+  // PR #28: 4 modes (pool_daily | pool_weekly | individual_daily | no_tips).
+  // Legacy 'pool'/'individual' values linger until Migration 027 is applied;
+  // a NULL mode keeps the historical pool presentation.
+  const mode = outlet?.tip_pool_mode ?? "pool_daily";
+  const isPool = mode.startsWith("pool");
+  const isIndividual = mode.startsWith("individual");
+  const isNoTips = mode === "no_tips";
+  const isWeekly = mode === "pool_weekly";
   const status = sheet?.status ?? "pending";
   const locked = status === "posted" || status === "approved";
   const computed = status === "ready" || locked;
@@ -86,10 +94,10 @@ export default function TipSheetEditor() {
   const empName = (eid: string) => employees.find((e) => e.id === eid)?.name ?? "—";
 
   const recon = useMemo(() => {
-    const scDeclared = mode === "pool"
+    const scDeclared = isPool
       ? Number(sheet?.service_charge ?? 0)
       : rows.reduce((s, r) => s + Number(r.declared_service_charge ?? 0), 0);
-    const ncDeclared = mode === "pool"
+    const ncDeclared = isPool
       ? Number(sheet?.non_cash_tips ?? 0)
       : rows.reduce((s, r) => s + Number(r.declared_non_cash ?? 0), 0);
     const distributed = rows.reduce((s, r) => s + Number(r.tip_amount ?? 0), 0);
@@ -98,7 +106,7 @@ export default function TipSheetEditor() {
     const houseTotal = largeParties.reduce((s, l) => s + Number(l.house_amount ?? 0), 0);
     const mgrTotal = largeParties.reduce((s, l) => s + Number(l.manager_amount ?? 0), 0);
     return { scDeclared, ncDeclared, distributed, scDistributed, ncDistributed, houseTotal, mgrTotal };
-  }, [mode, sheet, rows, largeParties]);
+  }, [isPool, sheet, rows, largeParties]);
 
   async function call(url: string, opts: RequestInit, okMsg?: string) {
     const res = await fetch(url, opts);
@@ -187,15 +195,16 @@ export default function TipSheetEditor() {
           <h1 className="text-2xl font-bold flex items-center gap-3 flex-wrap">
             {sheet.service_name || "Tip sheet"}
             {statusBadge}
-            <span className="chip chip-muted">{mode === "pool" ? "Pool" : "Individual"}</span>
+            <span className="chip chip-muted">{tipPoolModeLabel(mode)}</span>
           </h1>
           <div className="text-sm" style={{ color: "var(--muted)" }}>
             {outlet?.name}{sheet.department ? ` · ${sheet.department}` : ""} · {new Date(sheet.sheet_date + "T00:00:00").toLocaleDateString()}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {!locked && (
-            <button className="btn btn-secondary" disabled={busy === "compute"} onClick={compute}>
+          {!locked && !isNoTips && (
+            <button className="btn btn-secondary" disabled={busy === "compute"} onClick={compute}
+              title={isWeekly ? "Weekly pool: computing any day recomputes every sheet of this outlet's week." : undefined}>
               {status === "ready" ? "Recompute" : "Compute"}
             </button>
           )}
@@ -214,8 +223,25 @@ export default function TipSheetEditor() {
         </div>
       )}
 
-      {/* Pool mode: single summed declared SC + NC */}
-      {mode === "pool" && (
+      {/* PR #28: no-tips outlets don't distribute — this sheet predates the
+          mode switch (new ones are never generated). Read-only note. */}
+      {isNoTips && (
+        <div className="card p-4 mb-4 text-sm" style={{ color: "var(--muted)" }}>
+          This outlet is set to “No tips repartition” — new tip sheets aren&apos;t generated for it
+          and this sheet can&apos;t be computed. Change the outlet&apos;s tip sheet type in Setup if
+          that&apos;s not intended.
+        </div>
+      )}
+
+      {isWeekly && !locked && (
+        <div className="card p-4 mb-4 text-sm" style={{ color: "var(--muted)" }}>
+          Weekly pool: the whole week&apos;s service charges and non-cash tips distribute together
+          across the week&apos;s hours — computing this sheet recomputes every unposted sheet of the week.
+        </div>
+      )}
+
+      {/* Pool modes: single summed declared SC + NC */}
+      {isPool && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div className="card p-4">
             <label className="text-sm">Service charge ($)
@@ -312,7 +338,7 @@ export default function TipSheetEditor() {
       {/* Team rows */}
       <div className="card p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">Team {mode === "pool" ? "(pool distribution)" : "(individual)"}</h3>
+          <h3 className="font-semibold">Team {isPool ? (isWeekly ? "(weekly pool distribution)" : "(pool distribution)") : "(individual)"}</h3>
           <span className="text-xs" style={{ color: "var(--muted)" }}>
             Eligible hours read from approved timecards · PTO, called-out & training excluded
           </span>
@@ -323,8 +349,8 @@ export default function TipSheetEditor() {
               <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
                 <th className="text-left p-2">Employee</th>
                 <th className="text-left p-2">Role</th>
-                {mode === "individual" && <th className="text-right p-2">Decl. SC</th>}
-                {mode === "individual" && <th className="text-right p-2">Decl. NC</th>}
+                {isIndividual && <th className="text-right p-2">Decl. SC</th>}
+                {isIndividual && <th className="text-right p-2">Decl. NC</th>}
                 <th className="text-right p-2">SC</th>
                 <th className="text-right p-2">NC</th>
                 <th className="text-right p-2">Tip amount</th>
@@ -332,7 +358,7 @@ export default function TipSheetEditor() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={mode === "individual" ? 7 : 5} className="p-6 text-center" style={{ color: "var(--muted)" }}>
+                <tr><td colSpan={isIndividual ? 7 : 5} className="p-6 text-center" style={{ color: "var(--muted)" }}>
                   No team rows. Approve the week on Scheduling to populate the team.
                 </td></tr>
               )}
@@ -340,14 +366,14 @@ export default function TipSheetEditor() {
                 <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td className="p-2">{r.employees?.name || empName(r.employee_id)}</td>
                   <td className="p-2" style={{ color: "var(--muted)" }}>{r.role || "—"}</td>
-                  {mode === "individual" && (
+                  {isIndividual && (
                     <td className="p-2 text-right">
                       <input type="number" step="0.01" disabled={locked} className="input text-right" style={{ width: 100 }}
                         defaultValue={r.declared_service_charge ?? 0} onFocus={(e) => e.currentTarget.select()}
                         onBlur={(e) => patchRow(r.id, { declared_service_charge: Number(e.target.value) })} />
                     </td>
                   )}
-                  {mode === "individual" && (
+                  {isIndividual && (
                     <td className="p-2 text-right">
                       <input type="number" step="0.01" disabled={locked} className="input text-right" style={{ width: 100 }}
                         defaultValue={r.declared_non_cash ?? 0} onFocus={(e) => e.currentTarget.select()}
@@ -369,7 +395,7 @@ export default function TipSheetEditor() {
             {rows.length > 0 && (
               <tfoot>
                 <tr style={{ color: "var(--muted)" }}>
-                  <td className="p-2" colSpan={mode === "individual" ? 4 : 2}>Total distributed</td>
+                  <td className="p-2" colSpan={isIndividual ? 4 : 2}>Total distributed</td>
                   <td className="p-2 text-right font-semibold">{computed ? money(recon.scDistributed) : "—"}</td>
                   <td className="p-2 text-right font-semibold">{computed ? money(recon.ncDistributed) : "—"}</td>
                   <td className="p-2 text-right font-semibold" style={{ color: "var(--primary)" }}>{money(recon.distributed)}</td>

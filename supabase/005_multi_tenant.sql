@@ -1,5 +1,18 @@
 -- =========================================================================
--- Migration 005 (Phase 2) — Multi-tenant hardening.  REV 4.
+-- Migration 005 (Phase 2) — Multi-tenant hardening.  REV 6.
+--
+-- REV 6 (PR #28): departments + department_positions join _tenant_tables.
+-- departments left the "intentionally tenant-agnostic" list below when
+-- Migration 027 promoted it to a first-class tenant-scoped table (tenant_id
+-- + backfill + tenant-scoped policies); department_positions was born
+-- tenant-scoped in 027. As with 015/024, Migration 027 does the actual
+-- column/backfill/policy work standalone — listing them here keeps future
+-- 005 re-runs consistent (and keeps assertion 3 from tripping on their
+-- tenant_id columns). Either order converges; on a fresh DB this file runs
+-- before 027 creates department_positions, so the loops skip it with a
+-- NOTICE until the next re-run. NOTE: 027 also adds a second policy
+-- (tenant_member_select) on both tables — the manager_full_access rewrite
+-- below leaves it untouched, same as outlet_pars.
 --
 -- REV 4 (PR #13): employee_outlets joins _tenant_tables. It was originally
 -- left tenant-agnostic (see the note further down) but the onboarding flow
@@ -67,10 +80,12 @@
 --      explicitly.
 --
 -- Tables intentionally left tenant-agnostic (global reference/support data,
--- policies unchanged from 004b): departments, outlet_services,
+-- policies unchanged from 004b): outlet_services,
 -- payroll_periods, services, sms_log, sms_settings, tip_allocations.
 -- Revisit if any of these become tenant-specific. (employee_outlets was on
--- this list through REV 3; REV 4 moved it into _tenant_tables — see header.)
+-- this list through REV 3; REV 4 moved it into _tenant_tables — see header.
+-- departments was on this list through REV 5; REV 6 moved it into
+-- _tenant_tables when Migration 027 tenant-scoped it — see header.)
 --
 -- =========================================================================
 -- user_metadata.tenant_id — MANUAL STEPS (Isaiah), do these WITH this
@@ -108,6 +123,8 @@ INSERT INTO _tenant_tables (name) VALUES
   ('broadcasts'),           -- REV 3 (013)
   ('callout_history'),
   ('coverage_requests'),    -- REV 3 (010)
+  ('department_positions'), -- REV 6 (027)
+  ('departments'),          -- REV 6 (027)
   ('employee_outlets'),     -- REV 4 (015)
   ('employees'),
   ('large_party_revenues'),

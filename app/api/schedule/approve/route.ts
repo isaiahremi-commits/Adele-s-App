@@ -79,11 +79,17 @@ export async function POST(req: Request) {
   );
   const { data: outlets } = await supabase
     .from("outlets")
-    .select("id, name")
+    .select("id, name, tip_pool_mode")
     .in("id", outletIds);
 
   const outletMap = new Map<string, string>(
     (outlets ?? []).map((o: { id: string; name: string }) => [o.id, o.name])
+  );
+  // PR #28: no-tips outlets never get tip sheets generated.
+  const noTipsOutlets = new Set<string>(
+    (outlets ?? [])
+      .filter((o: { tip_pool_mode: string | null }) => o.tip_pool_mode === "no_tips")
+      .map((o: { id: string }) => o.id)
   );
 
   const groups = new Map<string, Group>();
@@ -113,11 +119,16 @@ export async function POST(req: Request) {
 
   let created = 0;
   let updated = 0;
+  let skipped_no_tips = 0;
   const errors: string[] = [];
 
   const groupList = Array.from(groups.values());
 
   for (const g of groupList) {
+    if (noTipsOutlets.has(g.outlet_id)) {
+      skipped_no_tips++;
+      continue;
+    }
     const outletName = outletMap.get(g.outlet_id) ?? "Outlet";
     const serviceName = outletName + " \u00B7 " + g.shift_type;
 
@@ -197,6 +208,7 @@ export async function POST(req: Request) {
     created,
     updated,
     total_groups: groups.size,
+    skipped_no_tips: skipped_no_tips > 0 ? skipped_no_tips : undefined,
     errors: errors.length > 0 ? errors : undefined,
     sms_summary,
   });

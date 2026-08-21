@@ -2576,6 +2576,8 @@ export type Database = {
           sheet_open: boolean
           sheet_status: string
           tip_amount: number
+          // tip_pool_mode (pending 027, PR #28) HAND-ADDED — regen after apply.
+          tip_pool_mode: string | null
         }[]
       }
       tip_declaration_submit: {

@@ -190,6 +190,8 @@ export default function ScheduleScreen() {
           (s): s is ScheduleShift & { date: string; outlet_id: string } =>
             s.date !== null &&
             s.outlet_id !== null &&
+            // PR #28: no-tips outlets have no sheets — skip their RPCs.
+            s.outlets?.tip_pool_mode !== "no_tips" &&
             isPastShift(s, todayKey, nowTime)
         )
         .map((s) => ({ outletId: s.outlet_id, date: s.date }));
@@ -459,6 +461,10 @@ export default function ScheduleScreen() {
           notTipped={
             isPastShift(selectedShift, todayKey, nowTime) && !isTipped
           }
+          noTips={
+            isPastShift(selectedShift, todayKey, nowTime) &&
+            selectedShift.outlets?.tip_pool_mode === "no_tips"
+          }
           myCallout={calloutsByShift.get(selectedShift.id)}
           pendingSwap={pendingSwapByShift.get(selectedShift.id)}
           missedPunchPending={mpPendingShifts.has(selectedShift.id)}
@@ -484,6 +490,7 @@ export default function ScheduleScreen() {
                     outletName: s.outlets?.name ?? null,
                     shiftDate: s.date!,
                     position: s.position,
+                    tipPoolMode: s.outlets?.tip_pool_mode ?? null,
                   });
                 }
               : undefined
