@@ -15,6 +15,9 @@ export type ScheduleStackParamList = {
     outletName: string | null;
     shiftDate: string; // "yyyy-MM-dd"
     position: string | null;
+    // PR #28: outlet's tip mode when known — 'no_tips' renders the
+    // read-only "doesn't track tips" state without waiting on the RPC.
+    tipPoolMode?: string | null;
   };
   SwapRequest: {
     shiftId: string;

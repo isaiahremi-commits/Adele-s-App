@@ -18,6 +18,10 @@ export type TipStatus = {
   declaredLargeParty: number | null;
   /** Finalized payout — non-null only once the sheet is posted. */
   tipAmount: number | null;
+  /** PR #28: the outlet's tip mode ('no_tips' hides the declaration UI).
+   * Null pre-027 (RPC column missing) — unknown mode keeps today's
+   * behavior, mirroring getMyTippedStatus's fail-open convention. */
+  tipPoolMode: string | null;
 };
 
 export type TipHistoryEntry = {
@@ -80,6 +84,7 @@ export async function getTipStatus(
       declaredNonCash: null,
       declaredLargeParty: null,
       tipAmount: null,
+      tipPoolMode: null,
     };
   }
   return {
@@ -91,6 +96,7 @@ export async function getTipStatus(
     declaredNonCash: num(row.declared_non_cash),
     declaredLargeParty: num(row.declared_large_party),
     tipAmount: num(row.tip_amount),
+    tipPoolMode: row.tip_pool_mode ?? null,
   };
 }
 

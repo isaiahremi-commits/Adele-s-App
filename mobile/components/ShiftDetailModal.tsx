@@ -40,6 +40,7 @@ export default function ShiftDetailModal({
   teammates,
   tipStatus,
   notTipped,
+  noTips,
   myCallout,
   pendingSwap,
   missedPunchPending,
@@ -54,6 +55,8 @@ export default function ShiftDetailModal({
   teammates: TeammateShift[];
   tipStatus?: TipStatus;
   notTipped?: boolean;
+  /** PR #28: the shift's outlet is 'no_tips' — no declaration surface. */
+  noTips?: boolean;
   myCallout?: MyCalloutOrOffer;
   pendingSwap?: MySwapRequest;
   /** PR #20: a pending missed-punch request exists for this shift. */
@@ -128,9 +131,13 @@ export default function ShiftDetailModal({
             <BreakSection shift={shift} />
 
             {/* per-shift actions, verbatim behavior from the old cards */}
-            {(notTipped || tipStatus || myCallout || onCallOut || pendingSwap || onRequestSwap || onMissedPunch || missedPunchPending) && (
+            {(noTips || notTipped || tipStatus || myCallout || onCallOut || pendingSwap || onRequestSwap || onMissedPunch || missedPunchPending) && (
               <View style={styles.actionsBlock}>
-                {notTipped ? (
+                {noTips ? (
+                  <Text style={styles.tipDim}>
+                    Tips not tracked at this outlet.
+                  </Text>
+                ) : notTipped ? (
                   <Text style={styles.tipDim}>
                     Tips not applicable to this position.
                   </Text>

@@ -6,8 +6,11 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const supabase = createClient();
-  const { error } = await supabase.from("departments").delete().eq("id", params.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // PR #28: guarded RPC — refuses while outlets or employees still
+  // reference the department (the raw delete would orphan them or 409 on
+  // the FK).
+  const { error } = await supabase.rpc("department_delete", { p_id: params.id });
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });
 }
 

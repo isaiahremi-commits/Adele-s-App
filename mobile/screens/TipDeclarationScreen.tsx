@@ -134,6 +134,34 @@ export default function TipDeclarationScreen() {
     "EEEE, MMM d, yyyy"
   );
 
+  // Defense in depth (PR #28): the Schedule tab never links here for a
+  // no-tips outlet, but a stale navigation state could — read-only note.
+  // The nav param covers the instant render; the RPC's tip_pool_mode is the
+  // authority once loaded (covers a param-less/stale entry too).
+  const noTips =
+    params.tipPoolMode === "no_tips" ||
+    (state.kind === "ready" && state.status.tipPoolMode === "no_tips");
+  if (noTips) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.headerDate}>{dateLabel}</Text>
+          <Text style={styles.headerMeta}>
+            {[params.outletName, titleCase(params.position)].filter(Boolean).join(" · ") ||
+              "Shift"}
+          </Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.errorTitle}>This outlet doesn't track tips</Text>
+          <Text style={styles.mutedBody}>
+            Tips aren't collected or distributed at this outlet, so there's
+            nothing to declare here.
+          </Text>
+        </View>
+      </ScrollView>
+    );
+  }
+
   // Defense in depth (PR #16): the Schedule tab never links here for a
   // non-tipped user, but a stale navigation state could — show a read-only
   // note instead of the declaration form.

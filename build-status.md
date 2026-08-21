@@ -1529,8 +1529,154 @@ Post-Aug-18 backlog cleanup: final logo swap + 9 items, web + mobile.
   `expo export` bundles clean; migrations 025+026 PGlite 23/23.
 
 
+### PR #28 — Setup restructure: Establishment → Departments → Outlets (2026-08-21)
+
+Adèle's Aug 20 Dialpad spec: the establishment has departments, departments
+have positions + optional outlets, outlets have a tip sheet type (4 options
+incl. "no tips repartition"), employees are assigned to outlets with
+positions + points.
+
+- **Migration 027** (NOT applied — Isaiah applies via dashboard; order
+  caveats below):
+  - `departments` promoted to first-class: tenant_id (legacy rows →
+    Adele Pilot, the 005 convention) + updated_at + case-insensitive
+    UNIQUE (tenant_id, lower(name)) with a duplicate-merge pass that
+    repoints employees/outlets, + tenant-scoped RLS (manager_full_access
+    + tenant_member_select, the outlet_pars posture). Legacy
+    type/tip_pool_strategy columns kept untouched.
+  - **New `department_positions` catalog** — the positions a department
+    owns (Adèle: "departments have positions"); `outlet_roles` stays the
+    per-outlet assignment with points. Backfilled from outlet_roles +
+    employee_outlets names per outlet's department. This table is a spec
+    interpretation: the outlet page's checkbox list ("all positions in the
+    parent department") needs a source independent of assignments.
+  - Backfill: departments from distinct `employees.department` text
+    (case-insensitive match against existing rows), employees linked
+    (pre-existing department_id wins, never overwritten); outlets get the
+    department of their most-common employee via employees × shifts
+    (ties: count desc then name asc), fallback = tenant's first department
+    alphabetically, 'General' seeded only for a tenant with outlets and no
+    departments at all; then `outlets.department_id SET NOT NULL`.
+    `employees.department` text KEPT read-only — removal is PR #29.
+  - `tip_pool_mode`: 'pool'→'pool_daily', 'individual'→'individual_daily',
+    then CHECK IN (pool_daily, pool_weekly, individual_daily, no_tips).
+    NULL stays legal (legacy unconfigured outlets keep raising in the
+    engine); unexpected values abort the migration loudly.
+  - **Tip engine** — patched IN PLACE as `ts_compute_unguarded` (post-014
+    the real body; `ts_compute` is the guard shim — replacing it directly
+    would hand every authenticated user the unguarded engine). Full
+    re-create behind drift assertions (weekly mode restructures the
+    eligibility temp table — beyond safe pg_get_functiondef surgery; 013/
+    019 precedent), preserving the 019-P2 salary guard:
+    - `no_tips` → early return `{skipped: true, message: "no tips at this
+      outlet"}`, nothing touched;
+    - `pool_daily` / `individual_daily` (legacy literals still accepted) →
+      existing math, byte-identical results;
+    - **unknown non-null modes now RAISE** (pre-027 anything non-'pool'
+      silently computed as individual);
+    - `pool_weekly` → the outlet's whole week computes as ONE unit:
+      SC + NC + large-party pullback aggregate across every sheet of the
+      week (`week_start` stamp wins, unstamped falls back to the date's
+      Sunday), weights = eff_hours × points across the week, every
+      pending/ready sheet recomputes and moves to 'ready' together.
+      **Posting a day locks the week**: recomputing while any sibling is
+      posted refuses with "revert them (ts_unpost) and recompute".
+  - `tip_declaration_submit` — pg_get_functiondef patch (016/017 pattern):
+    refuses "This outlet does not track tips" for no_tips outlets.
+  - `tip_declaration_for_me` — DROP + re-create (return-shape change):
+    new `tip_pool_mode` column, selected BEFORE the no-sheet early return
+    so mobile learns the mode even when no sheet will ever exist.
+  - `pay_breakdown` — surgical patch restoring **014's tenant filter on
+    both `setup` pay-cycle reads that 023 accidentally reverted**
+    (cross-tenant read under pay_breakdown_for_me's SECURITY DEFINER
+    delegation). No no_tips change needed: no rows ⇒ tips already $0
+    (harness-verified).
+  - 10 new manager-guarded SECURITY DEFINER RPCs (024 guard idiom, every
+    statement tenant-scoped): department_upsert/delete/list,
+    department_position_add/remove, outlet_upsert (new outlets default
+    pool_daily — closes the "created outlets have NULL mode and ts_compute
+    raises" latent bug), outlet_assign_position (upserts points, preserves
+    is_tipped/tip-out config, self-heals the catalog),
+    outlet_unassign_position, outlet_list_for_department, outlet_detail
+    (jsonb: outlet + department catalog with assignment state + team with
+    points). NOTE: optional params sit LAST (the spec's `p_id DEFAULT NULL`
+    first is invalid in Postgres).
+  - **005 is now REV 6**: departments + department_positions in
+    `_tenant_tables` (027 does the work standalone; the listing keeps 005
+    re-runs consistent and assertion 3 quiet).
+  - **Migration order caveats**: 027 requires 005 (tenants +
+    current_tenant_id), 009 (declaration RPCs), the 019-P2 engine state,
+    and 023 (pay_breakdown) already applied — i.e. just apply it after
+    026 in sequence. Do NOT re-run 005 before 027 lands if the file is at
+    REV 6 — either order converges, but the departments policy would
+    briefly lack tenant_member_select until 027 adds it. Fail-fast
+    prerequisite + drift assertions abort cleanly on anything unexpected.
+- **Web Setup restructure** (3-page hierarchy):
+  - `/setup` = Establishment landing: name + payroll frequency + period
+    start day (one card), SMS section (flag-gated, unchanged), department
+    cards (name, legacy FOH/BOH chip, outlet/position counts) → click
+    through. Old flat Outlets/Roles/PARS sections removed from this page.
+  - `/setup/departments/[id]`: editable name, delete (RPC refuses while
+    outlets/employees reference it), Positions catalog (predefined-roles
+    dropdown + Other, remove refused while assigned), Outlet cards (mode
+    chip + counts) + add-outlet with mode select.
+  - `/setup/outlets/[id]`: editable name, tip-sheet-type dropdown (4
+    options, with no_tips/pool_weekly explainer text), Positions checkbox
+    list from the parent department's catalog (points input + PR #16
+    Tipped toggle preserved; out-of-catalog roles flagged), Team members
+    (from employee_outlets, points via the outlet's role; assign-employee
+    picker of active unassigned employees), Shift types (outlet_services,
+    moved from flat Setup), and the PR #26 PARS matrix scoped to the
+    outlet.
+  - New thin API routes wrapping the RPCs (guards in SQL, /api/pars
+    style): /api/departments/{list,upsert,positions}, /api/departments/
+    [id]/outlets, /api/outlets/upsert, /api/outlets/[id]/{detail,
+    positions}. /api/departments/[id] DELETE now calls department_delete.
+    Legacy GET /api/departments|/api/outlets untouched (employees page,
+    scheduling, tips index still read them).
+  - Schedule approve route: **skips tip-sheet generation for no_tips
+    outlets** (reports `skipped_no_tips`). With none generated, the
+    manager approvals inbox needs no change. A pre-existing pending sheet
+    at an outlet later switched to no_tips stays visible in the inbox /
+    tips list until deleted — compute returns the polite skip marker.
+  - Tips editor (`/tips/[id]`): mode handling remapped (isPool =
+    startsWith('pool')), 4-mode chip label, weekly-pool banner ("computing
+    any day recomputes the week"), no_tips read-only note + Compute
+    hidden. lib/constants gains TIP_POOL_MODES + label/chip helpers.
+  - Audit outcome (flat-outlet assumptions): scheduling copy-previous-week
+    already filters by department via outlets; employees page/wizard read
+    departments/outlets flat and keep working against the promoted table;
+    reports/payroll roll up from employee department_id unchanged. No
+    behavioral change needed beyond the approve route.
+- **Mobile** (no structural changes):
+  - Shifts query embeds `outlets(name, tip_pool_mode)` (readable under
+    018's tenant_member_select). Schedule tab: no-tips past shifts skip
+    the status RPCs and the shift sheet shows "Tips not tracked at this
+    outlet." instead of Declare tips.
+  - TipDeclarationScreen: defensive read-only "This outlet doesn't track
+    tips" state (nav param for instant render; the RPC's new
+    tip_pool_mode field is the authority — fail-open when unknown,
+    matching the getMyTippedStatus convention). Pay-tab tip history needs
+    nothing (no rows at no-tips outlets).
+  - db.types.ts: tip_declaration_for_me return HAND-ADDED tip_pool_mode
+    (regen after 027 lands).
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean; **PGlite 86/86** on the real chain (005
+  REV 6 → 007 → tip_sheet → 019 → 014 guard slice → 017 → 019-P2 → 009 →
+  010 → 011 → 012 → 021 → 023 → 024, live-shape departments simulated,
+  seeded two-tenant fixture, **027 applied three times**): dedupe/merge +
+  repoint, employee/outlet linking incl. most-common-employee inference +
+  alphabetical fallback, mode migration + CHECK, catalog backfill, all 10
+  RPCs incl. guards + tenant isolation, engine math exact to the cent in
+  all 4 modes (weekly incl. cross-week large-party pullback + posted-day
+  refusal), declaration refusal + mode surfacing, pay_breakdown $0-tips +
+  tenant-filter restore, and prior cases (PTO submit, callout+coverage,
+  swap submit/accept, manager inbox).
+
 ### Upcoming
 
+- PR #29: drop `employees.department` (text) after the 027 hierarchy is
+  verified in production (build-status PR #28 notes); regen db.types.ts.
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle
   deciding structure), side nav (bottom nav stays until Adèle's visual
   designs land), Running-late push delivery (PR #19 push work — the

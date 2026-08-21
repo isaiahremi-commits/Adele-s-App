@@ -35,7 +35,10 @@ export type ScheduleShift = {
   notes: string | null;
   position: string | null;
   outlet_id: string | null;
-  outlets: { name: string } | null;
+  // PR #28: tip_pool_mode rides the embed so the Schedule tab can hide the
+  // tip surface for 'no_tips' outlets (readable under 018's
+  // tenant_member_select policy on outlets).
+  outlets: { name: string; tip_pool_mode: string | null } | null;
 };
 
 export type TeammateShift = ScheduleShift & {
@@ -48,7 +51,7 @@ export type TeammateShift = ScheduleShift & {
 };
 
 const SHIFT_COLUMNS =
-  "id, date, start_time, end_time, shift_type, notes, position, outlet_id, outlets ( name )";
+  "id, date, start_time, end_time, shift_type, notes, position, outlet_id, outlets ( name, tip_pool_mode )";
 
 function dateParam(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -126,7 +129,9 @@ export async function getTeammatesForWeek(
     notes: r.notes ?? null,
     position: r.shift_position ?? null,
     outlet_id: r.outlet_id ?? null,
-    outlets: r.outlet_name ? { name: r.outlet_name } : null,
+    // tip_pool_mode isn't in the teammate feed — teammate rows never drive
+    // tip UI, so null (= unknown) is correct here.
+    outlets: r.outlet_name ? { name: r.outlet_name, tip_pool_mode: null } : null,
     employee_id: r.employee_id,
     employees: {
       id: r.employee_id,
