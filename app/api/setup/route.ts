@@ -9,7 +9,9 @@ export async function GET() {
     .limit(1)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? { company_name: "My Restaurant", pay_cycle: "weekly", period_start_day: "monday" });
+  return NextResponse.json(
+    data ?? { company_name: null, pay_cycle: "weekly", period_start_day: "monday", setup_locked_at: null }
+  );
 }
 
 export async function PATCH(req: Request) {
@@ -33,10 +35,13 @@ export async function PATCH(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   } else {
+    // PR #29 item 2: no forced default name — the first save carrying a
+    // real company_name is what engages the establishment lock (Migration
+    // 028's trigger), so it must be a name the manager actually typed.
     const { data, error } = await supabase
       .from("setup")
       .insert({
-        company_name: body.company_name || "My Restaurant",
+        company_name: body.company_name || null,
         pay_cycle: body.pay_cycle || "weekly",
         period_start_day: body.period_start_day || "monday",
       })

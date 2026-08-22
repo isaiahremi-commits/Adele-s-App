@@ -76,6 +76,10 @@ html, body {
     align-items: center;
     gap: 6px;
   }
+  /* PR #29 item 8: a disabled button must LOOK disabled — it used to keep
+     full contrast + pointer cursor, reading as a live button that "does
+     nothing" on click. */
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-primary { background: var(--primary); color: var(--primary-on); }
   .btn-primary:hover { background: var(--primary-dim); }
   .btn-secondary { background: var(--surface-2); color: var(--foreground); border-color: var(--border); }

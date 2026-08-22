@@ -37,7 +37,7 @@ export default function DepartmentPage() {
 
   const [posForm, setPosForm] = useState<{ role_name: string; other: boolean }>({ role_name: "", other: false });
   const [newOutlet, setNewOutlet] = useState("");
-  const [newOutletMode, setNewOutletMode] = useState<string>("pool_daily");
+  const [newOutletMode, setNewOutletMode] = useState<string>("pool_daily_all");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -143,7 +143,7 @@ export default function DepartmentPage() {
         return;
       }
       setNewOutlet("");
-      setNewOutletMode("pool_daily");
+      setNewOutletMode("pool_daily_all");
       load();
     } finally {
       setBusy(false);

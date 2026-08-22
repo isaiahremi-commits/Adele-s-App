@@ -32,6 +32,9 @@ export default function SetupPage() {
     pay_cycle: "weekly",
     period_start_day: "monday",
   });
+  // PR #29 item 2: once set, name + payroll frequency are locked (Migration
+  // 028 trigger). Non-null = locked — those two render read-only.
+  const [lockedAt, setLockedAt] = useState<string | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState<string | null>(null);
 
@@ -47,10 +50,13 @@ export default function SetupPage() {
     setDepartments(Array.isArray(d) ? d : []);
     if (c && !c.error) {
       setConfig({
-        company_name: c.company_name ?? "My Restaurant",
+        // No placeholder default — the first save of a real name engages
+        // the establishment lock, so it must be deliberately typed.
+        company_name: c.company_name ?? "",
         pay_cycle: c.pay_cycle ?? "weekly",
         period_start_day: c.period_start_day ?? "monday",
       });
+      setLockedAt(c.setup_locked_at ?? null);
     }
   }
   useEffect(() => { load(); loadSmsSettings(); }, []);
@@ -61,14 +67,24 @@ export default function SetupPage() {
     setSavingConfig(true);
     setConfigMsg(null);
     try {
+      // Once locked, name + frequency are frozen server-side — send only
+      // the still-editable field so an unchanged-but-present value can
+      // never trip the lock trigger.
+      const payload = lockedAt
+        ? { period_start_day: merged.period_start_day }
+        : merged;
       const res = await fetch("/api/setup", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(merged),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) setConfigMsg(data.error || `Save failed (${res.status})`);
-      else setConfigMsg("Saved");
+      else {
+        setConfigMsg("Saved");
+        // The first save of a real name locks the row — reflect it now.
+        if (data.setup_locked_at !== undefined) setLockedAt(data.setup_locked_at);
+      }
     } catch (err) {
       setConfigMsg(err instanceof Error ? err.message : "Network error");
     } finally {
@@ -165,26 +181,44 @@ export default function SetupPage() {
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label className="text-sm md:col-span-1">Establishment Name
-            <input
-              className="input mt-1"
-              value={config.company_name}
-              placeholder="e.g. Manadel"
-              onChange={(e) => setConfig({ ...config, company_name: e.target.value })}
-              onBlur={(e) => saveConfig({ company_name: e.target.value })}
-            />
-          </label>
-          <label className="text-sm">Payroll Frequency
-            <select
-              className="input mt-1"
-              value={config.pay_cycle}
-              disabled={savingConfig}
-              onChange={(e) => saveConfig({ pay_cycle: e.target.value as PayrollConfig["pay_cycle"] })}
-            >
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Bi-weekly</option>
-            </select>
-          </label>
+          {/* PR #29 item 2: once locked, name + frequency are read-only. */}
+          {lockedAt ? (
+            <>
+              <div className="text-sm md:col-span-1">Establishment Name
+                <div className="mt-1 font-semibold text-base" style={{ padding: "6px 0" }}>
+                  {config.company_name || "—"}
+                </div>
+              </div>
+              <div className="text-sm">Payroll Frequency
+                <div className="mt-1 font-semibold text-base" style={{ padding: "6px 0" }}>
+                  {config.pay_cycle === "biweekly" ? "Bi-weekly" : "Weekly"}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="text-sm md:col-span-1">Establishment Name
+                <input
+                  className="input mt-1"
+                  value={config.company_name}
+                  placeholder="e.g. Manadel"
+                  onChange={(e) => setConfig({ ...config, company_name: e.target.value })}
+                  onBlur={(e) => saveConfig({ company_name: e.target.value })}
+                />
+              </label>
+              <label className="text-sm">Payroll Frequency
+                <select
+                  className="input mt-1"
+                  value={config.pay_cycle}
+                  disabled={savingConfig}
+                  onChange={(e) => saveConfig({ pay_cycle: e.target.value as PayrollConfig["pay_cycle"] })}
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Bi-weekly</option>
+                </select>
+              </label>
+            </>
+          )}
           <label className="text-sm">Period Starts On
             <select
               className="input mt-1"
@@ -199,7 +233,9 @@ export default function SetupPage() {
           </label>
         </div>
         <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-          The name shows in the sidebar and app header.
+          {lockedAt
+            ? "The establishment name and payroll frequency are locked. Contact your Manadele admin to change them."
+            : "The name shows in the sidebar and app header. Once saved, the name and payroll frequency lock — contact your Manadele admin to change them later."}
         </p>
       </section>
 

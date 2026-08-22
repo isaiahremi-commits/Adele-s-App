@@ -1673,10 +1673,130 @@ positions + points.
   tenant-filter restore, and prior cases (PTO submit, callout+coverage,
   swap submit/accept, manager inbox).
 
+### PR #29 — Aug 21 meeting feedback (2026-08-21)
+
+- **Scope**: Adèle walked the PR #28 Setup restructure live and approved
+  the direction; this PR is her 8 refinements + 2 of Isaiah's UI notes.
+  All polish / focused additions on PR #28's hierarchy — no architecture
+  change. One migration: `supabase/028_aug21_feedback.sql` (idempotent,
+  single transaction, fail-fast prereqs + drift assertions, verification
+  queries + hand-run rollback at the bottom). Apply after 027.
+- **Item 1 — pool_daily split into two sub-modes** (outlet level):
+  - `pool_daily_all` = the whole outlet-day pools as ONE unit: every
+    shift's sheet together, everyone who worked that day at the outlet
+    shares. Mechanically the 027 pool_weekly machinery keyed on the DATE:
+    SC/NC + large-party pullback aggregate across the day's sheets, all
+    pending/ready sheets of the day recompute + move to 'ready' together,
+    compute REFUSES while any sheet of the day is posted (revert first).
+    An employee on BOTH an AM and PM sheet of the day is deduped —
+    timecard hours are per-day, so their weight counts once and the whole
+    day's share lands on one row (weekly mode intentionally untouched).
+  - `pool_daily_separate` = each shift's sheet pools on its own (AM ≠
+    PM) — mechanically the pre-028 single-sheet compute, since sheets are
+    generated per (outlet, shift, date). Grouping "by shift_type" is the
+    sheet identity itself.
+  - Migration: CHECK expands to the 5 values (pool_daily_all |
+    pool_daily_separate | pool_weekly | individual_daily | no_tips; NULL
+    stays legal); existing 'pool_daily' → 'pool_daily_all' (the meeting's
+    safe default). **The 027 4-value CHECK is dropped BEFORE the value
+    rewrite** — updating under it aborts (caught in PGlite). Engine
+    re-created in place under whichever name holds it (unguarded post-014
+    — the 027 precedent), with legacy-literal normalization up front.
+    outlet_upsert re-created: 5-value validation, new outlets default
+    'pool_daily_all'. tip_declaration_submit/for_me need no change (their
+    no_tips handling is value-agnostic).
+  - Web: TIP_POOL_MODES now 5 entries ("Pool (daily — all shifts
+    together)" / "Pool (daily — separate per shift)" / …), per-mode
+    explainer under the outlet dropdown, tips editor gains the daily-all
+    banner + compute tooltip ("recomputes every unposted sheet of the
+    day"), department page's new-outlet default → pool_daily_all.
+- **Item 2 — Establishment name + payroll frequency locked**:
+  `setup.setup_locked_at` + a BEFORE INSERT/UPDATE trigger
+  (trg_setup_lock_guard). Locked ⇒ changing company_name or pay_cycle
+  raises "Establishment is locked. Contact your Manadele admin to
+  unlock." on EVERY write path (UI PATCH, RPC, SQL); period_start_day +
+  thresholds stay editable. Lock engages on the first save carrying a
+  real (non-empty) name — rows already carrying a name are backfilled
+  locked NOW; nameless rows stay unlocked (locking them would brick
+  first-time setup, so the "existing tenants" backfill is name-gated).
+  Admin unlock = `UPDATE setup SET setup_locked_at = NULL`; the next
+  ordinary save re-locks. /setup renders name + frequency as read-only
+  text once locked (with the contact-admin note, and a pre-lock warning
+  before); /api/setup no longer force-defaults "My Restaurant" on insert
+  (the lock must only engage on a deliberately typed name) and the
+  locked client sends only period_start_day.
+- **Items 3/4/9 — outlet page**: section order is now Header → Shift
+  types → Staffing requirements (PARS) → Positions → **Team members
+  LAST**. Positions render as a checkbox-chip GRID (1/2/3/4 columns by
+  breakpoint; points input + PR #16 Tipped toggle + out-of-catalog chip
+  preserved). Team members are READ-ONLY: "+ Assign employee" picker and
+  per-row Remove are gone (state + modal deleted); helper text sends
+  managers to the Employees page, which owns employee_outlets.
+- **Item 5 — Employee YTD tips**: the detail card's totals were fed by
+  `/api/employees/totals` summing the DEAD `tip_allocations` table
+  (nothing writes it since the Tier-1 engine) — unbounded, un-paginated,
+  all-time. New manager-guarded RPC `employee_tip_totals_ytd()`
+  (tip_sheet_rows × approved/posted sheets, Jan 1 → today, tenant-scoped,
+  grouped in SQL — 026's filters) now feeds it; the card gains the
+  explicit "Year-to-date · Jan 1 – present" label.
+- **Item 6 — Employment type**: `employees.employment_type`
+  ('full_time'|'part_time'|'seasonal', NOT NULL, backfilled/default
+  'full_time') + nullable `seasonal_start_date`/`seasonal_end_date`
+  (CHECK end ≥ start). Wizard step 2 gains the Full-time/Part-time/
+  Seasonal radio (Seasonal ⇒ required start+end dates) — and the old
+  radio labeled "Employment type" was really the PAY type: renamed "Pay
+  type". Review step shows both. Create route validates + writes the new
+  columns (its insert is an explicit column list). Edit modal gets the
+  same control; employees list shows an employment chip next to
+  Salary/Hourly (Seasonal = amber), detail shows the season window.
+  Auto-termination of expired seasonals deferred (needs a sweep — not
+  trivial).
+- **Items 7/10 — payroll date display**: the static "Aug 15 – Aug 28,
+  2026" header line is gone — the period dropdown is the single range
+  display. A sub-line appears ONLY for a Week 1/2 slice (its 7-day range
+  isn't in the dropdown). Audited the page for other duplicates: the
+  in-dropdown fallback option only renders when the selected period is
+  missing from the list (not a dupe); confirm-dialog/CSV-filename uses
+  aren't display.
+- **Item 8 — "Show diff" button did nothing**: two compounding causes —
+  (a) the toggle was gated on POSTED timecards while the actuals it
+  diffs against are pay_breakdown's approved-OR-posted, so it sat
+  disabled for the whole pre-lock window; (b) `.btn` had no `:disabled`
+  styling (full contrast + pointer cursor), so the disabled button read
+  as live. Gate now counts approved+posted (state renamed actualsCount),
+  globals.css gains `.btn:disabled { opacity:.5; cursor:not-allowed }`,
+  and stale actualGross is cleared when the diff is off (no flash of the
+  previous range's Δ).
+- **db.types.ts**: regenerated from live (027 objects now typed; the
+  supabase CLI's mobile/supabase/.temp is gitignored), then HAND-ADDED
+  for pending 028: employees.employment_type + seasonal_*,
+  setup.setup_locked_at, employee_tip_totals_ytd — regen after 028 lands.
+- Verified: root + mobile `tsc --noEmit` clean; `next build` clean;
+  `expo export` bundles clean; libpg_query parse-clean (40 stmts);
+  **PGlite 56/56** on the real chain (mocked auth/tenancy + live-shape
+  base from db.types.ts → tip_sheet → 019 case → 014 guard slice → 017 →
+  019-P2 → 009 → 015/017 pay_breakdown signature step → 023 → 027,
+  seeded two-tenant fixture, **028 applied twice** — second run over live
+  data): pool_daily→pool_daily_all value migration + 5-value CHECK
+  (legacy value rejected), daily-all whole-day math exact to the cent
+  (2 AM + 2 PM employees: 54/6, 36/4, 72/8, 18/2 off 180 SC + 20 NC by
+  6-4-8-2 hours), both sheets → ready together, AM+PM double-shift
+  dedup (weight once, 150.00 total), posted-day refusal,
+  daily-separate = per-shift pools (PM sheet untouched by the AM
+  compute), weekly + individual + no_tips regressions, outlet_upsert
+  default/validation + duplicate-name guard, lock backfill + all trigger
+  paths (name/cycle raise, period-day passes, admin unlock → edit →
+  re-lock, nameless row locks on first real name), employment_type
+  backfill + CHECKs, employee_tip_totals_ytd (posted-only, current-year
+  only, tenant-isolated, manager-guarded), ts_compute manager guard.
+
 ### Upcoming
 
-- PR #29: drop `employees.department` (text) after the 027 hierarchy is
-  verified in production (build-status PR #28 notes); regen db.types.ts.
+- Drop `employees.department` (text) after the 027 hierarchy is verified
+  in production (build-status PR #28 notes) — was slated for PR #29, but
+  #29 became the Aug 21 feedback batch; regen db.types.ts after 028.
+- Auto-terminate seasonal employees whose seasonal_end_date has passed
+  (needs a sweep like PR #20's — deferred from PR #29 item 6).
 - Deferred from PR #18 (named there): direct-messaging tab (Adèle
   deciding structure), side nav (bottom nav stays until Adèle's visual
   designs land), Running-late push delivery (PR #19 push work — the

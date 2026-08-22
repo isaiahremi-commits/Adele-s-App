@@ -2,13 +2,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Modal from "@/components/Modal";
 import { TIP_POOL_MODES } from "@/lib/constants";
 
-// PR #28 — Outlet page: name + tip sheet type up top, then the parent
-// department's positions as a checkbox list (check = assign to this outlet,
-// with points), the assigned team members, shift types, and the staffing
-// requirements (PARS) matrix that used to live on flat Setup.
+// PR #29 (Aug 21 feedback) — Outlet page order is now: header (name + tip
+// sheet type), shift types, staffing requirements (PARS), positions as a
+// checkbox-chip GRID, and finally the team members — which are read-only
+// here: membership is edited on the Employees page (employee_outlets is
+// the employee's record, this section just mirrors it).
 
 type OutletDetail = {
   outlet: {
@@ -37,7 +37,6 @@ type OutletDetail = {
   }>;
 };
 type Service = { id: string; name: string; outlet_id: string };
-type EmployeeOption = { id: string; name: string; termination_date?: string | null };
 
 export default function OutletPage() {
   const params = useParams<{ id: string }>();
@@ -52,12 +51,6 @@ export default function OutletPage() {
   const [pointsDraft, setPointsDraft] = useState<Record<string, string>>({});
   const [services, setServices] = useState<Service[]>([]);
   const [svcName, setSvcName] = useState("");
-
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
-  const [pickEmployee, setPickEmployee] = useState("");
-  const [pickPosition, setPickPosition] = useState("");
-  const [assigning, setAssigning] = useState(false);
 
   const load = useCallback(async () => {
     const [d, s] = await Promise.all([
@@ -161,50 +154,6 @@ export default function OutletPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) setError(data.error || `Save failed (${res.status})`);
-    load();
-  }
-
-  async function openPicker() {
-    setPickerOpen(true);
-    setPickEmployee("");
-    setPickPosition("");
-    const rows = await fetch("/api/employees").then((r) => r.json()).catch(() => []);
-    setEmployees(Array.isArray(rows) ? rows : []);
-  }
-
-  async function assignEmployee() {
-    if (!pickEmployee || assigning) return;
-    setAssigning(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/employee-outlets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employee_id: pickEmployee,
-          outlet_id: id,
-          position_name: pickPosition || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || `Assign failed (${res.status})`);
-        return;
-      }
-      setPickerOpen(false);
-      load();
-    } finally {
-      setAssigning(false);
-    }
-  }
-
-  async function unassignEmployee(employeeOutletId: string) {
-    setError(null);
-    const res = await fetch(`/api/employee-outlets?id=${employeeOutletId}`, { method: "DELETE" });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || `Remove failed (${res.status})`);
-    }
     load();
   }
 
@@ -323,11 +272,15 @@ export default function OutletPage() {
 
   const assignedNames = detail.positions.filter((p) => p.assigned).map((p) => p.position_name);
   const parRowNames = [...assignedNames, ...parExtraRows];
-  const assignedEmployeeIds = new Set(detail.employees.map((e) => e.employee_id));
-  const pickerOptions = employees.filter(
-    (e) => !assignedEmployeeIds.has(e.id) && !e.termination_date
-  );
   const mode = detail.outlet.tip_pool_mode;
+
+  // Item 1: one-line explainer per mode, shown under the dropdown.
+  const modeHint: Record<string, string> = {
+    pool_daily_all: "All of the day's shifts pool together — everyone who worked that day at this outlet shares. Computing any shift recomputes the whole day.",
+    pool_daily_separate: "Each shift pools on its own — the AM pool and the PM pool stay separate.",
+    pool_weekly: "The whole week's service charges and tips pool together — computing any day recomputes the week.",
+    no_tips: "No tip sheets are generated for this outlet and employees can't declare tips here.",
+  };
 
   return (
     <div className="max-w-[1100px] page-shell">
@@ -365,14 +318,9 @@ export default function OutletPage() {
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
-          {mode === "no_tips" && (
+          {mode && modeHint[mode] && (
             <p className="text-xs mt-1" style={{ color: "var(--muted)", maxWidth: 260 }}>
-              No tip sheets are generated for this outlet and employees can&apos;t declare tips here.
-            </p>
-          )}
-          {mode === "pool_weekly" && (
-            <p className="text-xs mt-1" style={{ color: "var(--muted)", maxWidth: 260 }}>
-              The whole week&apos;s service charges and tips pool together — computing any day recomputes the week.
+              {modeHint[mode]}
             </p>
           )}
         </div>
@@ -387,118 +335,7 @@ export default function OutletPage() {
         </div>
       )}
 
-      <section className="card p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-1">Positions</h2>
-        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-          Check a position from {detail.outlet.department_name ?? "the department"} to offer it at this
-          outlet, and set its tip points. Manage the department&apos;s position list on the department page.
-        </p>
-        {detail.positions.length === 0 ? (
-          <div className="text-sm" style={{ color: "var(--muted)" }}>
-            No positions in {detail.outlet.department_name ?? "this department"} yet — add them on the{" "}
-            <Link href={`/setup/departments/${detail.outlet.department_id}`} style={{ color: "var(--primary)" }}>
-              department page
-            </Link>.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {detail.positions.map((p) => (
-              <div
-                key={p.position_name.toLowerCase()}
-                className="flex items-center gap-3 p-2 rounded-md flex-wrap"
-                style={{ background: "var(--surface-2)" }}
-              >
-                <label className="flex items-center gap-2 flex-1 min-w-[180px] text-sm" style={{ cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={p.assigned}
-                    onChange={(e) => togglePosition(p.position_name, e.target.checked)}
-                  />
-                  {p.position_name}
-                  {!p.in_catalog && (
-                    <span className="chip chip-muted" style={{ fontSize: 10 }} title="Assigned here but missing from the department's position list.">
-                      not in department list
-                    </span>
-                  )}
-                </label>
-                {p.assigned && (
-                  <>
-                    <label className="flex items-center gap-1 text-xs" style={{ color: "var(--muted)" }}>
-                      Points
-                      <input
-                        className="input"
-                        style={{ maxWidth: 70, padding: "4px 6px" }}
-                        type="number"
-                        step="0.1"
-                        min={0}
-                        value={pointsDraft[p.position_name.toLowerCase()] ?? ""}
-                        onChange={(e) =>
-                          setPointsDraft({ ...pointsDraft, [p.position_name.toLowerCase()]: e.target.value })
-                        }
-                        onBlur={() => savePoints(p.position_name)}
-                      />
-                    </label>
-                    {p.role_id && (
-                      <button
-                        onClick={() => toggleTipped(p.role_id!, p.is_tipped)}
-                        className={`chip ${p.is_tipped === false ? "chip-amber" : "chip-green"}`}
-                        style={{ fontSize: 10, cursor: "pointer" }}
-                        title={p.is_tipped !== false
-                          ? "Tipped position — employees declare tips and join the distribution. Click to mark non-tipped."
-                          : "Non-tipped position — excluded from tip sheets and tip UI. Click to mark tipped."}
-                      >
-                        {p.is_tipped !== false ? "Tipped" : "Non-tipped"}
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="card p-6 mb-6">
-        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-          <h2 className="text-lg font-semibold">Team members</h2>
-          <button className="btn btn-secondary" onClick={openPicker}>+ Assign employee</button>
-        </div>
-        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-          Employees assigned to this outlet, with their position and its points.
-        </p>
-        {detail.employees.length === 0 ? (
-          <div className="text-sm" style={{ color: "var(--muted)" }}>Nobody is assigned to this outlet yet.</div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {detail.employees.map((e) => (
-              <div
-                key={e.employee_outlet_id}
-                className="flex items-center gap-3 p-2 rounded-md flex-wrap"
-                style={{ background: "var(--surface-2)" }}
-              >
-                <span className="text-sm flex-1 min-w-[160px]">
-                  {e.first_name} {e.last_name}
-                  {e.termination_date && (
-                    <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>terminated</span>
-                  )}
-                </span>
-                <span className="text-xs" style={{ color: "var(--muted)" }}>
-                  {e.position_name || "No position"}
-                  {e.position_name ? ` · ${e.points != null ? `${e.points}pt` : "no points set"}` : ""}
-                </span>
-                <button
-                  className="text-xs"
-                  onClick={() => unassignEmployee(e.employee_outlet_id)}
-                  style={{ color: "var(--danger)" }}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
+      {/* Item 3 order: shift types first. */}
       <section className="card p-6 mb-6">
         <h2 className="text-lg font-semibold mb-1">Shift types</h2>
         <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
@@ -525,8 +362,8 @@ export default function OutletPage() {
         </div>
       </section>
 
-      {/* PR #26 PARS editor, now scoped to this outlet. */}
-      <section className="card p-6">
+      {/* PR #26 PARS editor, scoped to this outlet. */}
+      <section className="card p-6 mb-6">
         <h2 className="text-lg font-semibold mb-1">Staffing requirements</h2>
         <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
           Set how many people you need scheduled per position per day. Get an alert on the
@@ -534,7 +371,7 @@ export default function OutletPage() {
         </p>
         {parRowNames.length === 0 ? (
           <p className="text-sm" style={{ color: "var(--muted)" }}>
-            No positions assigned to this outlet yet — check positions above first.
+            No positions assigned to this outlet yet — check positions in the section below first.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -587,45 +424,116 @@ export default function OutletPage() {
         )}
       </section>
 
-      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} title="Assign employee">
-        <div className="flex flex-col gap-3">
-          <label className="text-sm">Employee
-            <select
-              className="input mt-1"
-              value={pickEmployee}
-              onChange={(e) => setPickEmployee(e.target.value)}
-            >
-              <option value="">Select an employee…</option>
-              {pickerOptions.map((e) => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </select>
-          </label>
-          {pickerOptions.length === 0 && (
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
-              Every active employee is already assigned to this outlet.
-            </p>
-          )}
-          <label className="text-sm">Position at this outlet
-            <select
-              className="input mt-1"
-              value={pickPosition}
-              onChange={(e) => setPickPosition(e.target.value)}
-            >
-              <option value="">No position</option>
-              {assignedNames.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </label>
-          <div className="flex justify-end gap-2">
-            <button className="btn btn-secondary" onClick={() => setPickerOpen(false)}>Cancel</button>
-            <button className="btn btn-primary" disabled={!pickEmployee || assigning} onClick={assignEmployee}>
-              {assigning ? "Assigning…" : "Assign"}
-            </button>
+      {/* Item 9: positions as a checkbox-chip grid instead of one per line. */}
+      <section className="card p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-1">Positions</h2>
+        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          Check a position from {detail.outlet.department_name ?? "the department"} to offer it at this
+          outlet, and set its tip points. Manage the department&apos;s position list on the department page.
+        </p>
+        {detail.positions.length === 0 ? (
+          <div className="text-sm" style={{ color: "var(--muted)" }}>
+            No positions in {detail.outlet.department_name ?? "this department"} yet — add them on the{" "}
+            <Link href={`/setup/departments/${detail.outlet.department_id}`} style={{ color: "var(--primary)" }}>
+              department page
+            </Link>.
           </div>
-        </div>
-      </Modal>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {detail.positions.map((p) => (
+              <div
+                key={p.position_name.toLowerCase()}
+                className="p-2 rounded-md"
+                style={{
+                  background: "var(--surface-2)",
+                  border: `1px solid ${p.assigned ? "var(--primary)" : "var(--border)"}`,
+                }}
+              >
+                <label className="flex items-center gap-2 text-sm" style={{ cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={p.assigned}
+                    onChange={(e) => togglePosition(p.position_name, e.target.checked)}
+                  />
+                  <span className="flex-1 min-w-0 truncate" title={p.position_name}>{p.position_name}</span>
+                  {!p.in_catalog && (
+                    <span className="chip chip-muted shrink-0" style={{ fontSize: 10 }} title="Assigned here but missing from the department's position list.">
+                      not in dept list
+                    </span>
+                  )}
+                </label>
+                {p.assigned && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-1 text-xs" style={{ color: "var(--muted)" }}>
+                      Points
+                      <input
+                        className="input"
+                        style={{ maxWidth: 64, padding: "2px 6px" }}
+                        type="number"
+                        step="0.1"
+                        min={0}
+                        value={pointsDraft[p.position_name.toLowerCase()] ?? ""}
+                        onChange={(e) =>
+                          setPointsDraft({ ...pointsDraft, [p.position_name.toLowerCase()]: e.target.value })
+                        }
+                        onBlur={() => savePoints(p.position_name)}
+                      />
+                    </label>
+                    {p.role_id && (
+                      <button
+                        onClick={() => toggleTipped(p.role_id!, p.is_tipped)}
+                        className={`chip ${p.is_tipped === false ? "chip-amber" : "chip-green"}`}
+                        style={{ fontSize: 10, cursor: "pointer" }}
+                        title={p.is_tipped !== false
+                          ? "Tipped position — employees declare tips and join the distribution. Click to mark non-tipped."
+                          : "Non-tipped position — excluded from tip sheets and tip UI. Click to mark tipped."}
+                      >
+                        {p.is_tipped !== false ? "Tipped" : "Non-tipped"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Item 4: team members are read-only here (and deliberately LAST) —
+          membership is auto-populated from employee_outlets and edited on
+          the Employees page. */}
+      <section className="card p-6">
+        <h2 className="text-lg font-semibold mb-1">Team members</h2>
+        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          Employees assigned to this outlet, with their position and its points.
+          To add or remove team members, edit the employee on the{" "}
+          <Link href="/employees" style={{ color: "var(--primary)" }}>Employees page</Link>.
+        </p>
+        {detail.employees.length === 0 ? (
+          <div className="text-sm" style={{ color: "var(--muted)" }}>Nobody is assigned to this outlet yet.</div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {detail.employees.map((e) => (
+              <div
+                key={e.employee_outlet_id}
+                className="flex items-center gap-3 p-2 rounded-md flex-wrap"
+                style={{ background: "var(--surface-2)" }}
+              >
+                <span className="text-sm flex-1 min-w-[160px]">
+                  {e.first_name} {e.last_name}
+                  {e.termination_date && (
+                    <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>terminated</span>
+                  )}
+                </span>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  {e.position_name || "No position"}
+                  {e.position_name ? ` · ${e.points != null ? `${e.points}pt` : "no points set"}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

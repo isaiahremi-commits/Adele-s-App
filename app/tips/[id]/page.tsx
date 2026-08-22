@@ -79,14 +79,16 @@ export default function TipSheetEditor() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // PR #28: 4 modes (pool_daily | pool_weekly | individual_daily | no_tips).
-  // Legacy 'pool'/'individual' values linger until Migration 027 is applied;
-  // a NULL mode keeps the historical pool presentation.
-  const mode = outlet?.tip_pool_mode ?? "pool_daily";
+  // PR #29: 5 modes (pool_daily_all | pool_daily_separate | pool_weekly |
+  // individual_daily | no_tips). Legacy 'pool'/'pool_daily'/'individual'
+  // values linger until Migration 028 is applied; a NULL mode keeps the
+  // historical pool presentation.
+  const mode = outlet?.tip_pool_mode ?? "pool_daily_all";
   const isPool = mode.startsWith("pool");
   const isIndividual = mode.startsWith("individual");
   const isNoTips = mode === "no_tips";
   const isWeekly = mode === "pool_weekly";
+  const isDailyAll = mode === "pool_daily_all";
   const status = sheet?.status ?? "pending";
   const locked = status === "posted" || status === "approved";
   const computed = status === "ready" || locked;
@@ -204,7 +206,11 @@ export default function TipSheetEditor() {
         <div className="flex gap-2 flex-wrap">
           {!locked && !isNoTips && (
             <button className="btn btn-secondary" disabled={busy === "compute"} onClick={compute}
-              title={isWeekly ? "Weekly pool: computing any day recomputes every sheet of this outlet's week." : undefined}>
+              title={isWeekly
+                ? "Weekly pool: computing any day recomputes every sheet of this outlet's week."
+                : isDailyAll
+                  ? "Daily pool (all shifts): computing any shift recomputes every unposted sheet of this outlet's day."
+                  : undefined}>
               {status === "ready" ? "Recompute" : "Compute"}
             </button>
           )}
@@ -237,6 +243,14 @@ export default function TipSheetEditor() {
         <div className="card p-4 mb-4 text-sm" style={{ color: "var(--muted)" }}>
           Weekly pool: the whole week&apos;s service charges and non-cash tips distribute together
           across the week&apos;s hours — computing this sheet recomputes every unposted sheet of the week.
+        </div>
+      )}
+
+      {isDailyAll && !locked && (
+        <div className="card p-4 mb-4 text-sm" style={{ color: "var(--muted)" }}>
+          Daily pool (all shifts): the whole day&apos;s service charges and non-cash tips distribute
+          together across everyone who worked that day at this outlet — computing this sheet
+          recomputes every unposted sheet of the day.
         </div>
       )}
 
@@ -338,7 +352,7 @@ export default function TipSheetEditor() {
       {/* Team rows */}
       <div className="card p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">Team {isPool ? (isWeekly ? "(weekly pool distribution)" : "(pool distribution)") : "(individual)"}</h3>
+          <h3 className="font-semibold">Team {isPool ? (isWeekly ? "(weekly pool distribution)" : isDailyAll ? "(whole-day pool distribution)" : "(pool distribution)") : "(individual)"}</h3>
           <span className="text-xs" style={{ color: "var(--muted)" }}>
             Eligible hours read from approved timecards · PTO, called-out & training excluded
           </span>

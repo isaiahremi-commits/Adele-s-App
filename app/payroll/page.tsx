@@ -11,7 +11,6 @@ import {
   currentPeriod,
   previousPeriod,
   nextPeriod,
-  formatPeriod,
   formatPeriodShort,
   todayISO,
   type Period,
@@ -93,10 +92,14 @@ export default function PayrollPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [validate, setValidate] = useState<{ kind: "earnings" | "hours"; missingRates: PayRow[]; unposted: number } | null>(null);
   // PR #27 item 6: prediction-vs-actuals diff. actualGross maps employee_id →
-  // actual-mode gross for the same range; postedCount gates the toggle.
+  // actual-mode gross for the same range; actualsCount gates the toggle.
+  // PR #29 item 8: the gate counts approved OR posted timecards — the same
+  // statuses pay_breakdown's actual mode reads — so the button enables as
+  // soon as real actuals exist (it used to require posted only, which left
+  // it silently disabled for the whole pre-lock window).
   const [showDiff, setShowDiff] = useState(false);
   const [actualGross, setActualGross] = useState<Record<string, number | null>>({});
-  const [postedCount, setPostedCount] = useState(0);
+  const [actualsCount, setActualsCount] = useState(0);
 
   // Resolve the configured cycle once, then re-anchor the default period.
   useEffect(() => {
@@ -167,20 +170,20 @@ export default function PayrollPage() {
       setDailyByEmp(out);
     } catch { setDailyByEmp({}); }
 
-    // PR #27 item 6: in prediction mode, count posted timecards (gates the
-    // diff toggle) and, when the diff is on, fetch actual-mode gross to
-    // compare against.
+    // PR #27 item 6: in prediction mode, count approved/posted timecards
+    // (gates the diff toggle — mirrors pay_breakdown's actual-mode statuses)
+    // and, when the diff is on, fetch actual-mode gross to compare against.
     if (mode === "prediction") {
       try {
         const supabase = createClient();
         const { count } = await supabase
           .from("timecards")
           .select("id", { count: "exact", head: true })
-          .eq("status", "posted")
+          .in("status", ["approved", "posted"])
           .gte("date", effRange.start)
           .lte("date", effRange.end);
-        setPostedCount(count ?? 0);
-      } catch { setPostedCount(0); }
+        setActualsCount(count ?? 0);
+      } catch { setActualsCount(0); }
       if (showDiff) {
         const act = await fetch(`/api/payroll?start=${effRange.start}&end=${effRange.end}&mode=actual`)
           .then((r) => r.json()).catch(() => []);
@@ -189,6 +192,9 @@ export default function PayrollPage() {
           m[r.employee_id] = r.gross_pay === null ? null : Number(r.gross_pay);
         }
         setActualGross(m);
+      } else {
+        // PR #29 item 8: never diff new rows against a stale range's actuals.
+        setActualGross({});
       }
     }
   }, [effRange, mode, showDiff]);
@@ -287,7 +293,7 @@ export default function PayrollPage() {
   // Mgr comm) and the TC completeness chip — 6 columns instead of 10.
   const showActualCols = mode === "actual";
   // PR #27 item 6: optional Δ column in prediction mode.
-  const showDiffCol = mode === "prediction" && showDiff && postedCount > 0;
+  const showDiffCol = mode === "prediction" && showDiff && actualsCount > 0;
   const colCount = (showActualCols ? 10 : 6) + (showDiffCol ? 1 : 0);
 
   // PR #25 item 3: dropdown of periods — next, current, previous 6 — most
@@ -309,7 +315,14 @@ export default function PayrollPage() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Payroll</h1>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>{mounted ? `${formatPeriod(period)}${cycle === 14 && weekTab !== "total" ? ` · ${weekTab === "w1" ? "Week 1" : "Week 2"} (${formatPeriodShort(effRange)})` : ""}` : " "}</p>
+          {/* PR #29 items 7/10: the period range lives ONLY in the dropdown.
+              The sub-line appears just for a Week 1/2 slice, whose 7-day
+              range the dropdown doesn't show. */}
+          {cycle === 14 && weekTab !== "total" && (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              {mounted ? `${weekTab === "w1" ? "Week 1" : "Week 2"} · ${formatPeriodShort(effRange)}` : " "}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Item 3: period dropdown (most recent first) with quick nav below. */}
@@ -360,10 +373,10 @@ export default function PayrollPage() {
             ))}
           </div>
           {mode === "prediction" && (
-            <button className="btn btn-secondary" disabled={postedCount === 0}
-              title={postedCount === 0 ? "No posted timecards in this period yet — nothing to compare against." : undefined}
+            <button className="btn btn-secondary" disabled={actualsCount === 0}
+              title={actualsCount === 0 ? "No approved or posted timecards in this period yet — nothing to compare against." : undefined}
               onClick={() => setShowDiff((v) => !v)}>
-              {showDiff && postedCount > 0 ? "Hide diff vs Final actuals" : "Show diff vs Final actuals"}
+              {showDiff && actualsCount > 0 ? "Hide diff vs Final actuals" : "Show diff vs Final actuals"}
             </button>
           )}
           <button className="btn btn-secondary" disabled={loading || rows.length === 0} onClick={() => requestExport("earnings")}>Export earnings</button>
