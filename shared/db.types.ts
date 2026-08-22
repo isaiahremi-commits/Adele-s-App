@@ -60,9 +60,6 @@ export type Database = {
           },
         ]
       }
-      // HAND-ADDED tables for pending migration 013_broadcasts.sql —
-      // regenerating types before 013 is applied will silently drop these
-      // entries; re-add or regen after.
       broadcast_reads: {
         Row: {
           broadcast_id: string
@@ -201,8 +198,6 @@ export type Database = {
         ]
       }
       callout_history: {
-        // notes + status HAND-ADDED for pending migration 010 (see Functions
-        // note below) — regen after 010 is applied.
         Row: {
           created_at: string
           date: string
@@ -270,9 +265,6 @@ export type Database = {
           },
         ]
       }
-      // HAND-ADDED table for pending migration 010_callouts_coverage.sql —
-      // regenerating types before 010 is applied will silently drop this
-      // entry; re-add or regen after.
       coverage_requests: {
         Row: {
           callout_id: string
@@ -319,10 +311,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "coverage_requests_manager_decision_by_fkey"
+            columns: ["manager_decision_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "coverage_requests_shift_id_fkey"
             columns: ["shift_id"]
             isOneToOne: false
             referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coverage_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
           {
@@ -332,15 +338,40 @@ export type Database = {
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      department_positions: {
+        Row: {
+          created_at: string
+          department_id: string
+          id: string
+          position_name: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          department_id: string
+          id?: string
+          position_name: string
+          tenant_id?: string
+        }
+        Update: {
+          created_at?: string
+          department_id?: string
+          id?: string
+          position_name?: string
+          tenant_id?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "coverage_requests_manager_decision_by_fkey"
-            columns: ["manager_decision_by"]
+            foreignKeyName: "department_positions_department_id_fkey"
+            columns: ["department_id"]
             isOneToOne: false
-            referencedRelation: "employees"
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "coverage_requests_tenant_id_fkey"
+            foreignKeyName: "department_positions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -353,24 +384,38 @@ export type Database = {
           created_at: string | null
           id: string
           name: string
+          tenant_id: string
           tip_pool_strategy: string | null
           type: string | null
+          updated_at: string
         }
         Insert: {
           created_at?: string | null
           id?: string
           name: string
+          tenant_id?: string
           tip_pool_strategy?: string | null
           type?: string | null
+          updated_at?: string
         }
         Update: {
           created_at?: string | null
           id?: string
           name?: string
+          tenant_id?: string
           tip_pool_strategy?: string | null
           type?: string | null
+          updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "departments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       device_sessions: {
         Row: {
@@ -400,9 +445,6 @@ export type Database = {
         Relationships: []
       }
       employee_outlets: {
-        // tenant_id HAND-ADDED for pending migration 015_employee_onboarding.sql
-        // — regenerating types before 015 is applied will drop it; re-add or
-        // regen after.
         Row: {
           employee_id: string | null
           id: string
@@ -439,11 +481,16 @@ export type Database = {
             referencedRelation: "outlets"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "employee_outlets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       employees: {
-        // home_address / emergency_contact_* / has_completed_self_onboarding
-        // (pending 019, Phase 2) HAND-ADDED — regen after apply.
         Row: {
           annual_salary: number | null
           auth_user_id: string | null
@@ -456,6 +503,10 @@ export type Database = {
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
           employee_number: string | null
+          // employment_type + seasonal_* HAND-ADDED for pending migration
+          // 028 — regenerating types before 028 is applied will silently
+          // drop these entries; re-add or regen after.
+          employment_type: string
           first_name: string
           has_completed_self_onboarding: boolean
           home_address: string | null
@@ -469,6 +520,8 @@ export type Database = {
           position: string | null
           pto_rate: number | null
           regular_rate: number | null
+          seasonal_end_date: string | null
+          seasonal_start_date: string | null
           shirt_size: string | null
           sms_opt_in: boolean
           sms_opt_in_pending: boolean
@@ -490,6 +543,7 @@ export type Database = {
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           employee_number?: string | null
+          employment_type?: string
           first_name: string
           has_completed_self_onboarding?: boolean
           home_address?: string | null
@@ -503,6 +557,8 @@ export type Database = {
           position?: string | null
           pto_rate?: number | null
           regular_rate?: number | null
+          seasonal_end_date?: string | null
+          seasonal_start_date?: string | null
           shirt_size?: string | null
           sms_opt_in?: boolean
           sms_opt_in_pending?: boolean
@@ -524,6 +580,7 @@ export type Database = {
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           employee_number?: string | null
+          employment_type?: string
           first_name?: string
           has_completed_self_onboarding?: boolean
           home_address?: string | null
@@ -537,6 +594,8 @@ export type Database = {
           position?: string | null
           pto_rate?: number | null
           regular_rate?: number | null
+          seasonal_end_date?: string | null
+          seasonal_start_date?: string | null
           shirt_size?: string | null
           sms_opt_in?: boolean
           sms_opt_in_pending?: boolean
@@ -571,7 +630,6 @@ export type Database = {
         ]
       }
       eod_reports: {
-        // Whole table pending 019 (Phase 2) — HAND-ADDED, regen after apply.
         Row: {
           created_at: string
           id: string
@@ -614,8 +672,6 @@ export type Database = {
         ]
       }
       large_party_revenues: {
-        // declared_by_row_id (pending 009) + notes (pending 012) HAND-ADDED —
-        // regen after those migrations are applied.
         Row: {
           created_at: string
           declared_by_row_id: string | null
@@ -657,6 +713,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "large_party_revenues_declared_by_row_id_fkey"
+            columns: ["declared_by_row_id"]
+            isOneToOne: false
+            referencedRelation: "tip_sheet_rows"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "large_party_revenues_manager_employee_id_fkey"
             columns: ["manager_employee_id"]
             isOneToOne: false
@@ -680,7 +743,6 @@ export type Database = {
         ]
       }
       late_signals: {
-        // Whole table pending 019 (Phase 2) — HAND-ADDED, regen after apply.
         Row: {
           created_at: string
           date: string
@@ -732,8 +794,66 @@ export type Database = {
           },
         ]
       }
+      lateness_history: {
+        Row: {
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          shift_id: string | null
+          tenant_id: string
+          timecard_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          employee_id: string
+          id?: string
+          shift_id?: string | null
+          tenant_id?: string
+          timecard_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          shift_id?: string | null
+          tenant_id?: string
+          timecard_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lateness_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lateness_history_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lateness_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lateness_history_timecard_id_fkey"
+            columns: ["timecard_id"]
+            isOneToOne: false
+            referencedRelation: "timecards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       missed_punch_alerts: {
-        // Whole table pending 021 (Phase 2) — HAND-ADDED, regen after apply.
         Row: {
           alerted_at: string
           employee_id: string
@@ -773,10 +893,16 @@ export type Database = {
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "missed_punch_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       missed_punch_requests: {
-        // Whole table pending 022 (Phase 2) — HAND-ADDED, regen after apply.
         Row: {
           created_at: string
           decision_reason: string | null
@@ -841,70 +967,64 @@ export type Database = {
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      lateness_history: {
-        Row: {
-          created_at: string
-          date: string
-          employee_id: string
-          id: string
-          shift_id: string | null
-          tenant_id: string
-          timecard_id: string
-        }
-        Insert: {
-          created_at?: string
-          date: string
-          employee_id: string
-          id?: string
-          shift_id?: string | null
-          tenant_id?: string
-          timecard_id: string
-        }
-        Update: {
-          created_at?: string
-          date?: string
-          employee_id?: string
-          id?: string
-          shift_id?: string | null
-          tenant_id?: string
-          timecard_id?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "lateness_history_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lateness_history_shift_id_fkey"
-            columns: ["shift_id"]
-            isOneToOne: false
-            referencedRelation: "shifts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lateness_history_tenant_id_fkey"
+            foreignKeyName: "missed_punch_requests_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      outlet_pars: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          id: string
+          outlet_id: string
+          position_name: string
+          required_count: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          id?: string
+          outlet_id: string
+          position_name: string
+          required_count: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          outlet_id?: string
+          position_name?: string
+          required_count?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "lateness_history_timecard_id_fkey"
-            columns: ["timecard_id"]
+            foreignKeyName: "outlet_pars_outlet_id_fkey"
+            columns: ["outlet_id"]
             isOneToOne: false
-            referencedRelation: "timecards"
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outlet_pars_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
       }
       outlet_roles: {
-        // is_tipped (pending 017, Phase 2 tipped positions) HAND-ADDED —
-        // regen after that migration is applied.
         Row: {
           id: string
           is_tipped: boolean
@@ -997,7 +1117,7 @@ export type Database = {
       outlets: {
         Row: {
           created_at: string | null
-          department_id: string | null
+          department_id: string
           id: string
           name: string
           tenant_id: string
@@ -1005,7 +1125,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          department_id?: string | null
+          department_id: string
           id?: string
           name: string
           tenant_id?: string
@@ -1013,7 +1133,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          department_id?: string | null
+          department_id?: string
           id?: string
           name?: string
           tenant_id?: string
@@ -1321,6 +1441,10 @@ export type Database = {
           lateness_tier2_minutes: number
           pay_cycle: string
           period_start_day: string
+          // setup_locked_at HAND-ADDED for pending migration 028 —
+          // regenerating types before 028 is applied will silently drop
+          // this entry; re-add or regen after.
+          setup_locked_at: string | null
           tenant_id: string
           timezone: string
           updated_at: string | null
@@ -1335,6 +1459,7 @@ export type Database = {
           lateness_tier2_minutes?: number
           pay_cycle?: string
           period_start_day?: string
+          setup_locked_at?: string | null
           tenant_id?: string
           timezone?: string
           updated_at?: string | null
@@ -1349,6 +1474,7 @@ export type Database = {
           lateness_tier2_minutes?: number
           pay_cycle?: string
           period_start_day?: string
+          setup_locked_at?: string | null
           tenant_id?: string
           timezone?: string
           updated_at?: string | null
@@ -1520,8 +1646,6 @@ export type Database = {
         Relationships: []
       }
       swap_history: {
-        // target_shift_id / target_accepted_at / manager_decision_* HAND-ADDED
-        // for pending migration 011 — regen after 011 is applied.
         Row: {
           created_at: string
           id: string
@@ -1569,6 +1693,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "swap_history_manager_decision_by_fkey"
+            columns: ["manager_decision_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "swap_history_new_employee_id_fkey"
             columns: ["new_employee_id"]
             isOneToOne: false
@@ -1594,6 +1725,13 @@ export type Database = {
             columns: ["swapped_by"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_history_target_shift_id_fkey"
+            columns: ["target_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
@@ -1687,7 +1825,6 @@ export type Database = {
       timecards: {
         Row: {
           break_minutes: number
-          // break1/2 punches (pending 025, PR #27) HAND-ADDED — regen after apply.
           break1_in: string | null
           break1_out: string | null
           break2_in: string | null
@@ -2017,67 +2154,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      // HAND-ADDED for pending migration 007_employee_pto.sql (current_employee_id,
-      // pto_submit, pto_modify, pto_cancel) — regenerating types before 007 is
-      // applied will silently drop these four entries; re-add or regen after.
-      // HAND-ADDED likewise for pending migration 008_employee_pay_disciplinary.sql
-      // (employee_pay_settings, pay_breakdown_for_me) — same caveat.
-      // HAND-ADDED likewise for pending migration 009_employee_tips.sql
-      // (tip_declaration_submit, tip_declaration_for_me, tip_history_for_me,
-      // employee_can_see_tip_sheet) — same caveat.
-      // HAND-ADDED likewise for pending migration 010_callouts_coverage.sql
-      // (callout_submit, coverage_available_for_me, coverage_offer,
-      // coverage_withdraw, my_callouts_and_coverage,
-      // employee_eligible_for_coverage) — same caveat.
-      // HAND-ADDED likewise for pending migration 011_employee_swaps.sql
-      // (swap_request_submit/accept/decline/cancel, my_swap_requests,
-      // swap_eligible_teammates, employee_eligible_for_swap, shift_start_ts)
-      // — same caveat.
-      // HAND-ADDED likewise for pending migration 012_manager_approvals.sql
-      // (am_i_a_manager, coverage_approve/deny, swap_request_approve/deny,
-      // large_party_add, manager_approval_inbox) — same caveat.
-      // HAND-ADDED likewise for pending migration 013_broadcasts.sql
-      // (broadcast_send/mark_read/reply/thread/read_receipts, my_inbox,
-      // my_sent_broadcasts, can_see_broadcast) — same caveat.
-      // HAND-ADDED likewise for pending migration 015_employee_onboarding.sql
-      // (employee_terminate, employee_reactivate,
-      // employee_reset_password_needed; also employee_outlets.tenant_id in
-      // Tables above) — same caveat.
-      // HAND-ADDED likewise for pending migration 017_tipped_positions.sql
-      // (employee_is_tipped; also outlet_roles.is_tipped in Tables above)
-      // — same caveat.
-      // HAND-ADDED likewise for pending migration 018_employee_schedule_rls.sql
-      // (my_teammate_shifts, employee_sees_team_shift) — same caveat.
-      // HAND-ADDED likewise for pending migration
-      // 019_pay_type_and_personal_info.sql (employee_self_onboard,
-      // running_late_submit; also employees personal columns +
-      // late_signals + eod_reports tables above) — same caveat.
-      am_i_a_manager: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
-      // pay_ytd_for_me + tc_break_punch (pending 026/025, PR #27) HAND-ADDED —
-      // regen after apply.
-      pay_ytd_for_me: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          year: number
-          regular_hours: number
-          ot_hours: number
-          training_hours: number
-          pto_hours: number
-          sc_tips: number
-          nc_tips: number
-          tip_pay: number
-          manager_amount: number
-          gross_pay: number | null
-          pay_type: string
-        }[]
-      }
-      tc_break_punch: {
-        Args: { p_shift_id: string }
-        Returns: Json
-      }
+      am_i_a_manager: { Args: never; Returns: boolean }
+      assert_manager_or_service: { Args: never; Returns: undefined }
       broadcast_mark_read: {
         Args: { p_broadcast_id: string }
         Returns: undefined
@@ -2117,16 +2195,13 @@ export type Database = {
         Args: { p_notes?: string; p_reason: string; p_shift_id: string }
         Returns: string
       }
-      can_see_broadcast: {
-        Args: { p_broadcast_id: string }
-        Returns: boolean
-      }
+      can_see_broadcast: { Args: { p_broadcast_id: string }; Returns: boolean }
       coverage_approve: {
         Args: { p_coverage_request_id: string }
         Returns: undefined
       }
       coverage_available_for_me: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           end_time: string
           outlet_id: string
@@ -2153,6 +2228,29 @@ export type Database = {
       }
       current_employee_id: { Args: never; Returns: string }
       current_tenant_id: { Args: never; Returns: string }
+      department_delete: { Args: { p_id: string }; Returns: undefined }
+      department_list: {
+        Args: never
+        Returns: {
+          id: string
+          name: string
+          outlet_count: number
+          position_count: number
+          type: string
+        }[]
+      }
+      department_position_add: {
+        Args: { p_department_id: string; p_position_name: string }
+        Returns: string
+      }
+      department_position_remove: {
+        Args: { p_department_id: string; p_position_name: string }
+        Returns: number
+      }
+      department_upsert: {
+        Args: { p_id?: string; p_name: string }
+        Returns: string
+      }
       employee_can_see_tip_sheet: {
         Args: { p_outlet_id: string; p_sheet_id: string }
         Returns: boolean
@@ -2165,12 +2263,9 @@ export type Database = {
         Args: { p_candidate_id: string; p_shift_id: string }
         Returns: boolean
       }
-      employee_is_tipped: {
-        Args: { p_employee_id?: string }
-        Returns: boolean
-      }
+      employee_is_tipped: { Args: { p_employee_id?: string }; Returns: boolean }
       employee_pay_settings: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           callout_threshold_count: number
           callout_threshold_window_days: number
@@ -2178,10 +2273,7 @@ export type Database = {
           period_start_day: string
         }[]
       }
-      employee_reactivate: {
-        Args: { p_employee_id: string }
-        Returns: Json
-      }
+      employee_reactivate: { Args: { p_employee_id: string }; Returns: Json }
       employee_reset_password_needed: {
         Args: { p_employee_id: string }
         Returns: Json
@@ -2189,6 +2281,17 @@ export type Database = {
       employee_sees_team_shift: {
         Args: { p_outlet_id: string; p_owner_id: string }
         Returns: boolean
+      }
+      // HAND-ADDED for pending migration 028 — regenerating types before
+      // 028 is applied will silently drop this entry; re-add or regen after.
+      employee_tip_totals_ytd: {
+        Args: never
+        Returns: {
+          employee_id: string
+          total_tips: number
+          total_sc: number
+          total_nc: number
+        }[]
       }
       employee_self_onboard: {
         Args: {
@@ -2213,6 +2316,7 @@ export type Database = {
         }
         Returns: string[]
       }
+      enforce_termination_lockouts: { Args: never; Returns: Json }
       is_restaurant_manager: { Args: never; Returns: boolean }
       large_party_add: {
         Args: {
@@ -2223,10 +2327,7 @@ export type Database = {
         }
         Returns: string
       }
-      manager_approval_inbox: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      manager_approval_inbox: { Args: never; Returns: Json }
       missed_punch_request_approve: {
         Args: { p_request_id: string }
         Returns: Json
@@ -2249,7 +2350,7 @@ export type Database = {
         Returns: string
       }
       my_callouts_and_coverage: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           callout_id: string
           callout_status: string
@@ -2270,7 +2371,7 @@ export type Database = {
         }[]
       }
       my_inbox: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           audience_type: string
           body: string
@@ -2284,7 +2385,7 @@ export type Database = {
         }[]
       }
       my_sent_broadcasts: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           audience_type: string
           body: string
@@ -2296,7 +2397,7 @@ export type Database = {
         }[]
       }
       my_swap_requests: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           counterparty_name: string
           created_at: string
@@ -2335,6 +2436,79 @@ export type Database = {
           shift_type: string
           start_time: string
         }[]
+      }
+      outlet_assign_position: {
+        Args: {
+          p_outlet_id: string
+          p_points?: number
+          p_position_name: string
+        }
+        Returns: string
+      }
+      outlet_detail: { Args: { p_outlet_id: string }; Returns: Json }
+      outlet_list_for_department: {
+        Args: { p_department_id: string }
+        Returns: {
+          employee_count: number
+          id: string
+          name: string
+          position_count: number
+          tip_pool_mode: string
+        }[]
+      }
+      outlet_unassign_position: {
+        Args: { p_outlet_id: string; p_position_name: string }
+        Returns: number
+      }
+      outlet_upsert: {
+        Args: {
+          p_department_id: string
+          p_id?: string
+          p_name: string
+          p_tip_pool_mode?: string
+        }
+        Returns: string
+      }
+      par_compliance_for_week: {
+        Args: { p_start_date: string }
+        Returns: {
+          date: string
+          day_of_week: number
+          delta: number
+          has_par: boolean
+          outlet_id: string
+          outlet_name: string
+          position_name: string
+          required: number
+          scheduled: number
+        }[]
+      }
+      par_delete: {
+        Args: {
+          p_day_of_week: number
+          p_outlet_id: string
+          p_position_name: string
+        }
+        Returns: number
+      }
+      par_list_for_outlet: {
+        Args: { p_outlet_id: string }
+        Returns: {
+          day_of_week: number
+          id: string
+          outlet_id: string
+          position_name: string
+          required_count: number
+        }[]
+      }
+      par_upsert: {
+        Args: {
+          p_day_of_week: number
+          p_outlet_id: string
+          p_position_name: string
+          p_required_count: number
+        }
+        Returns: string
       }
       pay_breakdown: {
         Args: { p_end: string; p_mode?: string; p_start: string }
@@ -2412,6 +2586,26 @@ export type Database = {
         Args: { p_end: string; p_start: string }
         Returns: Json
       }
+      pay_post_period_unguarded: {
+        Args: { p_end: string; p_start: string }
+        Returns: Json
+      }
+      pay_ytd_for_me: {
+        Args: never
+        Returns: {
+          gross_pay: number
+          manager_amount: number
+          nc_tips: number
+          ot_hours: number
+          pay_type: string
+          pto_hours: number
+          regular_hours: number
+          sc_tips: number
+          tip_pay: number
+          training_hours: number
+          year: number
+        }[]
+      }
       pto_accrue_for_timecard: {
         Args: { p_timecard_id: string }
         Returns: undefined
@@ -2420,12 +2614,24 @@ export type Database = {
         Args: { p_delta: number; p_employee_id: string; p_notes?: string }
         Returns: Json
       }
+      pto_adjust_balance_unguarded: {
+        Args: { p_delta: number; p_employee_id: string; p_notes?: string }
+        Returns: Json
+      }
       pto_approve: {
+        Args: { p_periods: Json; p_request_id: string }
+        Returns: Json
+      }
+      pto_approve_unguarded: {
         Args: { p_periods: Json; p_request_id: string }
         Returns: Json
       }
       pto_cancel: { Args: { p_request_id: string }; Returns: undefined }
       pto_deny: {
+        Args: { p_notes?: string; p_request_id: string }
+        Returns: Json
+      }
+      pto_deny_unguarded: {
         Args: { p_notes?: string; p_request_id: string }
         Returns: Json
       }
@@ -2447,18 +2653,34 @@ export type Database = {
         Returns: string
       }
       pto_summary: { Args: { p_employee_id: string }; Returns: Json }
+      pto_unapprove: { Args: { p_request_id: string }; Returns: Json }
+      pto_unapprove_unguarded: { Args: { p_request_id: string }; Returns: Json }
       running_late_submit: {
         Args: { p_minutes: number; p_shift_id?: string }
         Returns: string
       }
-      pto_unapprove: { Args: { p_request_id: string }; Returns: Json }
+      scan_missed_punches: { Args: never; Returns: Json }
+      shift_start_at: {
+        Args: { p_date: string; p_start: string }
+        Returns: string
+      }
       shift_start_ts: {
         Args: { p_date: string; p_start: string }
         Returns: string
       }
       swap_accept: { Args: { p_swap_id: string }; Returns: Json }
+      swap_accept_unguarded: { Args: { p_swap_id: string }; Returns: Json }
       swap_cancel: { Args: { p_swap_id: string }; Returns: Json }
+      swap_cancel_unguarded: { Args: { p_swap_id: string }; Returns: Json }
       swap_create: {
+        Args: {
+          p_new_employee_id: string
+          p_notes?: string
+          p_shift_id: string
+        }
+        Returns: Json
+      }
+      swap_create_unguarded: {
         Args: {
           p_new_employee_id: string
           p_notes?: string
@@ -2480,22 +2702,13 @@ export type Database = {
           start_time: string
         }[]
       }
-      swap_request_accept: {
-        Args: { p_swap_id: string }
-        Returns: undefined
-      }
+      swap_request_accept: { Args: { p_swap_id: string }; Returns: undefined }
       swap_request_approve: {
         Args: { p_swap_id: string; p_target_shift_id_override?: string }
         Returns: undefined
       }
-      swap_request_cancel: {
-        Args: { p_swap_id: string }
-        Returns: undefined
-      }
-      swap_request_decline: {
-        Args: { p_swap_id: string }
-        Returns: undefined
-      }
+      swap_request_cancel: { Args: { p_swap_id: string }; Returns: undefined }
+      swap_request_decline: { Args: { p_swap_id: string }; Returns: undefined }
       swap_request_deny: {
         Args: { p_reason?: string; p_swap_id: string }
         Returns: undefined
@@ -2512,11 +2725,27 @@ export type Database = {
         Args: { p_note: string; p_timecard_id: string }
         Returns: Json
       }
+      tc_add_note_unguarded: {
+        Args: { p_note: string; p_timecard_id: string }
+        Returns: Json
+      }
       tc_approve: {
         Args: { p_timecard_id: string; p_training_hours?: number }
         Returns: Json
       }
+      tc_break_punch: { Args: { p_shift_id: string }; Returns: Json }
       tc_create_adhoc: {
+        Args: {
+          p_break_minutes?: number
+          p_clock_in?: string
+          p_clock_out?: string
+          p_date: string
+          p_employee_id: string
+          p_notes?: string
+        }
+        Returns: Json
+      }
+      tc_create_adhoc_unguarded: {
         Args: {
           p_break_minutes?: number
           p_clock_in?: string
@@ -2547,9 +2776,40 @@ export type Database = {
         }
         Returns: Json
       }
+      tc_override_unguarded: {
+        Args: {
+          p_field: string
+          p_note: string
+          p_timecard_id: string
+          p_value: string
+        }
+        Returns: Json
+      }
       tc_save: {
         Args: {
           p_break_minutes?: number
+          p_break1_in?: string
+          p_break1_out?: string
+          p_break2_in?: string
+          p_break2_out?: string
+          p_clock_in?: string
+          p_clock_out?: string
+          p_date?: string
+          p_employee_id?: string
+          p_notes?: string
+          p_shift_id?: string
+          p_timecard_id?: string
+          p_training_hours?: number
+        }
+        Returns: Json
+      }
+      tc_save_unguarded: {
+        Args: {
+          p_break_minutes?: number
+          p_break1_in?: string
+          p_break1_out?: string
+          p_break2_in?: string
+          p_break2_out?: string
           p_clock_in?: string
           p_clock_out?: string
           p_date?: string
@@ -2565,6 +2825,12 @@ export type Database = {
         Args: { p_timecard_id: string; p_to: string }
         Returns: Json
       }
+      tc_set_status_unguarded: {
+        Args: { p_timecard_id: string; p_to: string }
+        Returns: Json
+      }
+      tenant_today: { Args: never; Returns: string }
+      tenant_tz: { Args: never; Returns: string }
       tip_declaration_for_me: {
         Args: { p_outlet_id: string; p_shift_date: string }
         Returns: {
@@ -2576,8 +2842,7 @@ export type Database = {
           sheet_open: boolean
           sheet_status: string
           tip_amount: number
-          // tip_pool_mode (pending 027, PR #28) HAND-ADDED — regen after apply.
-          tip_pool_mode: string | null
+          tip_pool_mode: string
         }[]
       }
       tip_declaration_submit: {
@@ -2611,13 +2876,28 @@ export type Database = {
         }
         Returns: Json
       }
+      ts_add_large_party_unguarded: {
+        Args: {
+          p_manager_employee_id?: string
+          p_revenue: number
+          p_tip_sheet_id: string
+        }
+        Returns: Json
+      }
       ts_compute: { Args: { p_tip_sheet_id: string }; Returns: Json }
+      ts_compute_unguarded: { Args: { p_tip_sheet_id: string }; Returns: Json }
       ts_post: { Args: { p_tip_sheet_id: string }; Returns: Json }
+      ts_post_unguarded: { Args: { p_tip_sheet_id: string }; Returns: Json }
       ts_reassign_manager: {
         Args: { p_lpr_id: string; p_manager_employee_id: string }
         Returns: Json
       }
+      ts_reassign_manager_unguarded: {
+        Args: { p_lpr_id: string; p_manager_employee_id: string }
+        Returns: Json
+      }
       ts_unpost: { Args: { p_tip_sheet_id: string }; Returns: Json }
+      ts_unpost_unguarded: { Args: { p_tip_sheet_id: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never

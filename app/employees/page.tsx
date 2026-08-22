@@ -23,6 +23,10 @@ type Employee = {
   pto_rate?: number | string | null;
   pay_type?: string | null;
   annual_salary?: number | string | null;
+  // PR #29 item 6 — absent until migration 028; chip hides itself pre-apply
+  employment_type?: string | null;
+  seasonal_start_date?: string | null;
+  seasonal_end_date?: string | null;
   phone?: string;
   email?: string;
   active?: boolean;
@@ -59,6 +63,10 @@ type Form = {
   termination_date: string;
   pay_type: "hourly" | "salary";
   annual_salary: string;
+  // PR #29 item 6: employment classification + seasonal window.
+  employment_type: "full_time" | "part_time" | "seasonal";
+  seasonal_start_date: string;
+  seasonal_end_date: string;
   regular_rate: string;
   ot_rate: string;
   pto_rate: string;
@@ -79,12 +87,22 @@ const emptyForm: Form = {
   termination_date: "",
   pay_type: "hourly",
   annual_salary: "",
+  employment_type: "full_time",
+  seasonal_start_date: "",
+  seasonal_end_date: "",
   regular_rate: "",
   ot_rate: "",
   pto_rate: "",
   phone: "",
   email: "",
   assignments: [],
+};
+
+// PR #29 item 6: employment-type chip labels (list + detail).
+const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  full_time: "Full-time",
+  part_time: "Part-time",
+  seasonal: "Seasonal",
 };
 
 export default function EmployeesPage() {
@@ -277,6 +295,10 @@ export default function EmployeesPage() {
       termination_date: e.termination_date ?? "",
       pay_type: e.pay_type === "salary" ? "salary" : "hourly",
       annual_salary: e.annual_salary != null ? String(e.annual_salary) : "",
+      employment_type: e.employment_type === "part_time" || e.employment_type === "seasonal"
+        ? e.employment_type : "full_time",
+      seasonal_start_date: e.seasonal_start_date ?? "",
+      seasonal_end_date: e.seasonal_end_date ?? "",
       regular_rate: e.regular_rate != null ? String(e.regular_rate) : "",
       ot_rate: e.ot_rate != null ? String(e.ot_rate) : "",
       pto_rate: e.pto_rate != null ? String(e.pto_rate) : "",
@@ -304,6 +326,17 @@ export default function EmployeesPage() {
       setError("Annual salary is required and must be greater than 0 for salaried employees.");
       return;
     }
+    // PR #29 item 6: seasonal employees need their season's window.
+    if (form.employment_type === "seasonal") {
+      if (!form.seasonal_start_date || !form.seasonal_end_date) {
+        setError("Seasonal employees need both a start date and an end date.");
+        return;
+      }
+      if (form.seasonal_end_date < form.seasonal_start_date) {
+        setError("The seasonal end date must be on or after the start date.");
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const payload = {
@@ -318,6 +351,10 @@ export default function EmployeesPage() {
         termination_date: form.termination_date || null,
         pay_type: form.pay_type,
         annual_salary: form.annual_salary === "" ? null : Number(form.annual_salary),
+        employment_type: form.employment_type,
+        // Season window only applies to seasonal employees — clear otherwise.
+        seasonal_start_date: form.employment_type === "seasonal" ? form.seasonal_start_date : null,
+        seasonal_end_date: form.employment_type === "seasonal" ? form.seasonal_end_date : null,
         // Preserve existing rate values on toggle — never auto-null them.
         regular_rate: form.regular_rate === "" ? null : Number(form.regular_rate),
         ot_rate: form.ot_rate === "" ? null : Number(form.ot_rate),
@@ -521,7 +558,7 @@ export default function EmployeesPage() {
                         {e.name?.[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{titleCase(e.name)}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}{ptoBalances[e.id] !== undefined && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }} title="Current PTO balance">PTO: {Number.isInteger(ptoBalances[e.id]) ? ptoBalances[e.id] : ptoBalances[e.id].toFixed(1)}h</span>}</h3>
+                        <h3 className="font-semibold truncate">{titleCase(e.name)}<span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>{e.pay_type === "salary" ? "Salary" : "Hourly"}</span>{e.employment_type && EMPLOYMENT_TYPE_LABELS[e.employment_type] && <span className={`chip ml-2 ${e.employment_type === "seasonal" ? "chip-amber" : "chip-muted"}`} style={{ fontSize: 10 }}>{EMPLOYMENT_TYPE_LABELS[e.employment_type]}</span>}{isNonTippedPosition(e) && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }}>Non-tipped</span>}{ptoBalances[e.id] !== undefined && <span className="chip chip-muted ml-2" style={{ fontSize: 10 }} title="Current PTO balance">PTO: {Number.isInteger(ptoBalances[e.id]) ? ptoBalances[e.id] : ptoBalances[e.id].toFixed(1)}h</span>}</h3>
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                           {(() => {
                             const pos = titleCase(e.home_position || e.position);
@@ -580,9 +617,20 @@ export default function EmployeesPage() {
                         <div>Hired: {e.date_of_hire
                           ? new Date(e.date_of_hire + "T00:00:00").toLocaleDateString()
                           : <span style={{ color: "var(--amber)" }}>not set — accrual paused</span>}</div>
+                        {/* PR #29 item 6: seasonal window */}
+                        {e.employment_type === "seasonal" && (e.seasonal_start_date || e.seasonal_end_date) && (
+                          <div>Season: {e.seasonal_start_date ? new Date(e.seasonal_start_date + "T00:00:00").toLocaleDateString() : "?"}
+                            {" – "}
+                            {e.seasonal_end_date ? new Date(e.seasonal_end_date + "T00:00:00").toLocaleDateString() : "?"}</div>
+                        )}
                         {e.termination_date && <div style={{ color: "var(--danger)" }}>Terminated: {new Date(e.termination_date + "T00:00:00").toLocaleDateString()}</div>}
                       </div>
 
+                      {/* PR #29 item 5: these totals are calendar year-to-date
+                          (approved/posted tip sheets, Jan 1 → today). */}
+                      <div className="text-xs mb-1 font-medium" style={{ color: "var(--muted)" }}>
+                        Year-to-date · Jan 1 – present
+                      </div>
                       <div className="grid grid-cols-3 gap-2 mb-3">
                         <div className="rounded-md p-2" style={{ background: "var(--surface-2)" }}>
                           <div className="text-xs" style={{ color: "var(--muted)" }}>Total tips</div>
@@ -739,6 +787,37 @@ export default function EmployeesPage() {
               <input type="date" className="input mt-1" min={form.date_of_hire || undefined}
                 value={form.termination_date} onChange={(e) => setForm({ ...form, termination_date: e.target.value })} />
             </label>
+          </div>
+
+          {/* PR #29 item 6: employment classification + seasonal window. */}
+          <div>
+            <div className="text-sm font-medium mb-1">Employment Type</div>
+            <div className="flex gap-4 flex-wrap">
+              {(["full_time", "part_time", "seasonal"] as const).map((et) => (
+                <label key={et} className="text-sm flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="edit_employment_type"
+                    checked={form.employment_type === et}
+                    onChange={() => setForm({ ...form, employment_type: et })}
+                  />
+                  {EMPLOYMENT_TYPE_LABELS[et]}
+                </label>
+              ))}
+            </div>
+            {form.employment_type === "seasonal" && (
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <label className="text-sm">Season start <span style={{ color: "var(--danger)" }}>*</span>
+                  <input type="date" className="input mt-1" value={form.seasonal_start_date}
+                    onChange={(e) => setForm({ ...form, seasonal_start_date: e.target.value })} />
+                </label>
+                <label className="text-sm">Season end <span style={{ color: "var(--danger)" }}>*</span>
+                  <input type="date" className="input mt-1" min={form.seasonal_start_date || undefined}
+                    value={form.seasonal_end_date}
+                    onChange={(e) => setForm({ ...form, seasonal_end_date: e.target.value })} />
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Salary support: pay type toggle. Toggling never nulls existing

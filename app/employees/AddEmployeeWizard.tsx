@@ -32,6 +32,10 @@ type WizardForm = {
   email: string;
   hire_date: string;
   pay_type: "hourly" | "salary";
+  // PR #29 item 6: employment classification + seasonal window.
+  employment_type: "full_time" | "part_time" | "seasonal";
+  seasonal_start_date: string;
+  seasonal_end_date: string;
   annual_salary: string;
   regular_rate: string;
   ot_rate: string;
@@ -59,6 +63,9 @@ function emptyWizardForm(): WizardForm {
     email: "",
     hire_date: localToday(),
     pay_type: "hourly",
+    employment_type: "full_time",
+    seasonal_start_date: "",
+    seasonal_end_date: "",
     annual_salary: "",
     regular_rate: "",
     ot_rate: "",
@@ -137,6 +144,12 @@ export default function AddEmployeeWizard({
       if (!form.hire_date) return "Hire date is required (PTO accrual needs it).";
     }
     if (s === 1) {
+      if (form.employment_type === "seasonal") {
+        if (!form.seasonal_start_date || !form.seasonal_end_date)
+          return "Seasonal employees need both a start date and an end date.";
+        if (form.seasonal_end_date < form.seasonal_start_date)
+          return "The seasonal end date must be on or after the start date.";
+      }
       if (form.pay_type === "salary" && !(Number(form.annual_salary) > 0))
         return "Annual salary must be greater than 0.";
       if (form.pay_type === "hourly" && !(Number(form.regular_rate) > 0))
@@ -181,6 +194,9 @@ export default function AddEmployeeWizard({
           home_outlet_id: form.home_outlet_id || null,
           home_position: salaried ? null : form.home_position || null,
           pay_type: form.pay_type,
+          employment_type: form.employment_type,
+          seasonal_start_date: form.employment_type === "seasonal" ? form.seasonal_start_date : null,
+          seasonal_end_date: form.employment_type === "seasonal" ? form.seasonal_end_date : null,
           annual_salary: salaried ? Number(form.annual_salary) : null,
           regular_rate: salaried || form.regular_rate === "" ? null : Number(form.regular_rate),
           ot_rate: salaried || form.ot_rate === "" ? null : Number(form.ot_rate),
@@ -297,8 +313,41 @@ export default function AddEmployeeWizard({
 
           {step === 1 && (
             <>
+              {/* PR #29 item 6: employment classification (the old radio
+                  labeled "Employment type" was really the pay type — renamed
+                  below). Seasonal opens the season window. */}
               <div>
                 <div className="text-sm font-medium mb-1">Employment type</div>
+                <div className="flex gap-4 flex-wrap">
+                  {([["full_time", "Full-time"], ["part_time", "Part-time"], ["seasonal", "Seasonal"]] as const).map(([et, label]) => (
+                    <label key={et} className="text-sm flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="employment_type"
+                        checked={form.employment_type === et}
+                        onChange={() => setForm({ ...form, employment_type: et })}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {form.employment_type === "seasonal" && (
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <label className="text-sm">Season start <span style={{ color: "var(--danger)" }}>*</span>
+                      <input type="date" className="input mt-1" value={form.seasonal_start_date}
+                        onChange={(e) => setForm({ ...form, seasonal_start_date: e.target.value })} />
+                    </label>
+                    <label className="text-sm">Season end <span style={{ color: "var(--danger)" }}>*</span>
+                      <input type="date" className="input mt-1" min={form.seasonal_start_date || undefined}
+                        value={form.seasonal_end_date}
+                        onChange={(e) => setForm({ ...form, seasonal_end_date: e.target.value })} />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-1">Pay type</div>
                 <div className="flex gap-4">
                   {(["salary", "hourly"] as const).map((pt) => (
                     <label key={pt} className="text-sm flex items-center gap-2 cursor-pointer">
@@ -446,7 +495,10 @@ export default function AddEmployeeWizard({
                 ["Name", `${form.first_name} ${form.last_name}`.trim()],
                 ["Email (login)", form.email.trim().toLowerCase()],
                 ["Hire date", form.hire_date],
-                ["Type", form.pay_type === "salary" ? "Salary" : "Hourly"],
+                ["Employment", form.employment_type === "seasonal"
+                  ? `Seasonal (${form.seasonal_start_date || "?"} – ${form.seasonal_end_date || "?"})`
+                  : form.employment_type === "part_time" ? "Part-time" : "Full-time"],
+                ["Pay type", form.pay_type === "salary" ? "Salary" : "Hourly"],
                 ["Department", deptName ?? "—"],
                 ["Home outlet", outletName ?? "—"],
                 ...(form.pay_type === "salary"

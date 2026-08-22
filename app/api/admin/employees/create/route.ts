@@ -34,6 +34,10 @@ type CreateBody = {
   employee_number?: string | null;
   hire_date?: string;
   pay_type?: "hourly" | "salary";
+  // PR #29 item 6: employment classification + seasonal window.
+  employment_type?: "full_time" | "part_time" | "seasonal";
+  seasonal_start_date?: string | null;
+  seasonal_end_date?: string | null;
   annual_salary?: number | null;
   regular_rate?: number | null;
   ot_rate?: number | null;
@@ -98,6 +102,27 @@ export async function POST(req: Request) {
   if ([body.ot_rate, body.pto_rate, body.training_rate].some(badRate)) {
     return NextResponse.json({ error: "Rates cannot be negative." }, { status: 400 });
   }
+  // PR #29 item 6: coerce the classification; seasonal needs its window.
+  const employment_type =
+    body.employment_type === "part_time" || body.employment_type === "seasonal"
+      ? body.employment_type
+      : "full_time";
+  const seasonal_start = employment_type === "seasonal" ? body.seasonal_start_date || null : null;
+  const seasonal_end = employment_type === "seasonal" ? body.seasonal_end_date || null : null;
+  if (employment_type === "seasonal") {
+    if (!seasonal_start || !seasonal_end) {
+      return NextResponse.json(
+        { error: "Seasonal employees need both a start date and an end date." },
+        { status: 400 }
+      );
+    }
+    if (seasonal_end < seasonal_start) {
+      return NextResponse.json(
+        { error: "The seasonal end date must be on or after the start date." },
+        { status: 400 }
+      );
+    }
+  }
 
   // Duplicate email = a person who already exists (or a stale test row).
   // Surface it before creating an auth user we'd only have to delete.
@@ -146,6 +171,9 @@ export async function POST(req: Request) {
       employee_number: body.employee_number || null,
       date_of_hire: body.hire_date,
       pay_type,
+      employment_type,
+      seasonal_start_date: seasonal_start,
+      seasonal_end_date: seasonal_end,
       annual_salary: body.annual_salary ?? null,
       regular_rate: body.regular_rate ?? null,
       ot_rate: body.ot_rate ?? null,
