@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import { PREDEFINED_ROLES, OTHER_OPTION } from "@/lib/constants";
 import { titleCase } from "@/lib/format";
@@ -12,7 +12,7 @@ import { titleCase } from "@/lib/format";
 // Submits to /api/admin/employees/create (unchanged): auth login + linked
 // employees row + outlet assignments, then the one-time temp password.
 
-type Outlet = { id: string; name: string };
+type Outlet = { id: string; name: string; department_id?: string | null };
 type Department = { id: string; name: string };
 // is_tipped is absent until migration 017 lands — options just skip the badge.
 type Role = { id: string; role_name: string; outlet_id: string; is_tipped?: boolean };
@@ -105,9 +105,41 @@ export default function AddEmployeeWizard({
   const [result, setResult] = useState<{ email: string; temp_password: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // PR #30: the parent's lists are fetched once on Employees-page mount, so
+  // a department/outlet/position added in Setup afterwards never reached
+  // this dropdown. Re-fetch fresh options every time the wizard opens
+  // (/api/departments/list is the same tenant-scoped RPC Setup reads, so
+  // the two can't disagree); the props seed the first paint.
+  const [depts, setDepts] = useState<Department[]>(departments);
+  const [outletOpts, setOutletOpts] = useState<Outlet[]>(outlets);
+  const [roleOpts, setRoleOpts] = useState<Role[]>(roles);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    Promise.all([
+      fetch("/api/departments/list").then((r) => r.json()).catch(() => null),
+      fetch("/api/outlets").then((r) => r.json()).catch(() => null),
+      fetch("/api/outlet-roles").then((r) => r.json()).catch(() => null),
+    ]).then(([d, o, rl]) => {
+      if (!alive) return;
+      if (Array.isArray(d)) setDepts(d);
+      if (Array.isArray(o)) setOutletOpts(o);
+      if (Array.isArray(rl)) setRoleOpts(rl);
+    });
+    return () => { alive = false; };
+  }, [open]);
+
   function rolesForOutlet(outletId: string) {
-    return roles.filter((r) => r.outlet_id === outletId);
+    return roleOpts.filter((r) => r.outlet_id === outletId);
   }
+
+  // PR #30 item 5: outlets belong to departments (027) — once a department
+  // is chosen, the HOME outlet list narrows to that department's outlets.
+  // Additional assignments stay unfiltered: helping out at another
+  // department's outlet is legitimate and employee_outlets carries it.
+  const homeOutletOptions = form.department_id
+    ? outletOpts.filter((o) => o.department_id === form.department_id)
+    : outletOpts;
   const homeRoles = form.home_outlet_id ? rolesForOutlet(form.home_outlet_id) : [];
   const homePosOptions: PosOption[] =
     form.home_outlet_id && homeRoles.length > 0
@@ -231,8 +263,8 @@ export default function AddEmployeeWizard({
     }
   }
 
-  const deptName = departments.find((d) => d.id === form.department_id)?.name;
-  const outletName = outlets.find((o) => o.id === form.home_outlet_id)?.name;
+  const deptName = depts.find((d) => d.id === form.department_id)?.name;
+  const outletName = outletOpts.find((o) => o.id === form.home_outlet_id)?.name;
 
   return (
     <Modal open={open} onClose={close} title={result ? "Employee added" : "Add Employee"}>
@@ -401,17 +433,35 @@ export default function AddEmployeeWizard({
                 </label>
                 <label className="text-sm">Department
                   <select className="input mt-1" value={form.department_id}
-                    onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setForm((f) => {
+                        // A home outlet outside the newly chosen department
+                        // is no longer offered — clear it (and its position).
+                        const keepHome = !v ||
+                          outletOpts.some((o) => o.id === f.home_outlet_id && o.department_id === v);
+                        return {
+                          ...f,
+                          department_id: v,
+                          ...(keepHome ? {} : { home_outlet_id: "", home_position: "" }),
+                        };
+                      });
+                    }}>
                     <option value="">Select…</option>
-                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </label>
                 <label className="text-sm">Home outlet
                   <select className="input mt-1" value={form.home_outlet_id}
                     onChange={(e) => setForm({ ...form, home_outlet_id: e.target.value, home_position: "" })}>
                     <option value="">Select…</option>
-                    {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    {homeOutletOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
+                  {form.department_id && homeOutletOptions.length === 0 && (
+                    <span className="text-xs block mt-1" style={{ color: "var(--muted)" }}>
+                      No outlets in this department yet — add one in Setup.
+                    </span>
+                  )}
                 </label>
               </div>
 
@@ -462,7 +512,7 @@ export default function AddEmployeeWizard({
                                 return { ...f, assignments: next };
                               })}>
                               <option value="">Outlet…</option>
-                              {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                              {outletOpts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                             </select>
                             <select className="input" value={a.position_name} disabled={!a.outlet_id}
                               onChange={(e) => setForm((f) => {
@@ -506,7 +556,7 @@ export default function AddEmployeeWizard({
                   : ([
                       ["Position", form.home_position ? titleCase(form.home_position) : "—"],
                       ["Also works at", form.assignments.filter((a) => a.outlet_id).map((a) => {
-                        const o = outlets.find((x) => x.id === a.outlet_id)?.name ?? "?";
+                        const o = outletOpts.find((x) => x.id === a.outlet_id)?.name ?? "?";
                         return a.position_name ? `${o} (${titleCase(a.position_name)})` : o;
                       }).join(", ") || "—"],
                       ["Pay", `$${form.regular_rate}/hr` +
