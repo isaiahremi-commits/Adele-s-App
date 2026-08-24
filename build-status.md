@@ -1790,6 +1790,36 @@ positions + points.
   backfill + CHECKs, employee_tip_totals_ytd (posted-only, current-year
   only, tenant-isolated, manager-guarded), ts_compute manager guard.
 
+### PR #30 — Wizard department dropdown staleness (2026-08-24)
+
+- **Bug**: departments newly created in Setup didn't appear in the Add
+  Employee wizard's Department dropdown. Root cause was NOT a wrong
+  source table (the wizard already bound `department_id` uuids and the
+  create route already writes the FK, never the legacy text): the wizard
+  renders a `departments` prop that the Employees PAGE fetches once on
+  mount — anything created in Setup after that mount (other tab, or a
+  kept-open page) never reached the modal, which itself never refetched.
+- **Fix (AddEmployeeWizard.tsx)**: the wizard now re-fetches its option
+  data every time it opens — departments from **/api/departments/list**
+  (the same tenant-scoped `department_list` RPC the Setup cards render
+  from, so the two surfaces can't disagree), plus /api/outlets and
+  /api/outlet-roles (same staleness class: new outlets/positions).
+  Props seed the first paint; fetch failures silently keep them.
+- **Item 5 (department ↔ outlet coherence)**: outlets belong to
+  departments post-027, so the HOME outlet dropdown now narrows to the
+  selected department's outlets; picking a department that doesn't
+  contain the current home outlet clears it (and its position), and an
+  outlet-less department shows "No outlets in this department yet — add
+  one in Setup." Additional Outlets & Positions stay UNFILTERED on
+  purpose — cross-department help is legitimate and employee_outlets
+  carries it fine.
+- Verified: create-route insert writes `department_id` only (no legacy
+  `department` text anywhere in the wizard path); root `tsc --noEmit`
+  clean; `next build` clean. No SQL / shared-types / mobile changes.
+  Manual repro for the live check: create a department in Setup → open
+  Add Employee → it's in the dropdown → complete the flow → the employees
+  row carries its `department_id`.
+
 ### Upcoming
 
 - Drop `employees.department` (text) after the 027 hierarchy is verified
